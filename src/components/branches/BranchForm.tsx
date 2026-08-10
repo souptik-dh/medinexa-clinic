@@ -31,6 +31,10 @@ export default function BranchForm({ mode }: BranchFormProps) {
   const [postOffice, setPostOffice] = useState("");
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
+  const [tradeLicenseNumber, setTradeLicenseNumber] = useState("");
+  const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
+  const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
+    useState("");
   const [clinicName, setClinicName] = useState("");
   const [loading, setLoading] = useState(isEdit);
   const [busy, setBusy] = useState(false);
@@ -71,6 +75,9 @@ export default function BranchForm({ mode }: BranchFormProps) {
           setPostOffice(b.post_office ?? "");
           setLat(b.lat !== null && b.lat !== undefined ? String(b.lat) : "");
           setLng(b.lng !== null && b.lng !== undefined ? String(b.lng) : "");
+          setTradeLicenseNumber(b.trade_license_number ?? "");
+          setDrugLicenseNumber(b.drug_license_number ?? "");
+          setClinicalEstablishmentRegNumber(b.clinical_establishment_reg_number ?? "");
         })
         .catch((err) => {
           if (active)
@@ -103,6 +110,14 @@ export default function BranchForm({ mode }: BranchFormProps) {
       setError("Name, address, phone and timezone are required.");
       return;
     }
+    if (!city || !district || !stateField || !postOffice || !pinCode) {
+      setError("City, district, state, post office and pincode are required.");
+      return;
+    }
+    if (!tradeLicenseNumber) {
+      setError("Trade license number is required.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -112,13 +127,16 @@ export default function BranchForm({ mode }: BranchFormProps) {
         phone,
         timezone,
         nearby_location: nearbyLocation || null,
-        city: city || null,
-        district: district || null,
-        pin_code: pinCode || null,
-        state: stateField || null,
-        post_office: postOffice || null,
+        city,
+        district,
+        pin_code: pinCode,
+        state: stateField,
+        post_office: postOffice,
         lat: lat === "" ? null : Number(lat),
         lng: lng === "" ? null : Number(lng),
+        trade_license_number: tradeLicenseNumber,
+        drug_license_number: drugLicenseNumber || null,
+        clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
       if (isEdit) {
         await branchesApi.update(branchId, input);
@@ -188,7 +206,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
                 className={inputClass}
               />
             </Field>
-            <Field label="Pincode">
+            <Field label="Pincode *">
               <PincodeField
                 value={pinCode}
                 onChange={setPinCode}
@@ -204,7 +222,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="City">
+              <Field label="City *">
                 <input
                   type="text"
                   value={city}
@@ -212,7 +230,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="District">
+              <Field label="District *">
                 <input
                   type="text"
                   value={district}
@@ -222,7 +240,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="State">
+              <Field label="State *">
                 <input
                   type="text"
                   value={stateField}
@@ -230,7 +248,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Post office">
+              <Field label="Post office *">
                 <input
                   type="text"
                   value={postOffice}
@@ -248,6 +266,32 @@ export default function BranchForm({ mode }: BranchFormProps) {
                 className={`${inputClass} disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800`}
               />
             </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Trade license number *">
+                <input
+                  type="text"
+                  value={tradeLicenseNumber}
+                  onChange={(e) => setTradeLicenseNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Drug license number">
+                <input
+                  type="text"
+                  value={drugLicenseNumber}
+                  onChange={(e) => setDrugLicenseNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Clinical establishment reg. number">
+                <input
+                  type="text"
+                  value={clinicalEstablishmentRegNumber}
+                  onChange={(e) => setClinicalEstablishmentRegNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
           </div>
         )}
 
@@ -260,7 +304,19 @@ export default function BranchForm({ mode }: BranchFormProps) {
           </button>
           <button
             onClick={submit}
-            disabled={busy || loading || !name || !address || !phone}
+            disabled={
+              busy ||
+              loading ||
+              !name ||
+              !address ||
+              !phone ||
+              !city ||
+              !district ||
+              !stateField ||
+              !postOffice ||
+              !pinCode ||
+              !tradeLicenseNumber
+            }
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create branch"}

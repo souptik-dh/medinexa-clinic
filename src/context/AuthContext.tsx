@@ -7,6 +7,8 @@ import {
   authApi,
   staffApi,
   clearTokens,
+  ensureActiveSession,
+  getAccessTokenExpiryMs,
   getRefreshToken,
   getStoredUser,
   setSessionExpiredHandler,
@@ -60,6 +62,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return () => setSessionExpiredHandler(null);
   }, [router, setUser, setClinic]);
+
+  // Proactively detect an expired access token instead of waiting for an
+  // API call to 401 - so a session that expires while the user is idle on
+  // a page that makes no requests still gets logged out.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNextCheck = () => {
+      const expiryMs = getAccessTokenExpiryMs();
+      const delay = expiryMs !== null ? Math.max(expiryMs - Date.now(), 0) : 0;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        const active = await ensureActiveSession();
+        if (active && !cancelled) scheduleNextCheck();
+      }, delay);
+    };
+
+    scheduleNextCheck();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [user]);
 
   const persist = useCallback(
     (nextUser: User, nextClinic?: Clinic) => {

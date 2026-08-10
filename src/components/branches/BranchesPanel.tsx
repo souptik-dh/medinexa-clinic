@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
+import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
   Table,
   TableBody,
@@ -11,7 +12,8 @@ import {
 } from "@/components/ui/table";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
-import { formatDate } from "@/lib/utils";
+import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
+import { formatDate, formatFullAddress } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -178,16 +180,16 @@ export default function BranchesPanel() {
               No branches for this clinic.
             </p>
           ) : (
-            <div className="max-w-full overflow-x-auto">
+            <div className="max-w-full">
               <Table>
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                   <TableRow>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Name
                     </TableCell>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                    {/* <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Address
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Phone
                     </TableCell>
@@ -204,17 +206,21 @@ export default function BranchesPanel() {
                           onClick={() => setSelectedBranch(b)}
                           className="text-left hover:text-brand-500"
                         >
+                        <Tooltip content={formatFullAddress(b)} className="block w-full">
+
                           <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
                             {b.name}
                           </p>
                           <span className="text-gray-400 text-theme-xs dark:text-gray-500">
                             {b.timezone}
                           </span>
+                       </Tooltip>
+
                         </button>
                       </TableCell>
-                      <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                        {b.address}
-                      </TableCell>
+                      {/* <TableCell className="py-3 w-[220px] max-w-[220px] text-gray-500 text-theme-sm dark:text-gray-400">
+                          <span className="block truncate">{b.address}</span>
+                      </TableCell> */}
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.phone}
                       </TableCell>
@@ -248,10 +254,15 @@ export default function BranchesPanel() {
         </div>
       </div>
 
-      {/* Branch gallery */}
-      {selectedBranch && (
-        <div className="mt-6">
+      {/* Branch gallery & licenses */}
+      {selectedBranch && selected && (
+        <div className="mt-6 space-y-6">
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+          <BranchLicensesPanel
+            clinicId={selected.id}
+            branchId={selectedBranch.id}
+            branchName={selectedBranch.name}
+          />
         </div>
       )}
     </div>

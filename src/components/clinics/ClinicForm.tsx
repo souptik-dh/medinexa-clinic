@@ -23,13 +23,16 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [address, setAddress] = useState("");
   const [nearbyLocation, setNearbyLocation] = useState("");
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [pinCode, setPinCode] = useState("");
   const [stateField, setStateField] = useState("");
   const [postOffice, setPostOffice] = useState("");
+  const [tradeLicenseNumber, setTradeLicenseNumber] = useState("");
+  const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
+  const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
+    useState("");
   const [loading, setLoading] = useState(isEdit);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +55,9 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         setPinCode(c.pin_code ?? "");
         setStateField(c.state ?? "");
         setPostOffice(c.post_office ?? "");
+        setTradeLicenseNumber(c.trade_license_number ?? "");
+        setDrugLicenseNumber(c.drug_license_number ?? "");
+        setClinicalEstablishmentRegNumber(c.clinical_establishment_reg_number ?? "");
       })
       .catch((err) => {
         if (active)
@@ -72,12 +78,19 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
     setDistrict(po.District);
     setStateField(po.State);
     setPostOffice(po.Name);
-    if (!address) setAddress(po.Name);
   };
 
   const submit = async () => {
     if (!name) {
       setError("Clinic name is required.");
+      return;
+    }
+    if (!city || !district || !stateField || !postOffice || !pinCode) {
+      setError("City, district, state, post office and pincode are required.");
+      return;
+    }
+    if (!tradeLicenseNumber) {
+      setError("Trade license number is required.");
       return;
     }
     setBusy(true);
@@ -87,13 +100,14 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         name,
         description: description || null,
         nearby_location: nearbyLocation || null,
-        city: city || null,
-        district: district || null,
-        pin_code: pinCode || null,
-        state: stateField || null,
-        post_office: postOffice || null,
-        // address still sent for compatibility
-        address: address || null,
+        city,
+        district,
+        pin_code: pinCode,
+        state: stateField,
+        post_office: postOffice,
+        trade_license_number: tradeLicenseNumber,
+        drug_license_number: drugLicenseNumber || null,
+        clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
       if (isEdit) {
         await clinicsApi.update(clinicId, input);
@@ -148,15 +162,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                 className={textareaClass}
               />
             </Field>
-            <Field label="Address">
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Pincode">
+            <Field label="Pincode *">
               <PincodeField
                 value={pinCode}
                 onChange={setPinCode}
@@ -172,7 +178,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="City">
+              <Field label="City *">
                 <input
                   type="text"
                   value={city}
@@ -180,7 +186,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="District">
+              <Field label="District *">
                 <input
                   type="text"
                   value={district}
@@ -190,7 +196,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="State">
+              <Field label="State *">
                 <input
                   type="text"
                   value={stateField}
@@ -198,11 +204,37 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   className={inputClass}
                 />
               </Field>
-              <Field label="Post office">
+              <Field label="Post office *">
                 <input
                   type="text"
                   value={postOffice}
                   onChange={(e) => setPostOffice(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Trade license number *">
+                <input
+                  type="text"
+                  value={tradeLicenseNumber}
+                  onChange={(e) => setTradeLicenseNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Drug license number">
+                <input
+                  type="text"
+                  value={drugLicenseNumber}
+                  onChange={(e) => setDrugLicenseNumber(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Clinical establishment reg. number">
+                <input
+                  type="text"
+                  value={clinicalEstablishmentRegNumber}
+                  onChange={(e) => setClinicalEstablishmentRegNumber(e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -219,7 +251,17 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
           </button>
           <button
             onClick={submit}
-            disabled={busy || loading || !name}
+            disabled={
+              busy ||
+              loading ||
+              !name ||
+              !city ||
+              !district ||
+              !stateField ||
+              !postOffice ||
+              !pinCode ||
+              !tradeLicenseNumber
+            }
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create clinic"}

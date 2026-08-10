@@ -6,7 +6,7 @@ import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 
 type Mode = "owner" | "staff";
@@ -25,6 +25,8 @@ export default function SignInForm() {
   const [submitting, setSubmitting] = useState(false);
   const { login, staffLogin, verifyStaffOtp } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sessionExpired = searchParams.get("reason") === "session_expired";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +103,12 @@ export default function SignInForm() {
                 : "Sign in as branch staff using a one-time password."}
             </p>
           </div>
+
+          {sessionExpired && (
+            <div className="mb-5 rounded-lg border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/10 dark:text-warning-400">
+              Your session has expired. Please sign in again.
+            </div>
+          )}
 
           <div className="mb-6 flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800/50">
             <button

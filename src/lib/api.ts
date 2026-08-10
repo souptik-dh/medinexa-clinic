@@ -155,6 +155,38 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+function decodeJwtExpiryMs(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    const { exp } = JSON.parse(json) as { exp?: number };
+    return typeof exp === "number" ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getAccessTokenExpiryMs(): number | null {
+  const token = getAccessToken();
+  return token ? decodeJwtExpiryMs(token) : null;
+}
+
+// Proactively checks whether the current access token has expired (based on
+// its exp claim) rather than waiting for an API call to receive a 401.
+// Attempts a silent refresh first; only logs the user out and blocks
+// further API/UI access once the refresh token is also unusable.
+export async function ensureActiveSession(): Promise<boolean> {
+  if (!getAccessToken() && !getRefreshToken()) return false;
+  const expiryMs = getAccessTokenExpiryMs();
+  if (expiryMs !== null && expiryMs > Date.now()) return true;
+  const newToken = await refreshAccessToken();
+  if (!newToken) {
+    notifySessionExpired();
+    return false;
+  }
+  return true;
+}
+
 async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const { idempotencyKey, skipAuth, ...rest } = options;
 
@@ -289,7 +321,37 @@ export interface Clinic {
   post_office?: string | null;
   branch_count?: number;
   owner_id?: string;
+  trade_license_number?: string | null;
+  trade_license_url?: string | null;
+  drug_license_number?: string | null;
+  drug_license_url?: string | null;
+  clinical_establishment_reg_number?: string | null;
+  clinical_establishment_reg_url?: string | null;
   created_at: string;
+}
+
+export type ClinicLicenseType =
+  | "trade-license"
+  | "drug-license"
+  | "clinical-establishment-registration";
+
+export interface ClinicLicenseUploadResponse {
+  type: ClinicLicenseType;
+  url: string;
+}
+
+export interface ClinicCreateInput {
+  name: string;
+  description?: string | null;
+  nearby_location?: string | null;
+  city?: string | null;
+  district?: string | null;
+  pin_code?: string | null;
+  state?: string | null;
+  post_office?: string | null;
+  trade_license_number: string;
+  drug_license_number?: string | null;
+  clinical_establishment_reg_number?: string | null;
 }
 
 export interface Branch {
@@ -308,6 +370,12 @@ export interface Branch {
   lng: number | null;
   timezone: string;
   photo_url: string | null;
+  trade_license_number?: string | null;
+  trade_license_url?: string | null;
+  drug_license_number?: string | null;
+  drug_license_url?: string | null;
+  clinical_establishment_reg_number?: string | null;
+  clinical_establishment_reg_url?: string | null;
   created_at: string;
 }
 
@@ -318,6 +386,16 @@ export interface BranchGalleryImage {
   public_id: string;
   uploaded_by: string;
   created_at: string;
+}
+
+export type BranchLicenseType =
+  | "trade-license"
+  | "drug-license"
+  | "clinical-establishment-registration";
+
+export interface BranchLicenseUploadResponse {
+  type: BranchLicenseType;
+  url: string;
 }
 
 export interface BranchCreateInput {
@@ -333,6 +411,9 @@ export interface BranchCreateInput {
   lat?: number | null;
   lng?: number | null;
   timezone: string;
+  trade_license_number: string;
+  drug_license_number?: string | null;
+  clinical_establishment_reg_number?: string | null;
 }
 
 export interface StaffMember {
@@ -604,7 +685,7 @@ export const clinicsApi = {
     );
   },
 
-  async create(input: { name: string; description?: string | null; address?: string | null; nearby_location?: string | null; city?: string | null; district?: string | null; pin_code?: string | null; state?: string | null; post_office?: string | null }): Promise<Clinic> {
+  async create(input: ClinicCreateInput): Promise<Clinic> {
     return apiFetch<Clinic>("/clinics", {
       method: "POST",
       body: JSON.stringify(input),
@@ -615,7 +696,7 @@ export const clinicsApi = {
     return apiFetch<Clinic>(`/clinics/${id}`);
   },
 
-  async update(id: string, input: { name?: string; description?: string | null; address?: string | null; nearby_location?: string | null; city?: string | null; district?: string | null; pin_code?: string | null; state?: string | null; post_office?: string | null }): Promise<Clinic> {
+  async update(id: string, input: Partial<ClinicCreateInput>): Promise<Clinic> {
     return apiFetch<Clinic>(`/clinics/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -626,6 +707,19 @@ export const clinicsApi = {
   async remove(id: string, force = false): Promise<void> {
     return apiFetch<void>(`/clinics/${id}${force ? "?force=true" : ""}`, {
       method: "DELETE",
+    });
+  },
+
+  async uploadLicense(
+    id: string,
+    type: ClinicLicenseType,
+    file: File
+  ): Promise<ClinicLicenseUploadResponse> {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<ClinicLicenseUploadResponse>(`/clinics/${id}/licenses/${type}`, {
+      method: "POST",
+      body: form,
     });
   },
 };
@@ -719,6 +813,19 @@ export const branchesApi = {
   async removeGalleryImage(branchId: string, imageId: string): Promise<void> {
     return apiFetch<void>(`/branches/${branchId}/gallery/${imageId}`, {
       method: "DELETE",
+    });
+  },
+
+  async uploadLicense(
+    id: string,
+    type: BranchLicenseType,
+    file: File
+  ): Promise<BranchLicenseUploadResponse> {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<BranchLicenseUploadResponse>(`/branches/${id}/licenses/${type}`, {
+      method: "POST",
+      body: form,
     });
   },
 };

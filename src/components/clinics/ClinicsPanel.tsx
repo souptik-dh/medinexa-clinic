@@ -3,6 +3,9 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
+import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
+import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
+import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
   Table,
   TableBody,
@@ -11,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatFullAddress } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import {
   canCreateClinic,
@@ -254,8 +257,10 @@ export default function ClinicsPanel() {
                           </span>
                         </button>
                       </TableCell>
-                      <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                        {b.address}
+                      <TableCell className="py-3 w-[220px] max-w-[220px] text-gray-500 text-theme-sm dark:text-gray-400">
+                        <Tooltip content={formatFullAddress(b)} className="block w-full">
+                          <span className="block truncate">{b.address}</span>
+                        </Tooltip>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.phone}
@@ -290,10 +295,22 @@ export default function ClinicsPanel() {
         </div>
       </div>
 
-      {/* Branch gallery */}
-      {selectedBranch && (
+      {/* Clinic licenses */}
+      {selected && (
         <div className="mt-6">
+          <ClinicLicensesPanel clinicId={selected.id} clinicName={selected.name} />
+        </div>
+      )}
+
+      {/* Branch gallery & licenses */}
+      {selectedBranch && selected && (
+        <div className="mt-6 space-y-6">
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+          <BranchLicensesPanel
+            clinicId={selected.id}
+            branchId={selectedBranch.id}
+            branchName={selectedBranch.name}
+          />
         </div>
       )}
     </div>
