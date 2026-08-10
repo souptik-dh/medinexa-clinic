@@ -57,9 +57,12 @@ export default function ClinicsPanel() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [timezone, setTimezone] = useState("Asia/Kolkata");
-  const [pincode, setPincode] = useState("");
+  const [pinCode, setPinCode] = useState("");
+  const [nearbyLocation, setNearbyLocation] = useState("");
+  const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [stateField, setStateField] = useState("");
+  const [postOffice, setPostOffice] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
 
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
@@ -114,9 +117,12 @@ export default function ClinicsPanel() {
     setAddress("");
     setPhone("");
     setTimezone("Asia/Kolkata");
-    setPincode("");
+    setPinCode("");
+    setNearbyLocation("");
+    setCity("");
     setDistrict("");
     setStateField("");
+    setPostOffice("");
     setPincodeResults([]);
     setPincodeError(null);
     openModal();
@@ -127,7 +133,18 @@ export default function ClinicsPanel() {
     setError(null);
     try {
       if (modalMode === "clinic") {
-        await clinicsApi.create({ name, description: description || null, address: address || null, pincode: pincode || null, district: district || null, state: stateField || null });
+        await clinicsApi.create({
+          name,
+          description: description || null,
+          nearby_location: nearbyLocation || null,
+          city: city || null,
+          district: district || null,
+          pin_code: pinCode || null,
+          state: stateField || null,
+          post_office: postOffice || null,
+          // address still sent for compatibility
+          address: address || null,
+        });
       } else {
         if (!selected) return;
         await branchesApi.create(selected.id, {
@@ -135,9 +152,12 @@ export default function ClinicsPanel() {
           address,
           phone,
           timezone,
-          pincode: pincode || null,
+          nearby_location: nearbyLocation || null,
+          city: city || null,
           district: district || null,
+          pin_code: pinCode || null,
           state: stateField || null,
+          post_office: postOffice || null,
           lat: undefined,
           lng: undefined,
         });
@@ -176,9 +196,10 @@ export default function ClinicsPanel() {
   };
 
   const selectPostOffice = (po: any) => {
-    setPincode(po.Pincode);
+    setPinCode(po.Pincode);
     setDistrict(po.District);
     setStateField(po.State);
+    setPostOffice(po.Name);
     if (!address) setAddress(po.Name);
     setPincodeResults([]);
   };
@@ -228,6 +249,12 @@ export default function ClinicsPanel() {
         address: editValues.address,
         phone: editValues.phone,
         timezone: editValues.timezone,
+        nearby_location: editValues.nearbyLocation || null,
+        city: editValues.city || null,
+        district: editValues.district || null,
+        pin_code: editValues.pinCode || null,
+        state: editValues.state || null,
+        post_office: editValues.postOffice || null,
         lat: editValues.lat === "" ? null : Number(editValues.lat),
         lng: editValues.lng === "" ? null : Number(editValues.lng),
       });
@@ -458,17 +485,33 @@ export default function ClinicsPanel() {
                 />
               </Field>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Nearby location">
+                  <input
+                    type="text"
+                    value={nearbyLocation}
+                    onChange={(e) => setNearbyLocation(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </Field>
+                <Field label="City">
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </Field>
                 <Field label="Pincode">
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
+                      value={pinCode}
+                      onChange={(e) => setPinCode(e.target.value)}
                       className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                     />
                     <button
-                      onClick={() => lookupPincode(pincode)}
-                      disabled={pincodeLoading || !pincode}
+                      onClick={() => lookupPincode(pinCode)}
+                      disabled={pincodeLoading || !pinCode}
                       className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
                     >
                       {pincodeLoading ? "Checking…" : "Validate"}
