@@ -5,6 +5,7 @@ import {
   ApiError,
   Clinic,
   authApi,
+  staffApi,
   clearTokens,
   getRefreshToken,
   getStoredUser,
@@ -111,8 +112,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyStaffOtp = useCallback(async (email: string, otp: string) => {
     const res = await authApi.verifyStaffOtp({ email, otp });
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-    setUser(res.user);
-    setStoredUser(res.user);
+
+    // Ensure branch staff receive their permissions in the client even if the
+    // auth response doesn't include them (some API versions return permissions
+    // in a separate endpoint). Attempt to fetch and merge permissions.
+    let userToStore = res.user;
+    if (userToStore.role === "branch_staff") {
+      try {
+        const perms = await staffApi.getPermissions(userToStore.branch_id!, userToStore.id);
+        userToStore = { ...userToStore, permissions: perms.permissions as BranchStaffPermission[] };
+      } catch (err) {
+        // Non-fatal: continue with whatever permissions (if any) were returned
+        // by the auth response.
+      }
+    }
+
+    setUser(userToStore);
+    setStoredUser(userToStore);
     window.localStorage.removeItem("medinexa.clinic");
     setClinic(null);
   }, []);

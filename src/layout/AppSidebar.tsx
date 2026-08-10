@@ -122,6 +122,7 @@ const AppSidebar: React.FC = () => {
       navItems.filter((item) => {
         switch (item.name) {
           case "Clinics":
+            return isOwner;
           case "Branches":
             return isOwner;
           case "Staff":
@@ -129,6 +130,7 @@ const AppSidebar: React.FC = () => {
           case "Doctors":
             return isOwner || can("doctors:manage");
           case "Appointments":
+            return isOwner || canAccessAppointments(user?.permissions);
           case "Calendar":
             return isOwner || canAccessAppointments(user?.permissions);
           default:

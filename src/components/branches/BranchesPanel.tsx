@@ -16,6 +16,13 @@ import {
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
+import { useAuth } from "@/context/AuthContext";
+import {
+  canCreateBranch,
+  canDeleteBranch,
+  canUpdateBranch,
+} from "@/lib/permissions";
+
 export default function BranchesPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selected, setSelected] = useState<Clinic | null>(null);
@@ -24,6 +31,14 @@ export default function BranchesPanel() {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const { user } = useAuth();
+  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  
+  const canCreate = isAdmin || canCreateBranch(userPermissions);
+  const canDelete = isAdmin || canDeleteBranch(userPermissions);
+  const canUpdate = isAdmin || canUpdateBranch(userPermissions);
 
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [editing, setEditing] = useState<Branch | null>(null);
@@ -186,13 +201,15 @@ export default function BranchesPanel() {
                 </span>
               )}
             </h3>
-            <button
-              onClick={openCreate}
-              disabled={busy || !selected}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-            >
-              + New branch
-            </button>
+            {canCreate && (
+              <button
+                onClick={openCreate}
+                disabled={busy || !selected}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                + New branch
+              </button>
+            )}
           </div>
           {!selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -244,20 +261,24 @@ export default function BranchesPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => openEdit(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => removeBranch(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
-                          >
-                            Delete
-                          </button>
+                          {canUpdate && (
+                            <button
+                              onClick={() => openEdit(b)}
+                              disabled={busy}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => removeBranch(b)}
+                              disabled={busy}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

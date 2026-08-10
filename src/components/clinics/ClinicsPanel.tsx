@@ -5,6 +5,7 @@ import BranchFormModal, {
   BranchFormValues,
   branchFormFrom,
 } from "@/components/branches/BranchFormModal";
+import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import {
   Table,
   TableBody,
@@ -16,15 +17,36 @@ import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import {
+  canCreateClinic,
+  canDeleteClinic,
+  canUpdateClinic,
+  canCreateBranch,
+  canDeleteBranch,
+  canUpdateBranch,
+} from "@/lib/permissions";
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selected, setSelected] = useState<Clinic | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const { user } = useAuth();
+  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  
+  const canCreate = isAdmin || canCreateClinic(userPermissions);
+  const canDelete = isAdmin || canDeleteClinic(userPermissions);
+  const canUpdate = isAdmin || canUpdateClinic(userPermissions);
+  const canBranchCreate = isAdmin || canCreateBranch(userPermissions);
+  const canBranchDelete = isAdmin || canDeleteBranch(userPermissions);
+  const canBranchUpdate = isAdmin || canUpdateBranch(userPermissions);
 
   const [modalMode, setModalMode] = useState<"clinic" | "branch" | null>(null);
   const [name, setName] = useState("");
@@ -188,13 +210,15 @@ export default function ClinicsPanel() {
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
               Clinics
             </h3>
-            <button
-              onClick={() => openCreate("clinic")}
-              disabled={busy}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-            >
-              + New clinic
-            </button>
+            {canCreate && (
+              <button
+                onClick={() => openCreate("clinic")}
+                disabled={busy}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                + New clinic
+              </button>
+            )}
           </div>
           {loading ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -245,20 +269,24 @@ export default function ClinicsPanel() {
               )}
             </h3>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => selected && removeClinic(selected)}
-                disabled={busy || !selected}
-                className="rounded-lg border border-error-500/40 px-4 py-2 text-sm font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
-              >
-                Delete clinic
-              </button>
-              <button
-                onClick={() => openCreate("branch")}
-                disabled={busy || !selected}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-              >
-                + New branch
-              </button>
+              {canDelete && (
+                <button
+                  onClick={() => selected && removeClinic(selected)}
+                  disabled={busy || !selected}
+                  className="rounded-lg border border-error-500/40 px-4 py-2 text-sm font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                >
+                  Delete clinic
+                </button>
+              )}
+              {canBranchCreate && (
+                <button
+                  onClick={() => openCreate("branch")}
+                  disabled={busy || !selected}
+                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                >
+                  + New branch
+                </button>
+              )}
             </div>
           </div>
           {!selected ? (
@@ -296,12 +324,17 @@ export default function ClinicsPanel() {
                   {branches.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="py-3">
-                        <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                          {b.name}
-                        </p>
-                        <span className="text-gray-400 text-theme-xs dark:text-gray-500">
-                          {b.timezone}
-                        </span>
+                        <button
+                          onClick={() => setSelectedBranch(b)}
+                          className="text-left hover:text-brand-500"
+                        >
+                          <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                            {b.name}
+                          </p>
+                          <span className="text-gray-400 text-theme-xs dark:text-gray-500">
+                            {b.timezone}
+                          </span>
+                        </button>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.address}
@@ -311,20 +344,24 @@ export default function ClinicsPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => openEditBranch(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => removeBranch(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
-                          >
-                            Delete
-                          </button>
+                          {canBranchUpdate && (
+                            <button
+                              onClick={() => openEditBranch(b)}
+                              disabled={busy}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {canBranchDelete && (
+                            <button
+                              onClick={() => removeBranch(b)}
+                              disabled={busy}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -335,6 +372,13 @@ export default function ClinicsPanel() {
           )}
         </div>
       </div>
+
+      {/* Branch gallery */}
+      {selectedBranch && (
+        <div className="mt-6">
+          <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+        </div>
+      )}
 
       {/* Create modal */}
       <Modal isOpen={isOpen && !!modalMode} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">

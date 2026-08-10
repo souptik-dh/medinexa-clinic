@@ -299,6 +299,15 @@ export interface Branch {
   created_at: string;
 }
 
+export interface BranchGalleryImage {
+  id: string;
+  branch_id: string;
+  image_url: string;
+  public_id: string;
+  uploaded_by: string;
+  created_at: string;
+}
+
 export interface BranchCreateInput {
   name: string;
   address: string;
@@ -643,6 +652,31 @@ export const branchesApi = {
     return apiFetch<{ photo_url: string }>(`/branches/${id}/photo`, {
       method: "POST",
       body: JSON.stringify({ public_id: grant.public_id }),
+    });
+  },
+
+  async getGalleryUploadGrant(id: string): Promise<PhotoUploadGrant> {
+    return apiFetch<PhotoUploadGrant>(`/branches/${id}/gallery/signature`, {
+      method: "POST",
+    });
+  },
+
+  async uploadGalleryImage(id: string, file: File): Promise<BranchGalleryImage> {
+    const grant = await branchesApi.getGalleryUploadGrant(id);
+    await uploadFileToCloudinary(grant, file);
+    return apiFetch<BranchGalleryImage>(`/branches/${id}/gallery`, {
+      method: "POST",
+      body: JSON.stringify({ public_id: grant.public_id }),
+    });
+  },
+
+  async listGallery(id: string): Promise<Paginated<BranchGalleryImage>> {
+    return apiFetch<Paginated<BranchGalleryImage>>(`/branches/${id}/gallery`);
+  },
+
+  async removeGalleryImage(branchId: string, imageId: string): Promise<void> {
+    return apiFetch<void>(`/branches/${branchId}/gallery/${imageId}`, {
+      method: "DELETE",
     });
   },
 };
