@@ -670,6 +670,7 @@ export const authApi = {
     email: string;
     phone?: string;
     password: string;
+    clinicName?: string;
   }): Promise<ClinicOwnerRegisterResponse> {
     return apiFetch<ClinicOwnerRegisterResponse>("/auth/clinic-owner/register", {
       method: "POST",

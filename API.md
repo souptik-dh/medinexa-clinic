@@ -168,8 +168,16 @@ The account is created with `status = 'pending'`. No usable `access_token`/`refr
 **Request body**
 
 ```json
-{ "name": "Suresh Nair", "email": "owner@example.com", "phone": "+919876543211", "password": "password123" }
+{ "name": "Suresh Nair", "email": "owner@example.com", "phone": "+919876543211", "clinic_name": "Sunrise Multispeciality", "password": "password123" }
 ```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | required, 1–255 chars |
+| `email` | string | required, lowercase, must be valid |
+| `phone` | string? | optional, max 32 |
+| `clinic_name` | string? | optional, 1–255 chars — name of the auto-created initial clinic; defaults to the owner's `name` if omitted |
+| `password` | string | required, 8–128 chars |
 
 **Response `201`**
 
