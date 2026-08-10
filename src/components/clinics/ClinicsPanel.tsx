@@ -26,7 +26,6 @@ import {
   canDeleteBranch,
   canUpdateBranch,
 } from "@/lib/permissions";
-import { branchesApi } from "@/lib/api";
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
