@@ -1,8 +1,8 @@
-# Medinexa — REST API Reference
+# MediBook — REST API Reference
 
-Live implementation reference for the Medinexa API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
+Live implementation reference for the MediBook API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
 
-- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://api.Medinexa.app/api/v1` (prod)
+- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://api.medibook.app/api/v1` (prod)
 - **Format:** JSON only (`Content-Type: application/json`), except legacy upload endpoints (certificates, prescription scans, medical documents) and clinic/branch license uploads which use `multipart/form-data`, and photo uploads which use a two-step Cloudinary flow (see [File uploads](#file-uploads)).
 - **Auth:** `Authorization: Bearer <access_token>` (JWT, 15 min TTL). Refresh via `POST /auth/refresh`.
 - **IDs:** all resource IDs are UUIDs (v4), generated server-side.
@@ -163,6 +163,8 @@ Public. Rate limited 10/min per IP.
 
 Public. Rate limited 10/min per IP. In addition to creating the `clinic_owner` user, it auto-creates an initial clinic (named after the owner) in the same transaction.
 
+The account is created with `status = 'pending'`. No usable `access_token`/`refresh_token` is issued — a welcome email with a verification link is sent instead, and the account cannot log in until the link is followed (see [`POST /auth/verify-email`](#post-authverify-email)).
+
 **Request body**
 
 ```json
@@ -180,15 +182,16 @@ Public. Rate limited 10/min per IP. In addition to creating the `clinic_owner` u
     "phone": "+919876543211",
     "role": "clinic_owner"
   },
-  "access_token": "<jwt>",
-  "refresh_token": "<opaque>",
+  "access_token": null,
+  "refresh_token": null,
   "clinic": {
     "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Suresh Nair",
     "description": null,
     "owner_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "created_at": "2026-08-09T12:00:00.000Z"
-  }
+  },
+  "message": "Registration successful. Check your email to verify your account before logging in."
 }
 ```
 
@@ -225,6 +228,30 @@ Public. Rate limited 10/min per IP.
 ### POST /auth/clinic-owner/login
 
 Same shape as patient login; requires `role = clinic_owner`.
+
+**Errors:** `401 INVALID_CREDENTIALS`, `403 EMAIL_NOT_VERIFIED` (registered but the verification link hasn't been followed yet), `401 ACCOUNT_DISABLED`.
+
+### POST /auth/verify-email
+
+Public. Rate limited 10/min per IP. Activates a `clinic_owner` account (`status: 'pending'` → `'active'`) using the token from the welcome email sent by `POST /auth/clinic-owner/register`. The token is single-use and expires after 24 hours.
+
+The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERIFICATION_TOKEN}` — `VERIFY_EMAIL_URL` defaults to `https://medinexa-clinic.onrender.com`.
+
+**Request body**
+
+```json
+{ "token": "<verification_token>" }
+```
+
+**Response `200`**
+
+```json
+{
+  "message": "Your email has been verified. You can now log in."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `400 VERIFICATION_TOKEN_INVALID`, `410 VERIFICATION_TOKEN_EXPIRED`.
 
 ### POST /auth/doctor/login
 
@@ -344,6 +371,54 @@ Verifies the OTP and issues tokens. Rate limited 10/min per IP. Max 5 attempts p
 
 **Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `403 ACCOUNT_DISABLED`.
 
+### POST /auth/forgot-password
+
+Public. Rate limited 10/min per IP. Requests a password reset link for the given email. Always returns the same message (does not reveal whether the email exists). A reset token is only issued when the email belongs to an **active** account with a password (`patient`, `clinic_owner`, or `doctor`); passwordless `branch_staff` accounts are skipped.
+
+The reset link is emailed as `{RESET_PASSWORD_URL}/new_password?token={RESET_TOKEN}` — `RESET_PASSWORD_URL` defaults to `https://medinexa-clinic.onrender.com`. Tokens are single-use and expire after 1 hour.
+
+**Request body**
+
+```json
+{ "email": "aisha@example.com" }
+```
+
+**Response `200`**
+
+```json
+{
+  "message": "If an account exists for this email, a password reset link has been sent."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### POST /auth/reset-password
+
+Public. Rate limited 10/min per IP. Sets a new password using a valid, unexpired reset token. The token is invalidated (single-use) once the password is successfully updated.
+
+**Request body**
+
+```json
+{ "token": "<reset_token>", "new_password": "newpassword123", "confirm_password": "newpassword123" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `token` | string | required, the token from the reset email link |
+| `new_password` | string | required, 8–128 chars |
+| `confirm_password` | string | required, must match `new_password` |
+
+**Response `200`**
+
+```json
+{
+  "message": "Your password has been updated. You can now log in with your new password."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR` (including password mismatch), `400 RESET_TOKEN_INVALID`, `410 RESET_TOKEN_EXPIRED`.
+
 ### POST /auth/refresh
 
 Rotates the refresh token (both old and new are returned; the old is revoked).
@@ -383,7 +458,7 @@ Auth required. Revokes the given refresh token.
 
 ### GET /clinics
 
-Public. Paginated.
+Public. Paginated. If the request is authenticated as a `clinic_owner`, results are silently scoped to clinics owned by that caller (isolation, not an opt-in filter — a clinic owner can never see another owner's clinics through this endpoint). Unauthenticated callers and any other role see the full public directory.
 
 **Query:** `?search=&limit=&cursor=`
 
@@ -403,6 +478,67 @@ Public. Paginated.
   "next_cursor": null
 }
 ```
+
+### GET /clinics/mine
+
+Auth: `clinic_owner`. Returns every clinic owned by the caller, each with its full details and nested `branches` (also with full details). Not paginated — a clinic owner is expected to have few clinics.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+      "name": "Sunrise Multispeciality",
+      "description": "General & cardiac care",
+      "nearby_location": null,
+      "city": null,
+      "district": null,
+      "pin_code": null,
+      "state": null,
+      "post_office": null,
+      "owner_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+      "trade_license_number": "TL-2026-004521",
+      "trade_license_url": null,
+      "drug_license_number": "DL-MH-2026-1187",
+      "drug_license_url": null,
+      "clinical_establishment_reg_number": "CER-MH-2026-0932",
+      "clinical_establishment_reg_url": null,
+      "created_at": "2026-08-01T09:30:00Z",
+      "updated_at": "2026-08-01T09:30:00Z",
+      "branches": [
+        {
+          "id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+          "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+          "name": "Sunrise — Andheri",
+          "address": "12, SV Road, Andheri West, Mumbai 400058",
+          "nearby_location": null,
+          "city": "Mumbai",
+          "district": "Mumbai Suburban",
+          "pin_code": "400058",
+          "state": "Maharashtra",
+          "post_office": null,
+          "phone": "+912240010010",
+          "lat": 19.1195670,
+          "lng": 72.8470000,
+          "timezone": "Asia/Kolkata",
+          "photo_url": null,
+          "trade_license_number": "TL-2026-009812",
+          "trade_license_url": null,
+          "drug_license_number": null,
+          "drug_license_url": null,
+          "clinical_establishment_reg_number": null,
+          "clinical_establishment_reg_url": null,
+          "created_at": "2026-08-02T11:00:00Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Errors:** `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE` (role other than `clinic_owner`).
 
 ### POST /clinics
 
@@ -462,7 +598,7 @@ License document URLs are `null` until uploaded via `POST /clinics/:clinicId/lic
 
 ### GET /clinics/:clinicId
 
-Public.
+Public. If the request is authenticated as a `clinic_owner` who does not own this clinic, responds `404 CLINIC_NOT_FOUND` instead of the clinic's data — this prevents a clinic owner from viewing another owner's clinic by guessing/changing the ID. Unauthenticated callers and any other role see it normally.
 
 **Response `200`**
 
@@ -544,7 +680,7 @@ Auth: `clinic_owner`, must own the clinic. Soft-delete.
 
 ### GET /clinics/:clinicId/branches
 
-Public.
+Public. Same clinic-owner isolation as `GET /clinics/:clinicId`: a `clinic_owner` who does not own the parent clinic gets `404 CLINIC_NOT_FOUND`, not the branch list.
 
 **Response `200`**
 
@@ -1529,7 +1665,7 @@ Auth: `doctor` (assigned). Upserts the prescription and sets `finalized_at`.
 ```json
 {
   "text": "Tab. Aspirin 75mg OD x 30 days\nTab. Atorvastatin 10mg HS x 30 days",
-  "scan_url": "https://api.Medinexa.app/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
+  "scan_url": "https://api.medibook.app/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
 }
 ```
 
@@ -1578,7 +1714,7 @@ Auth: `doctor` (assigned) or `patient` (own). Sends the prescription email (fire
 {
   "id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e",
   "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-  "file_url": "https://api.Medinexa.app/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
+  "file_url": "https://api.medibook.app/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
   "file_name": "blood-report.pdf",
   "mime_type": "application/pdf",
   "size_bytes": 245760,
@@ -1709,6 +1845,7 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `INVALID_CREDENTIALS` | 401 | Wrong email/password |
 | `ACCOUNT_DISABLED` | 401/403 | Account not `active` |
 | `INVALID_OTP` / `OTP_MAX_ATTEMPTS` | 401 | OTP failure |
+| `RESET_TOKEN_INVALID` | 400 | Reset token missing, already used, or unknown |
 | `REFRESH_TOKEN_INVALID` | 401 | Refresh token invalid/expired/revoked |
 | `INSUFFICIENT_ROLE` | 403 | Authenticated but wrong role |
 | `PERMISSION_DENIED` | 403 | `branch_staff` lacks the required branch permission for the action |
@@ -1718,7 +1855,7 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `FEE_OWNER_CONTROLLED` | 403 | Doctor tried to change the fee |
 | `INVALID_SIGNED_URL` | 403 | Bad/expired file URL signature |
 | `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
-| `INVITE_EXPIRED` / `OTP_EXPIRED` | 410 | Expired one-time code |
+| `INVITE_EXPIRED` / `OTP_EXPIRED` / `RESET_TOKEN_EXPIRED` | 410 | Expired one-time code |
 | `FILE_TOO_LARGE` | 413 | Upload exceeds size limit |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Upload has a disallowed MIME type |
 | `RATE_LIMITED` | 429 | Too many requests |

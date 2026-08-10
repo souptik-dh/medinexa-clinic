@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Badge from "@/components/ui/badge/Badge";
 import DoctorPhotoCard from "@/components/user-profile/DoctorPhotoCard";
+import DoctorProfileForm from "@/components/user-profile/DoctorProfileForm";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, clinicsApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META } from "@/lib/permissions";
@@ -40,7 +41,8 @@ export default function ProfilePanel() {
   return (
     <div className="grid grid-cols-12 gap-4 md:gap-6">
       {user?.role === "doctor" && (
-        <div className="col-span-12">
+        <div className="col-span-12 space-y-4 md:space-y-6">
+          <DoctorProfileForm />
           <DoctorPhotoCard />
         </div>
       )}

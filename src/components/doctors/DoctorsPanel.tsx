@@ -18,6 +18,7 @@ import {
   Branch,
   BranchDoctor,
   DoctorInvite,
+  DoctorSearchResult,
   doctorInvitesApi,
   doctorsApi,
 } from "@/lib/api";
@@ -28,7 +29,10 @@ import {
 } from "@/lib/utils";
 import Link from "next/link";
 
-type Tab = "doctors" | "invites";
+type Tab = "doctors" | "invites" | "search";
+
+const inputClass =
+  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 const initials = (name: string): string =>
   name
@@ -49,6 +53,13 @@ export default function DoctorsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // doctor directory search (GET /doctors/search)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<DoctorSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // doctor photo (clinic level)
   const [photoDoctor, setPhotoDoctor] = useState<BranchDoctor | null>(null);
@@ -97,7 +108,24 @@ export default function DoctorsPanel() {
 
   const onTabChange = (t: Tab) => {
     setTab(t);
-    load(branch, t);
+    if (t !== "search") load(branch, t);
+  };
+
+  const runSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const res = await doctorsApi.search(q, 20);
+      setSearchResults(res.items);
+      setHasSearched(true);
+    } catch (err) {
+      setSearchResults([]);
+      setSearchError(err instanceof ApiError ? err.message : "Search failed");
+    } finally {
+      setSearchLoading(false);
+    }
   };
 
   const revokeInvite = async (invite: DoctorInvite) => {
@@ -194,6 +222,9 @@ export default function DoctorsPanel() {
             <button onClick={() => onTabChange("invites")} className={tabClass("invites")}>
               Invites
             </button>
+            <button onClick={() => onTabChange("search")} className={tabClass("search")}>
+              Search
+            </button>
           </div>
           {tab === "invites" && canManage && (
             <Link
@@ -205,7 +236,99 @@ export default function DoctorsPanel() {
           )}
         </div>
 
-        {!branch ? (
+        {tab === "search" ? (
+          <div className="py-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                placeholder="Search by name, specialization, or registration no."
+                className={inputClass}
+              />
+              <button
+                onClick={runSearch}
+                disabled={searchLoading || !searchQuery.trim()}
+                className="h-11 shrink-0 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                {searchLoading ? "Searching…" : "Search"}
+              </button>
+            </div>
+
+            {searchError && (
+              <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                {searchError}
+              </div>
+            )}
+
+            {!hasSearched ? (
+              <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                Search the doctor directory by name, specialization, or registration number.
+              </p>
+            ) : searchLoading ? (
+              <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                Searching…
+              </p>
+            ) : searchResults.length === 0 ? (
+              <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                No doctors found for &quot;{searchQuery}&quot;.
+              </p>
+            ) : (
+              <div className="mt-4 max-w-full overflow-x-auto">
+                <Table>
+                  <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
+                    <TableRow>
+                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                        Doctor
+                      </TableCell>
+                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                        Specialization
+                      </TableCell>
+                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                        Reg. no
+                      </TableCell>
+                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                        Phone
+                      </TableCell>
+                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
+                        Clinics
+                      </TableCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {searchResults.map((d) => (
+                      <TableRow key={d.id}>
+                        <TableCell className="py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
+                              {initials(d.name)}
+                            </div>
+                            <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                              {d.name}
+                            </p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                          {d.specialization ?? "—"}
+                        </TableCell>
+                        <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                          {d.reg_no ?? "—"}
+                        </TableCell>
+                        <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                          {d.phone ?? "—"}
+                        </TableCell>
+                        <TableCell className="py-3 text-end text-gray-500 text-theme-sm dark:text-gray-400">
+                          {d.clinic_count}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        ) : !branch ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             Select a branch to view its doctors and invites.
           </p>

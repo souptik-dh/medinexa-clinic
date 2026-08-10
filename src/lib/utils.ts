@@ -1,4 +1,4 @@
-import type { AppointmentStatus } from "@/lib/api";
+import type { AppointmentStatus, NotificationType } from "@/lib/api";
 import type { BadgeColor as UiBadgeColor } from "@/components/ui/badge/Badge";
 
 export function formatCurrency(amount: number, currency = "INR"): string {
@@ -79,6 +79,26 @@ export const notificationTypeLabel = (type: string): string => {
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+};
+
+export const notificationLink = (type: NotificationType): string => {
+  switch (type) {
+    case "new_booking":
+    case "booking_confirmed":
+    case "appointment_cancelled":
+    case "consultation_completed":
+      return "/appointments";
+    case "payment_received":
+      return "/ledger";
+    case "prescription_ready":
+      return "/prescriptions";
+    case "doctor_invited":
+      return "/doctors/invite";
+    case "doctor_invite_accepted":
+      return "/doctors";
+    default:
+      return "/dashboard";
+  }
 };
 
 export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";

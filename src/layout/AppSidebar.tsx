@@ -7,6 +7,7 @@ import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
 import { canAccessAppointments, canViewPatients } from "@/lib/permissions";
 import {
+  BellIcon,
   BoxCubeIcon,
   CalenderIcon,
   ChevronDownIcon,
@@ -82,6 +83,11 @@ const navItems: NavItem[] = [
     icon: <DocsIcon />,
     name: "Prescriptions",
     path: "/prescriptions",
+  },
+  {
+    icon: <BellIcon />,
+    name: "Notifications",
+    path: "/notifications",
   },
   {
     icon: <UserCircleIcon />,
