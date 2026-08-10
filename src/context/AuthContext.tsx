@@ -41,6 +41,7 @@ interface AuthContextValue {
     email: string;
     phone?: string;
     password: string;
+    clinicName?: string;
   }) => Promise<{ verified: boolean; message: string }>;
   staffLogin: (email: string) => Promise<void>;
   verifyStaffOtp: (email: string, otp: string) => Promise<void>;
@@ -117,9 +118,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (input: { name: string; email: string; phone?: string; password: string }) => {
+    async (input: {
+      name: string;
+      email: string;
+      phone?: string;
+      password: string;
+      clinicName?: string;
+    }) => {
       try {
-        const res = await authApi.registerClinicOwner(input);
+        const { clinicName, ...rest } = input;
+        const res = await authApi.registerClinicOwner({
+          ...rest,
+          clinicName: clinicName || undefined,
+        });
         // A freshly registered clinic_owner account is `pending` until the
         // emailed verification link is followed, so no tokens are issued yet
         // and there's nothing to log the user into.

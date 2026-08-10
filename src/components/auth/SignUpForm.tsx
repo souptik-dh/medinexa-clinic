@@ -15,6 +15,7 @@ export default function SignUpForm() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [clinicName, setClinicName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -32,7 +33,13 @@ export default function SignUpForm() {
     }
     setSubmitting(true);
     try {
-      const result = await register({ name, email, phone: phone || undefined, password });
+      const result = await register({
+        name,
+        email,
+        phone: phone || undefined,
+        password,
+        clinicName: clinicName || undefined,
+      });
       if (result.verified) {
         router.push("/dashboard");
       } else {
@@ -116,6 +123,17 @@ export default function SignUpForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                />
+              </div>
+              <div>
+                <Label>Clinic name</Label>
+                <Input
+                  type="text"
+                  id="clinicName"
+                  name="clinicName"
+                  placeholder="Defaults to your name if left blank"
+                  value={clinicName}
+                  onChange={(e) => setClinicName(e.target.value)}
                 />
               </div>
               <div>
