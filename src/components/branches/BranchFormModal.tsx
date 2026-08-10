@@ -10,10 +10,12 @@ export interface BranchFormValues {
   timezone: string;
   lat: string;
   lng: string;
-  pincode: string;
+  nearbyLocation: string;
+  city: string;
   district: string;
+  pinCode: string;
   state: string;
-  postOfficeName: string;
+  postOffice: string;
 }
 
 export const emptyBranchForm = (): BranchFormValues => ({
@@ -23,33 +25,27 @@ export const emptyBranchForm = (): BranchFormValues => ({
   timezone: "Asia/Kolkata",
   lat: "",
   lng: "",
-  pincode: "",
+  nearbyLocation: "",
+  city: "",
   district: "",
+  pinCode: "",
   state: "",
-  postOfficeName: "",
+  postOffice: "",
 });
 
-export const branchFormFrom = (b: {
-  name: string;
-  address: string;
-  phone: string;
-  timezone: string;
-  lat?: number | null;
-  lng?: number | null;
-  pincode?: string | null;
-  district?: string | null;
-  state?: string | null;
-}): BranchFormValues => ({
+export const branchFormFrom = (b: any): BranchFormValues => ({
   name: b.name,
   address: b.address,
   phone: b.phone,
   timezone: b.timezone,
   lat: b.lat !== null && b.lat !== undefined ? String(b.lat) : "",
   lng: b.lng !== null && b.lng !== undefined ? String(b.lng) : "",
-  pincode: b.pincode ?? "",
+  nearbyLocation: b.nearby_location ?? b.nearbyLocation ?? "",
+  city: b.city ?? "",
   district: b.district ?? "",
+  pinCode: b.pin_code ?? b.pincode ?? "",
   state: b.state ?? "",
-  postOfficeName: "",
+  postOffice: b.post_office ?? "",
 });
 
 interface BranchFormModalProps {
@@ -119,9 +115,10 @@ export default function BranchFormModal({
 
   const selectPostOffice = (po: any) => {
     set({
-      pincode: po.Pincode,
+      pinCode: po.Pincode,
       district: po.District,
       state: po.State,
+      postOffice: po.Name,
     });
     // If address is empty, populate with post office name
     if (!values.address) {
@@ -173,13 +170,13 @@ export default function BranchFormModal({
             <div className="flex gap-2">
               <input
                 type="text"
-                value={values.pincode}
-                onChange={(e) => set({ pincode: e.target.value })}
+                value={values.pinCode}
+                onChange={(e) => set({ pinCode: e.target.value })}
                 className={inputClass}
               />
               <button
-                onClick={() => lookupPincode(values.pincode)}
-                disabled={pincodeLoading || !values.pincode}
+                onClick={() => lookupPincode(values.pinCode)}
+                disabled={pincodeLoading || !values.pinCode}
                 className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
                 {pincodeLoading ? "Checking…" : "Validate"}
@@ -204,6 +201,25 @@ export default function BranchFormModal({
             )}
           </Field>
 
+          <Field label="Nearby location">
+            <input
+              type="text"
+              value={values.nearbyLocation}
+              onChange={(e) => set({ nearbyLocation: e.target.value })}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="City">
+            <input
+              type="text"
+              value={values.city}
+              onChange={(e) => set({ city: e.target.value })}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="District">
             <input
               type="text"
@@ -217,6 +233,14 @@ export default function BranchFormModal({
               type="text"
               value={values.state}
               onChange={(e) => set({ state: e.target.value })}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Post office">
+            <input
+              type="text"
+              value={values.postOffice}
+              onChange={(e) => set({ postOffice: e.target.value })}
               className={inputClass}
             />
           </Field>
