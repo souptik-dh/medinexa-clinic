@@ -1,0 +1,76 @@
+"use client";
+import React, { useEffect } from "react";
+import { usePincodeLookup, PostOffice } from "@/hooks/usePincodeLookup";
+
+interface PincodeFieldProps {
+  value: string;
+  onChange: (value: string) => void;
+  onSelect: (po: PostOffice) => void;
+  disabled?: boolean;
+  autoValidate?: boolean;
+}
+
+const inputClass =
+  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+
+export default function PincodeField({
+  value,
+  onChange,
+  onSelect,
+  disabled,
+  autoValidate = true,
+}: PincodeFieldProps) {
+  const { results, loading, error, lookup, clear } = usePincodeLookup();
+
+  useEffect(() => {
+    if (autoValidate && value && value.trim().length === 6) {
+      lookup(value.trim());
+    }
+  }, [autoValidate, value, lookup]);
+
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            clear();
+          }}
+          disabled={disabled}
+          className={inputClass}
+        />
+        <button
+          onClick={() => lookup(value)}
+          disabled={loading || !value || disabled}
+          className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+        >
+          {loading ? "Checking…" : "Validate"}
+        </button>
+      </div>
+      {error && (
+        <p className="mt-2 text-xs text-error-600">{error}</p>
+      )}
+      {results.length > 0 && (
+        <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+          {results.map((po) => (
+            <button
+              key={po.Name + po.BranchType}
+              onClick={() => {
+                onSelect(po);
+                clear();
+              }}
+              className="w-full text-left px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+            >
+              <div className="font-medium">{po.Name}</div>
+              <div className="text-xs text-gray-500">
+                {po.BranchType} — {po.District}, {po.State}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

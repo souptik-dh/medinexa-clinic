@@ -1,11 +1,8 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
-import BranchFormModal, {
-  BranchFormValues,
-  branchFormFrom,
-  emptyBranchForm,
-} from "@/components/branches/BranchFormModal";
+import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
   Table,
   TableBody,
@@ -14,21 +11,34 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
+import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
+import { formatDate, formatFullAddress } from "@/lib/utils";
+
+import { useAuth } from "@/context/AuthContext";
+import {
+  canCreateBranch,
+  canDeleteBranch,
+  canUpdateBranch,
+} from "@/lib/permissions";
 
 export default function BranchesPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selected, setSelected] = useState<Clinic | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-  const [editing, setEditing] = useState<Branch | null>(null);
-  const [values, setValues] = useState<BranchFormValues>(emptyBranchForm());
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const { user } = useAuth();
+  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+
+  const canCreate = isAdmin || canCreateBranch(userPermissions);
+  const canDelete = isAdmin || canDeleteBranch(userPermissions);
+  const canUpdate = isAdmin || canUpdateBranch(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,48 +77,10 @@ export default function BranchesPanel() {
     }
   }, [selected, loadBranches]);
 
-  const openCreate = () => {
-    setModalMode("create");
-    setEditing(null);
-    setValues(emptyBranchForm());
-    setError(null);
-    setIsFormOpen(true);
-  };
-
-  const openEdit = (branch: Branch) => {
-    setModalMode("edit");
-    setEditing(branch);
-    setValues(branchFormFrom(branch));
-    setError(null);
-    setIsFormOpen(true);
-  };
-
-  const submit = async () => {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const input = {
-        name: values.name,
-        address: values.address,
-        phone: values.phone,
-        timezone: values.timezone,
-        lat: values.lat === "" ? null : Number(values.lat),
-        lng: values.lng === "" ? null : Number(values.lng),
-      };
-      if (modalMode === "create") {
-        await branchesApi.create(selected.id, input);
-      } else if (editing) {
-        await branchesApi.update(editing.id, input);
-      }
-      setIsFormOpen(false);
-      await loadBranches(selected.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  };
+  useEffect(() => {
+    // clear selected branch when clinic selection changes
+    setSelectedBranch(null);
+  }, [selected?.id]);
 
   const removeBranch = async (branch: Branch) => {
     if (!window.confirm(`Delete branch "${branch.name}"? Active appointments must be handled first.`)) return;
@@ -186,13 +158,14 @@ export default function BranchesPanel() {
                 </span>
               )}
             </h3>
-            <button
-              onClick={openCreate}
-              disabled={busy || !selected}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-            >
-              + New branch
-            </button>
+            {canCreate && selected && (
+              <Link
+                href={`/clinics/${selected.id}/branches/new`}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+              >
+                + New branch
+              </Link>
+            )}
           </div>
           {!selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -207,16 +180,16 @@ export default function BranchesPanel() {
               No branches for this clinic.
             </p>
           ) : (
-            <div className="max-w-full overflow-x-auto">
+            <div className="max-w-full">
               <Table>
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                   <TableRow>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Name
                     </TableCell>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                    {/* <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Address
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Phone
                     </TableCell>
@@ -229,35 +202,47 @@ export default function BranchesPanel() {
                   {branches.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="py-3">
-                        <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                          {b.name}
-                        </p>
-                        <span className="text-gray-400 text-theme-xs dark:text-gray-500">
-                          {b.timezone}
-                        </span>
+                        <button
+                          onClick={() => setSelectedBranch(b)}
+                          className="text-left hover:text-brand-500"
+                        >
+                        <Tooltip content={formatFullAddress(b)} className="block w-full">
+
+                          <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                            {b.name}
+                          </p>
+                          <span className="text-gray-400 text-theme-xs dark:text-gray-500">
+                            {b.timezone}
+                          </span>
+                       </Tooltip>
+
+                        </button>
                       </TableCell>
-                      <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                        {b.address}
-                      </TableCell>
+                      {/* <TableCell className="py-3 w-[220px] max-w-[220px] text-gray-500 text-theme-sm dark:text-gray-400">
+                          <span className="block truncate">{b.address}</span>
+                      </TableCell> */}
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.phone}
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => openEdit(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => removeBranch(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
-                          >
-                            Delete
-                          </button>
+                          {canUpdate && (
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            >
+                              Edit
+                            </Link>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => removeBranch(b)}
+                              disabled={busy}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -269,17 +254,17 @@ export default function BranchesPanel() {
         </div>
       </div>
 
-      {/* Create / edit modal */}
-      <BranchFormModal
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        mode={modalMode}
-        clinicName={selected?.name}
-        values={values}
-        onChange={setValues}
-        busy={busy}
-        onSubmit={submit}
-      />
+      {/* Branch gallery & licenses */}
+      {selectedBranch && selected && (
+        <div className="mt-6 space-y-6">
+          <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+          <BranchLicensesPanel
+            clinicId={selected.id}
+            branchId={selectedBranch.id}
+            branchName={selectedBranch.name}
+          />
+        </div>
+      )}
     </div>
   );
 }

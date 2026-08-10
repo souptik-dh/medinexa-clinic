@@ -1,0 +1,282 @@
+"use client";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import Badge from "@/components/ui/badge/Badge";
+import { useAuth } from "@/context/AuthContext";
+import {
+  ApiError,
+  AvailabilityResponse,
+  BranchDoctor,
+  doctorsApi,
+} from "@/lib/api";
+import { formatCurrency, today } from "@/lib/utils";
+
+const initials = (name: string): string =>
+  name
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+export default function DoctorProfilePanel() {
+  const params = useParams<{ branchId?: string; doctorId?: string }>();
+  const branchId = typeof params.branchId === "string" ? params.branchId : "";
+  const doctorId = typeof params.doctorId === "string" ? params.doctorId : "";
+
+  const { user, can } = useAuth();
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  const canManage = isAdmin || can("doctors:manage");
+
+  const [doctor, setDoctor] = useState<BranchDoctor | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [date, setDate] = useState(today());
+  const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availError, setAvailError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!branchId || !doctorId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await doctorsApi.listByBranch(branchId);
+      const found = res.items.find((d) => d.id === doctorId) ?? null;
+      if (!found) {
+        setError("Doctor not found at this branch.");
+      }
+      setDoctor(found);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to load doctor");
+    } finally {
+      setLoading(false);
+    }
+  }, [branchId, doctorId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const checkAvailability = useCallback(async () => {
+    if (!date) return;
+    setAvailLoading(true);
+    setAvailError(null);
+    try {
+      const res = await doctorsApi.availability(doctorId, date);
+      setAvailability(res);
+    } catch (err) {
+      setAvailability(null);
+      setAvailError(err instanceof ApiError ? err.message : "Failed to load availability");
+    } finally {
+      setAvailLoading(false);
+    }
+  }, [doctorId, date]);
+
+  useEffect(() => {
+    if (doctor) checkAvailability();
+  }, [doctor, checkAvailability]);
+
+  const uploadPhoto = async (file: File) => {
+    if (!doctor) return;
+    setPhotoBusy(true);
+    setPhotoError(null);
+    try {
+      const res = await doctorsApi.uploadBranchDoctorPhoto(branchId, doctor.id, file);
+      setDoctor((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
+    } catch (err) {
+      setPhotoError(err instanceof ApiError ? err.message : "Photo upload failed");
+    } finally {
+      setPhotoBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+      </div>
+    );
+  }
+
+  if (error || !doctor) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+          {error ?? "Doctor not found."}
+        </div>
+        <Link
+          href="/doctors"
+          className="mt-4 inline-block text-sm font-medium text-brand-500 hover:text-brand-600"
+        >
+          ← Back to doctors
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-12 gap-4 md:gap-6">
+      {/* Identity card */}
+      <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-4">
+        <div className="flex flex-col items-center text-center">
+          {doctor.photo_url ? (
+            <Image
+              src={doctor.photo_url}
+              alt={`${doctor.name} photo`}
+              width={96}
+              height={96}
+              unoptimized
+              className="h-24 w-24 rounded-full border border-gray-200 object-cover dark:border-gray-800"
+            />
+          ) : (
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-brand-500 text-3xl font-semibold text-white">
+              {initials(doctor.name)}
+            </div>
+          )}
+          <h3 className="mt-4 text-xl font-semibold text-gray-800 dark:text-white/90">
+            {doctor.name}
+          </h3>
+          <Badge color="primary" className="mt-2">
+            {doctor.specialization ?? "Doctor"}
+          </Badge>
+        </div>
+        <dl className="mt-6 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
+          <ProfileRow label="Phone" value={doctor.phone ?? "—"} />
+          <ProfileRow label="Fee" value={formatCurrency(doctor.fee_amount, doctor.currency)} />
+          <ProfileRow
+            label="Certificate"
+            value={
+              doctor.certificate_url ? (
+                <a
+                  href={doctor.certificate_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-500 hover:underline"
+                >
+                  View
+                </a>
+              ) : (
+                "—"
+              )
+            }
+          />
+        </dl>
+        <Link
+          href="/doctors"
+          className="mt-6 block w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+        >
+          ← Back to doctors
+        </Link>
+      </div>
+
+      {/* Photo upload */}
+      {canManage && (
+        <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            Doctor photo
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Shown to patients when they book a slot with this doctor.
+          </p>
+
+          {photoError && (
+            <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+              {photoError}
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadPhoto(file);
+              }}
+              disabled={photoBusy}
+              className="block w-full max-w-xs text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
+            />
+            {photoBusy && (
+              <span className="text-sm text-gray-500 dark:text-gray-400">Uploading…</span>
+            )}
+          </div>
+
+          <div className="mt-8 border-t border-gray-100 pt-6 dark:border-gray-800">
+            <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+              Availability
+            </h4>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="h-11 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                />
+              </div>
+              <button
+                onClick={checkAvailability}
+                disabled={availLoading || !date}
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                {availLoading ? "Checking…" : "Check"}
+              </button>
+            </div>
+
+            {availError && (
+              <p className="mt-3 text-sm text-error-600 dark:text-error-400">{availError}</p>
+            )}
+
+            {availability && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {availability.slots.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    No slots configured for this date.
+                  </p>
+                ) : (
+                  availability.slots.map((slot) => (
+                    <span
+                      key={slot.time}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                        slot.available
+                          ? "border-success-500/30 bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-500"
+                          : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
+                      }`}
+                    >
+                      {slot.time}
+                    </span>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-sm text-gray-500 dark:text-gray-400">{label}</dt>
+      <dd className="text-sm font-medium text-gray-800 dark:text-white/90">{value}</dd>
+    </div>
+  );
+}

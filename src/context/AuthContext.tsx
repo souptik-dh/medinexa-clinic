@@ -5,7 +5,10 @@ import {
   ApiError,
   Clinic,
   authApi,
+  staffApi,
   clearTokens,
+  ensureActiveSession,
+  getAccessTokenExpiryMs,
   getRefreshToken,
   getStoredUser,
   setSessionExpiredHandler,
@@ -60,6 +63,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [router, setUser, setClinic]);
 
+  // Proactively detect an expired access token instead of waiting for an
+  // API call to 401 - so a session that expires while the user is idle on
+  // a page that makes no requests still gets logged out.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleNextCheck = () => {
+      const expiryMs = getAccessTokenExpiryMs();
+      const delay = expiryMs !== null ? Math.max(expiryMs - Date.now(), 0) : 0;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        const active = await ensureActiveSession();
+        if (active && !cancelled) scheduleNextCheck();
+      }, delay);
+    };
+
+    scheduleNextCheck();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [user]);
+
   const persist = useCallback(
     (nextUser: User, nextClinic?: Clinic) => {
       setUser(nextUser);
@@ -111,8 +139,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyStaffOtp = useCallback(async (email: string, otp: string) => {
     const res = await authApi.verifyStaffOtp({ email, otp });
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-    setUser(res.user);
-    setStoredUser(res.user);
+
+    // Ensure branch staff receive their permissions in the client even if the
+    // auth response doesn't include them (some API versions return permissions
+    // in a separate endpoint). Attempt to fetch and merge permissions.
+    let userToStore = res.user;
+    if (userToStore.role === "branch_staff") {
+      try {
+        const perms = await staffApi.getPermissions(userToStore.branch_id!, userToStore.id);
+        userToStore = { ...userToStore, permissions: perms.permissions as BranchStaffPermission[] };
+      } catch (err) {
+        // Non-fatal: continue with whatever permissions (if any) were returned
+        // by the auth response.
+      }
+    }
+
+    setUser(userToStore);
+    setStoredUser(userToStore);
     window.localStorage.removeItem("medinexa.clinic");
     setClinic(null);
   }, []);

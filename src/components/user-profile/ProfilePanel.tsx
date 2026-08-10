@@ -4,6 +4,7 @@ import Badge from "@/components/ui/badge/Badge";
 import DoctorPhotoCard from "@/components/user-profile/DoctorPhotoCard";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, clinicsApi } from "@/lib/api";
+import { BRANCH_STAFF_PERMISSION_META } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
 export default function ProfilePanel() {
@@ -69,6 +70,25 @@ export default function ProfilePanel() {
           Sign out
         </button>
       </div>
+
+      {user?.role === "branch_staff" && (
+        <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Permissions granted</h3>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(user?.permissions ?? []).length === 0 ? (
+              <span className="text-sm text-gray-500 dark:text-gray-400">No permissions granted.</span>
+            ) : (
+              BRANCH_STAFF_PERMISSION_META.filter((m) => (user?.permissions ?? []).includes(m.permission)).map((m) => (
+                <span key={m.permission} className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-700">
+                  {m.label}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Clinics */}
       <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">

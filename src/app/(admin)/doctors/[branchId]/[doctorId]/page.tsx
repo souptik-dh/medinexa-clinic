@@ -1,21 +1,21 @@
-import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
+import DoctorProfilePanel from "@/components/doctors/DoctorProfilePanel";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Invite Doctor | MediBook",
-  description: "Send a doctor invitation to join a branch",
+  title: "Doctor Profile | MediBook",
+  description: "View a doctor's profile, photo and availability",
 };
 
-export default function InviteDoctorPage() {
+export default function DoctorProfilePage() {
   return (
     <div>
       <PageBreadcrumb
-        pageTitle="Invite Doctor"
+        pageTitle="Doctor Profile"
         items={[{ label: "Doctors", href: "/doctors" }]}
       />
-      <InviteDoctorForm />
+      <DoctorProfilePanel />
     </div>
   );
 }

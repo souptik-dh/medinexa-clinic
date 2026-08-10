@@ -18,7 +18,6 @@ import {
   Branch,
   BranchDoctor,
   DoctorInvite,
-  SlotTemplateItem,
   doctorInvitesApi,
   doctorsApi,
 } from "@/lib/api";
@@ -31,15 +30,6 @@ import Link from "next/link";
 
 type Tab = "doctors" | "invites";
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const defaultSlot: SlotTemplateItem = {
-  weekday: 1,
-  start_time: "09:00",
-  end_time: "13:00",
-  slot_duration_minutes: 20,
-};
-
 const initials = (name: string): string =>
   name
     .split(" ")
@@ -47,9 +37,6 @@ const initials = (name: string): string =>
     .slice(0, 2)
     .join("")
     .toUpperCase();
-
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 export default function DoctorsPanel() {
   const { can } = useAuth();
@@ -62,16 +49,6 @@ export default function DoctorsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // edit assignment
-  const [editing, setEditing] = useState<BranchDoctor | null>(null);
-  const [editFee, setEditFee] = useState("");
-  const [editCertificate, setEditCertificate] = useState("");
-  const [editSlots, setEditSlots] = useState<SlotTemplateItem[]>([defaultSlot]);
-  const [editSlotsDirty, setEditSlotsDirty] = useState(false);
-  const [editBusy, setEditBusy] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-  const { isOpen, openModal, closeModal } = useModal();
 
   // doctor photo (clinic level)
   const [photoDoctor, setPhotoDoctor] = useState<BranchDoctor | null>(null);
@@ -137,79 +114,12 @@ export default function DoctorsPanel() {
     }
   };
 
-  const openEdit = (doc: BranchDoctor) => {
-    setEditing(doc);
-    setEditFee(String(doc.fee_amount));
-    setEditCertificate(doc.certificate_url ?? "");
-    setEditSlots([defaultSlot]);
-    setEditSlotsDirty(false);
-    setEditError(null);
-    openModal();
-  };
-
-  const updateEditSlot = (index: number, patch: Partial<SlotTemplateItem>) => {
-    setEditSlotsDirty(true);
-    setEditSlots((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, ...patch } : s))
-    );
-  };
-
-  const addEditSlot = () => {
-    setEditSlotsDirty(true);
-    setEditSlots((prev) => [...prev, { ...defaultSlot }]);
-  };
-
-  const removeEditSlot = (index: number) => {
-    setEditSlotsDirty(true);
-    setEditSlots((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const saveEdit = async () => {
-    if (!editing) return;
-    const amount = Number(editFee);
-    if (!amount || amount <= 0) {
-      setEditError("Enter a valid fee amount greater than 0.");
-      return;
-    }
-    if (editSlotsDirty) {
-      if (editSlots.length === 0) {
-        setEditError("At least one slot is required.");
-        return;
-      }
-      for (const slot of editSlots) {
-        if (slot.end_time <= slot.start_time) {
-          setEditError(`Slot end time must be after start time (${slot.start_time}).`);
-          return;
-        }
-        if (slot.slot_duration_minutes < 5 || slot.slot_duration_minutes > 240) {
-          setEditError("Slot duration must be between 5 and 240 minutes.");
-          return;
-        }
-      }
-    }
-    setEditBusy(true);
-    setEditError(null);
-    try {
-      await doctorsApi.updateAssignment(editing.id, {
-        fee_amount: amount,
-        certificate: editCertificate.trim() || undefined,
-        ...(editSlotsDirty ? { slot_template: editSlots } : {}),
-      });
-      closeModal();
-      if (branch) await load(branch, "doctors");
-    } catch (err) {
-      setEditError(err instanceof ApiError ? err.message : "Update failed");
-    } finally {
-      setEditBusy(false);
-    }
-  };
-
   const removeDoctor = async (doc: BranchDoctor) => {
     if (!window.confirm(`Remove ${doc.name} from this branch?`)) return;
     setBusy(true);
     setError(null);
     try {
-      await doctorsApi.removeAssignment(doc.id);
+      await doctorsApi.removeAssignment(doc.assignment_id);
       if (branch) await load(branch, "doctors");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Remove failed");
@@ -334,7 +244,10 @@ export default function DoctorsPanel() {
                   {doctors.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="py-3">
-                        <div className="flex items-center gap-3">
+                        <Link
+                          href={`/doctors/${branch.id}/${doc.id}`}
+                          className="flex items-center gap-3 hover:opacity-80"
+                        >
                           {doc.photo_url ? (
                             <Image
                               src={doc.photo_url}
@@ -350,14 +263,14 @@ export default function DoctorsPanel() {
                             </div>
                           )}
                           <div>
-                            <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                            <p className="font-medium text-gray-800 text-theme-sm hover:text-brand-500 dark:text-white/90">
                               {doc.name}
                             </p>
                             <span className="text-gray-400 text-theme-xs dark:text-gray-500">
                               {doc.phone ?? "—"}
                             </span>
                           </div>
-                        </div>
+                        </Link>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {doc.specialization ?? "—"}
@@ -380,13 +293,12 @@ export default function DoctorsPanel() {
                             </button>
                           )}
                           {canManage && (
-                            <button
-                              onClick={() => openEdit(doc)}
-                              disabled={busy}
+                            <Link
+                              href={`/doctors/${branch.id}/${doc.id}/edit`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                             >
                               Edit
-                            </button>
+                            </Link>
                           )}
                           {canManage && (
                             <button
@@ -467,145 +379,6 @@ export default function DoctorsPanel() {
           </div>
         )}
       </div>
-
-      {/* Edit assignment modal */}
-      <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[560px] p-6 lg:p-8">
-        <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Edit assignment — {editing?.name}
-        </h5>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Update this doctor&apos;s consultation fee and certificate for this branch.
-        </p>
-
-        {editError && (
-          <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-            {editError}
-          </div>
-        )}
-
-        <div className="mt-6 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Fee amount *
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={editFee}
-              onChange={(e) => setEditFee(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Certificate URL
-            </label>
-            <input
-              type="text"
-              value={editCertificate}
-              onChange={(e) => setEditCertificate(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                Slot template
-              </label>
-              <button
-                onClick={addEditSlot}
-                className="rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-              >
-                + Add slot
-              </button>
-            </div>
-            <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-              Leave untouched to keep this doctor&apos;s current schedule.
-            </p>
-            <div className="space-y-3">
-              {editSlots.map((slot, index) => (
-                <div key={index} className="grid grid-cols-2 items-end gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-800 sm:grid-cols-5">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Day
-                    </label>
-                    <select
-                      value={slot.weekday}
-                      onChange={(e) => updateEditSlot(index, { weekday: Number(e.target.value) })}
-                      className={inputClass}
-                    >
-                      {WEEKDAYS.map((day, d) => (
-                        <option key={d} value={d}>
-                          {day}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Start
-                    </label>
-                    <input
-                      type="time"
-                      value={slot.start_time}
-                      onChange={(e) => updateEditSlot(index, { start_time: e.target.value })}
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      End
-                    </label>
-                    <input
-                      type="time"
-                      value={slot.end_time}
-                      onChange={(e) => updateEditSlot(index, { end_time: e.target.value })}
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Duration (min)
-                    </label>
-                    <input
-                      type="number"
-                      min="5"
-                      max="240"
-                      value={slot.slot_duration_minutes}
-                      onChange={(e) => updateEditSlot(index, { slot_duration_minutes: Number(e.target.value) })}
-                      className={inputClass}
-                    />
-                  </div>
-                  <button
-                    onClick={() => removeEditSlot(index)}
-                    disabled={editSlots.length === 1}
-                    className="mb-1 rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={closeModal}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={saveEdit}
-            disabled={editBusy}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-          >
-            {editBusy ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-      </Modal>
 
       {/* Doctor photo modal */}
       <Modal

@@ -116,3 +116,25 @@ export function downloadBlob(blob: Blob, filename: string): void {
 export function today(): string {
   return new Date().toISOString().split("T")[0];
 }
+
+export function formatFullAddress(details: {
+  address?: string | null;
+  nearby_location?: string | null;
+  city?: string | null;
+  district?: string | null;
+  state?: string | null;
+  post_office?: string | null;
+  pin_code?: string | null;
+}): string {
+  return [
+    details.address && `Address: ${details.address}`,
+    details.nearby_location && `Nearby location: ${details.nearby_location}`,
+    details.city && `City: ${details.city}`,
+    details.district && `District: ${details.district}`,
+    details.state && `State: ${details.state}`,
+    details.post_office && `Post office: ${details.post_office}`,
+    details.pin_code && `Pincode: ${details.pin_code}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
