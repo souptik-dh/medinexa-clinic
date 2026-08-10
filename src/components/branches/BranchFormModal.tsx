@@ -1,6 +1,7 @@
 "use client";
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { branchesApi } from "@/lib/api";
 
 export interface BranchFormValues {
   name: string;
@@ -9,6 +10,10 @@ export interface BranchFormValues {
   timezone: string;
   lat: string;
   lng: string;
+  pincode: string;
+  district: string;
+  state: string;
+  postOfficeName: string;
 }
 
 export const emptyBranchForm = (): BranchFormValues => ({
@@ -18,6 +23,10 @@ export const emptyBranchForm = (): BranchFormValues => ({
   timezone: "Asia/Kolkata",
   lat: "",
   lng: "",
+  pincode: "",
+  district: "",
+  state: "",
+  postOfficeName: "",
 });
 
 export const branchFormFrom = (b: {
@@ -27,6 +36,9 @@ export const branchFormFrom = (b: {
   timezone: string;
   lat?: number | null;
   lng?: number | null;
+  pincode?: string | null;
+  district?: string | null;
+  state?: string | null;
 }): BranchFormValues => ({
   name: b.name,
   address: b.address,
@@ -34,6 +46,10 @@ export const branchFormFrom = (b: {
   timezone: b.timezone,
   lat: b.lat !== null && b.lat !== undefined ? String(b.lat) : "",
   lng: b.lng !== null && b.lng !== undefined ? String(b.lng) : "",
+  pincode: b.pincode ?? "",
+  district: b.district ?? "",
+  state: b.state ?? "",
+  postOfficeName: "",
 });
 
 interface BranchFormModalProps {
@@ -61,6 +77,58 @@ export default function BranchFormModal({
   onSubmit,
 }: BranchFormModalProps) {
   const set = (patch: Partial<BranchFormValues>) => onChange({ ...values, ...patch });
+
+  const [pincodeResults, setPincodeResults] = useState<{
+    Name: string;
+    BranchType: string;
+    DeliveryStatus: string;
+    District: string;
+    State: string;
+    Pincode: string;
+  }[]>([]);
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [pincodeError, setPincodeError] = useState<string | null>(null);
+
+  const lookupPincode = useCallback(async (code: string) => {
+    if (!code) return;
+    setPincodeLoading(true);
+    setPincodeError(null);
+    try {
+      const res = await branchesApi.lookupPincode(code);
+      const first = res && res.length > 0 ? res[0] : null;
+      if (!first || !first.PostOffice) {
+        setPincodeResults([]);
+        setPincodeError("No post offices found for this pincode");
+      } else {
+        setPincodeResults(first.PostOffice);
+      }
+    } catch (err) {
+      setPincodeResults([]);
+      setPincodeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPincodeLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // auto lookup when pincode reaches 6 digits
+    if (values.pincode && values.pincode.trim().length === 6) {
+      lookupPincode(values.pincode.trim());
+    }
+  }, [values.pincode, lookupPincode]);
+
+  const selectPostOffice = (po: any) => {
+    set({
+      pincode: po.Pincode,
+      district: po.District,
+      state: po.State,
+    });
+    // If address is empty, populate with post office name
+    if (!values.address) {
+      set({ address: po.Name });
+    }
+    setPincodeResults([]);
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[560px] p-6 lg:p-8">
@@ -99,6 +167,61 @@ export default function BranchFormModal({
             className={inputClass}
           />
         </Field>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Field label="Pincode">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={values.pincode}
+                onChange={(e) => set({ pincode: e.target.value })}
+                className={inputClass}
+              />
+              <button
+                onClick={() => lookupPincode(values.pincode)}
+                disabled={pincodeLoading || !values.pincode}
+                className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                {pincodeLoading ? "Checking…" : "Validate"}
+              </button>
+            </div>
+            {pincodeError && (
+              <p className="mt-2 text-xs text-error-600">{pincodeError}</p>
+            )}
+            {pincodeResults.length > 0 && (
+              <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+                {pincodeResults.map((po) => (
+                  <button
+                    key={po.Name + po.BranchType}
+                    onClick={() => selectPostOffice(po)}
+                    className="w-full text-left px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                  >
+                    <div className="font-medium">{po.Name}</div>
+                    <div className="text-xs text-gray-500">{po.BranchType} — {po.District}, {po.State}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Field>
+
+          <Field label="District">
+            <input
+              type="text"
+              value={values.district}
+              onChange={(e) => set({ district: e.target.value })}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="State">
+            <input
+              type="text"
+              value={values.state}
+              onChange={(e) => set({ state: e.target.value })}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Latitude">
             <input

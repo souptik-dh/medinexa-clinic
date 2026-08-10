@@ -26,9 +26,13 @@ import {
   canDeleteBranch,
   canUpdateBranch,
 } from "@/lib/permissions";
+import { branchesApi } from "@/lib/api";
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [pincodeResults, setPincodeResults] = useState<any[]>([]);
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [pincodeError, setPincodeError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Clinic | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
@@ -54,6 +58,9 @@ export default function ClinicsPanel() {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
   const [timezone, setTimezone] = useState("Asia/Kolkata");
+  const [pincode, setPincode] = useState("");
+  const [district, setDistrict] = useState("");
+  const [stateField, setStateField] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
 
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
@@ -107,7 +114,12 @@ export default function ClinicsPanel() {
     setDescription("");
     setAddress("");
     setPhone("");
-    setError(null);
+    setTimezone("Asia/Kolkata");
+    setPincode("");
+    setDistrict("");
+    setStateField("");
+    setPincodeResults([]);
+    setPincodeError(null);
     openModal();
   };
 
@@ -116,7 +128,7 @@ export default function ClinicsPanel() {
     setError(null);
     try {
       if (modalMode === "clinic") {
-        await clinicsApi.create({ name, description: description || null });
+        await clinicsApi.create({ name, description: description || null, address: address || null, pincode: pincode || null, district: district || null, state: stateField || null });
       } else {
         if (!selected) return;
         await branchesApi.create(selected.id, {
@@ -124,6 +136,11 @@ export default function ClinicsPanel() {
           address,
           phone,
           timezone,
+          pincode: pincode || null,
+          district: district || null,
+          state: stateField || null,
+          lat: undefined,
+          lng: undefined,
         });
       }
       closeModal();
@@ -136,6 +153,35 @@ export default function ClinicsPanel() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const lookupPincode = async (code: string) => {
+    if (!code) return;
+    setPincodeLoading(true);
+    setPincodeError(null);
+    try {
+      const res = await branchesApi.lookupPincode(code);
+      const first = res && res.length > 0 ? res[0] : null;
+      if (!first || !first.PostOffice) {
+        setPincodeResults([]);
+        setPincodeError("No post offices found for this pincode");
+      } else {
+        setPincodeResults(first.PostOffice);
+      }
+    } catch (err) {
+      setPincodeResults([]);
+      setPincodeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPincodeLoading(false);
+    }
+  };
+
+  const selectPostOffice = (po: any) => {
+    setPincode(po.Pincode);
+    setDistrict(po.District);
+    setStateField(po.State);
+    if (!address) setAddress(po.Name);
+    setPincodeResults([]);
   };
 
   const removeClinic = async (clinic: Clinic) => {
@@ -395,14 +441,76 @@ export default function ClinicsPanel() {
             />
           </Field>
           {modalMode === "clinic" ? (
-            <Field label="Description">
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              />
-            </Field>
+            <>
+              <Field label="Description">
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                />
+              </Field>
+              <Field label="Address">
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                />
+              </Field>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Pincode">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={pincode}
+                      onChange={(e) => setPincode(e.target.value)}
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                    <button
+                      onClick={() => lookupPincode(pincode)}
+                      disabled={pincodeLoading || !pincode}
+                      className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                    >
+                      {pincodeLoading ? "Checking…" : "Validate"}
+                    </button>
+                  </div>
+                  {pincodeError && (
+                    <p className="mt-2 text-xs text-error-600">{pincodeError}</p>
+                  )}
+                  {pincodeResults.length > 0 && (
+                    <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+                      {pincodeResults.map((po) => (
+                        <button
+                          key={po.Name + po.BranchType}
+                          onClick={() => selectPostOffice(po)}
+                          className="w-full text-left px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                        >
+                          <div className="font-medium">{po.Name}</div>
+                          <div className="text-xs text-gray-500">{po.BranchType} — {po.District}, {po.State}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Field>
+                <Field label="District">
+                  <input
+                    type="text"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </Field>
+                <Field label="State">
+                  <input
+                    type="text"
+                    value={stateField}
+                    onChange={(e) => setStateField(e.target.value)}
+                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </Field>
+              </div>
+            </>
           ) : (
             <>
               <Field label="Address *">
