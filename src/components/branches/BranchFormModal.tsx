@@ -108,10 +108,10 @@ export default function BranchFormModal({
 
   useEffect(() => {
     // auto lookup when pincode reaches 6 digits
-    if (values.pincode && values.pincode.trim().length === 6) {
-      lookupPincode(values.pincode.trim());
+    if (values.pinCode && values.pinCode.trim().length === 6) {
+      lookupPincode(values.pinCode.trim());
     }
-  }, [values.pincode, lookupPincode]);
+  }, [values.pinCode, lookupPincode]);
 
   const selectPostOffice = (po: any) => {
     set({
