@@ -41,7 +41,7 @@ interface AuthContextValue {
     email: string;
     phone?: string;
     password: string;
-  }) => Promise<void>;
+  }) => Promise<{ verified: boolean; message: string }>;
   staffLogin: (email: string) => Promise<void>;
   verifyStaffOtp: (email: string, otp: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -120,8 +120,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (input: { name: string; email: string; phone?: string; password: string }) => {
       try {
         const res = await authApi.registerClinicOwner(input);
-        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-        persist(res.user, res.clinic);
+        // A freshly registered clinic_owner account is `pending` until the
+        // emailed verification link is followed, so no tokens are issued yet
+        // and there's nothing to log the user into.
+        if (res.access_token && res.refresh_token) {
+          setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+          persist(res.user, res.clinic);
+          return { verified: true, message: res.message ?? "Account created." };
+        }
+        return {
+          verified: false,
+          message:
+            res.message ??
+            "Registration successful. Check your email to verify your account before logging in.",
+        };
       } catch (err) {
         if (err instanceof ApiError) {
           throw new Error(err.message);

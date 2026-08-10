@@ -36,6 +36,17 @@ export interface ClinicOwnerAuthResponse extends AuthTokens {
   clinic?: Clinic;
 }
 
+// POST /auth/clinic-owner/register leaves the account `pending` until the
+// emailed verification link is followed, so unlike login it returns null
+// tokens and a message instead of a usable session.
+export interface ClinicOwnerRegisterResponse {
+  user: User;
+  access_token: string | null;
+  refresh_token: string | null;
+  clinic?: Clinic;
+  message?: string;
+}
+
 export interface ErrorEnvelope {
   error: {
     code: string;
@@ -525,6 +536,21 @@ export interface Appointment {
   payment_method: string | null;
   created_at: string;
   updated_at: string;
+  doctor_name?: string;
+  branch_name?: string;
+}
+
+export interface AppointmentPatientSummary {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  address: string | null;
+  photo_url: string | null;
+}
+
+export interface AppointmentDetail extends Appointment {
+  patient: AppointmentPatientSummary;
 }
 
 export interface AppointmentCreateInput {
@@ -644,8 +670,36 @@ export const authApi = {
     email: string;
     phone?: string;
     password: string;
-  }): Promise<ClinicOwnerAuthResponse> {
-    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/register", {
+  }): Promise<ClinicOwnerRegisterResponse> {
+    return apiFetch<ClinicOwnerRegisterResponse>("/auth/clinic-owner/register", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+      skipAuth: true,
+    });
+  },
+
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  async resetPassword(input: {
+    token: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/reset-password", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
@@ -1047,8 +1101,8 @@ export const appointmentsApi = {
     );
   },
 
-  async get(id: string): Promise<Appointment> {
-    return apiFetch<Appointment>(`/appointments/${id}`);
+  async get(id: string): Promise<AppointmentDetail> {
+    return apiFetch<AppointmentDetail>(`/appointments/${id}`);
   },
 
   async confirm(id: string): Promise<Appointment> {

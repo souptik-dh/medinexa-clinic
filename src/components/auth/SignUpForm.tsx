@@ -18,6 +18,7 @@ export default function SignUpForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const { register } = useAuth();
   const router = useRouter();
 
@@ -31,8 +32,12 @@ export default function SignUpForm() {
     }
     setSubmitting(true);
     try {
-      await register({ name, email, phone: phone || undefined, password });
-      router.push("/dashboard");
+      const result = await register({ name, email, phone: phone || undefined, password });
+      if (result.verified) {
+        router.push("/dashboard");
+      } else {
+        setPendingMessage(result.message);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create account");
     } finally {
@@ -54,6 +59,19 @@ export default function SignUpForm() {
               Create your clinic owner account to get started
             </p>
           </div>
+          {pendingMessage ? (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
+                {pendingMessage}
+              </div>
+              <Link
+                href="/signin"
+                className="block w-full rounded-lg bg-brand-500 px-4 py-3 text-center text-sm font-medium text-white hover:bg-brand-600"
+              >
+                Go to sign in
+              </Link>
+            </div>
+          ) : (
           <div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -181,6 +199,7 @@ export default function SignUpForm() {
               </p>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

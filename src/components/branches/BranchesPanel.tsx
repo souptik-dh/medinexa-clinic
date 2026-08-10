@@ -13,6 +13,7 @@ import {
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
+import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
 import { formatDate, formatFullAddress } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
@@ -81,6 +82,13 @@ export default function BranchesPanel() {
     // clear selected branch when clinic selection changes
     setSelectedBranch(null);
   }, [selected?.id]);
+
+  const handlePhotoUpdated = (photoUrl: string) => {
+    setSelectedBranch((prev) => (prev ? { ...prev, photo_url: photoUrl } : prev));
+    setBranches((prev) =>
+      prev.map((b) => (b.id === selectedBranch?.id ? { ...b, photo_url: photoUrl } : b))
+    );
+  };
 
   const removeBranch = async (branch: Branch) => {
     if (!window.confirm(`Delete branch "${branch.name}"? Active appointments must be handled first.`)) return;
@@ -254,9 +262,15 @@ export default function BranchesPanel() {
         </div>
       </div>
 
-      {/* Branch gallery & licenses */}
+      {/* Branch photo, gallery & licenses */}
       {selectedBranch && selected && (
         <div className="mt-6 space-y-6">
+          <BranchPhotoPanel
+            branchId={selectedBranch.id}
+            branchName={selectedBranch.name}
+            photoUrl={selectedBranch.photo_url}
+            onPhotoUpdated={handlePhotoUpdated}
+          />
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
           <BranchLicensesPanel
             clinicId={selected.id}

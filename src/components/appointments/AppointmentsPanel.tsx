@@ -13,6 +13,7 @@ import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
 import {
   Appointment,
+  AppointmentDetail,
   AppointmentStatus,
   ApiError,
   StatusHistoryEntry,
@@ -57,6 +58,11 @@ export default function AppointmentsPanel() {
 
   const [history, setHistory] = useState<StatusHistoryEntry[] | null>(null);
 
+  const [detail, setDetail] = useState<AppointmentDetail | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   const { isOpen, openModal, closeModal } = useModal();
 
   const load = useCallback(async () => {
@@ -88,6 +94,8 @@ export default function AppointmentsPanel() {
     setReferenceNo("");
     setReason("");
     setHistory(null);
+    setDetail(null);
+    setShowDetail(false);
     openModal();
   };
 
@@ -127,10 +135,31 @@ export default function AppointmentsPanel() {
       const res = await appointmentsApi.statusHistory(appt.id);
       setActive(appt);
       setAction(null);
+      setDetail(null);
+      setShowDetail(false);
       setHistory(res.items);
       openModal();
     } catch {
       // ignore
+    }
+  };
+
+  const viewDetail = async (appt: Appointment) => {
+    setActive(appt);
+    setAction(null);
+    setHistory(null);
+    setDetail(null);
+    setShowDetail(true);
+    setDetailError(null);
+    setDetailLoading(true);
+    openModal();
+    try {
+      const full = await appointmentsApi.get(appt.id);
+      setDetail(full);
+    } catch (err) {
+      setDetailError(err instanceof ApiError ? err.message : "Failed to load appointment");
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -233,10 +262,10 @@ export default function AppointmentsPanel() {
                       </span>
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {shortId(appt.doctor_id)}
+                      {appt.doctor_name ?? shortId(appt.doctor_id)}
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {shortId(appt.branch_id)}
+                      {appt.branch_name ?? shortId(appt.branch_id)}
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                       {formatCurrency(appt.fee_amount, appt.currency)}
@@ -248,6 +277,13 @@ export default function AppointmentsPanel() {
                     </TableCell>
                     <TableCell className="py-3">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => viewDetail(appt)}
+                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                          title="View details"
+                        >
+                          View
+                        </button>
                         {canConfirm(appt) && can("appointments:confirm") && (
                           <ActionButton label="Confirm" color="brand" onClick={() => openAction(appt, "confirm")} />
                         )}
@@ -410,6 +446,66 @@ export default function AppointmentsPanel() {
           </button>
         </div>
       </Modal>
+
+      {/* Detail modal */}
+      <Modal
+        isOpen={isOpen && showDetail}
+        onClose={closeModal}
+        className="max-w-[560px] p-6 lg:p-8"
+      >
+        <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+          Appointment details
+        </h5>
+
+        {detailLoading ? (
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        ) : detailError ? (
+          <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+            {detailError}
+          </div>
+        ) : detail ? (
+          <div className="mt-5 space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                  {detail.scheduled_date} at {detail.scheduled_time} · {detail.duration_minutes}m
+                </p>
+                <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                  {formatCurrency(detail.fee_amount, detail.currency)}
+                  {detail.payment_method ? ` · ${detail.payment_method}` : ""}
+                </p>
+              </div>
+              <Badge size="sm" color={appointmentStatusColor(detail.status)}>
+                {appointmentStatusLabel(detail.status)}
+              </Badge>
+            </div>
+
+            <dl className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+              <DetailRow label="Doctor" value={detail.doctor_name ?? shortId(detail.doctor_id)} />
+              <DetailRow label="Branch" value={detail.branch_name ?? shortId(detail.branch_id)} />
+            </dl>
+
+            <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+              <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Patient</h6>
+              <dl className="mt-2 space-y-2">
+                <DetailRow label="Name" value={detail.patient.name} />
+                <DetailRow label="Email" value={detail.patient.email} />
+                <DetailRow label="Phone" value={detail.patient.phone ?? "—"} />
+                <DetailRow label="Address" value={detail.patient.address ?? "—"} />
+              </dl>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={closeModal}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -455,4 +551,13 @@ function actionLabel(action: Action): string {
 
 function shortId(id: string): string {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id;
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-sm text-gray-500 dark:text-gray-400">{label}</dt>
+      <dd className="text-sm font-medium text-gray-800 dark:text-white/90">{value}</dd>
+    </div>
+  );
 }

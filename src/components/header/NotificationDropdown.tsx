@@ -2,30 +2,10 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { Notification, NotificationType, notificationsApi } from "@/lib/api";
-import { notificationTypeLabel, timeAgo } from "@/lib/utils";
+import { Notification, notificationsApi } from "@/lib/api";
+import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
 
 const POLL_INTERVAL_MS = 30000;
-
-const notificationLink = (type: NotificationType): string => {
-  switch (type) {
-    case "new_booking":
-    case "booking_confirmed":
-    case "appointment_cancelled":
-    case "consultation_completed":
-      return "/appointments";
-    case "payment_received":
-      return "/ledger";
-    case "prescription_ready":
-      return "/prescriptions";
-    case "doctor_invited":
-      return "/doctors/invite";
-    case "doctor_invite_accepted":
-      return "/doctors";
-    default:
-      return "/dashboard";
-  }
-};
 
 export default function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -202,7 +182,7 @@ export default function NotificationDropdown() {
           </ul>
         )}
         <Link
-          href="/dashboard"
+          href="/notifications"
           onClick={closeDropdown}
           className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
         >
