@@ -211,6 +211,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
                 value={pinCode}
                 onChange={setPinCode}
                 onSelect={onSelectPostOffice}
+                autoValidate={!isEdit}
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

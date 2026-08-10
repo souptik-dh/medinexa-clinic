@@ -11,7 +11,10 @@ export const metadata: Metadata = {
 export default function EditBranchPage() {
   return (
     <div>
-      <PageBreadcrumb pageTitle="Edit Branch" />
+      <PageBreadcrumb
+        pageTitle="Edit Branch"
+        items={[{ label: "Branches", href: "/branches" }]}
+      />
       <BranchForm mode="edit" />
     </div>
   );

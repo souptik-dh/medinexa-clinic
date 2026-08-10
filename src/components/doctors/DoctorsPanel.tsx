@@ -190,7 +190,7 @@ export default function DoctorsPanel() {
     setEditBusy(true);
     setEditError(null);
     try {
-      await doctorsApi.updateAssignment(editing.id, {
+      await doctorsApi.updateAssignment(editing.assignment_id, {
         fee_amount: amount,
         certificate: editCertificate.trim() || undefined,
         ...(editSlotsDirty ? { slot_template: editSlots } : {}),
@@ -209,7 +209,7 @@ export default function DoctorsPanel() {
     setBusy(true);
     setError(null);
     try {
-      await doctorsApi.removeAssignment(doc.id);
+      await doctorsApi.removeAssignment(doc.assignment_id);
       if (branch) await load(branch, "doctors");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Remove failed");

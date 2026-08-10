@@ -456,6 +456,7 @@ export interface DoctorInvite {
 
 export interface BranchDoctor {
   id: string;
+  assignment_id: string;
   name: string;
   specialization: string | null;
   phone: string | null;

@@ -11,7 +11,10 @@ export const metadata: Metadata = {
 export default function InviteDoctorPage() {
   return (
     <div>
-      <PageBreadcrumb pageTitle="Invite Doctor" />
+      <PageBreadcrumb
+        pageTitle="Invite Doctor"
+        items={[{ label: "Doctors", href: "/doctors" }]}
+      />
       <InviteDoctorForm />
     </div>
   );

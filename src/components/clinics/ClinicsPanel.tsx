@@ -2,36 +2,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
-import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
-import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
 import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
-import Tooltip from "@/components/ui/tooltip/Tooltip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
+import { ApiError, Clinic, clinicsApi } from "@/lib/api";
 import { formatDate, formatFullAddress } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import {
-  canCreateClinic,
-  canDeleteClinic,
-  canUpdateClinic,
-  canCreateBranch,
-  canDeleteBranch,
-  canUpdateBranch,
-} from "@/lib/permissions";
+import { canCreateClinic, canDeleteClinic, canUpdateClinic } from "@/lib/permissions";
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selected, setSelected] = useState<Clinic | null>(null);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
-  const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -42,9 +22,6 @@ export default function ClinicsPanel() {
   const canCreate = isAdmin || canCreateClinic(userPermissions);
   const canDelete = isAdmin || canDeleteClinic(userPermissions);
   const canUpdate = isAdmin || canUpdateClinic(userPermissions);
-  const canBranchCreate = isAdmin || canCreateBranch(userPermissions);
-  const canBranchDelete = isAdmin || canDeleteBranch(userPermissions);
-  const canBranchUpdate = isAdmin || canUpdateBranch(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,24 +41,6 @@ export default function ClinicsPanel() {
     load();
   }, [load]);
 
-  const loadBranches = useCallback(async (clinicId: string) => {
-    setBranchesLoading(true);
-    try {
-      const res = await branchesApi.list(clinicId);
-      setBranches(res.items);
-    } catch {
-      setBranches([]);
-    } finally {
-      setBranchesLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (selected) {
-      loadBranches(selected.id);
-    }
-  }, [selected, loadBranches]);
-
   const removeClinic = async (clinic: Clinic) => {
     if (!window.confirm(`Delete clinic "${clinic.name}"? Active appointments must be handled first.`)) return;
     setBusy(true);
@@ -89,20 +48,6 @@ export default function ClinicsPanel() {
     try {
       await clinicsApi.remove(clinic.id, true);
       await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeBranch = async (branch: Branch) => {
-    if (!window.confirm(`Delete branch "${branch.name}"?`)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await branchesApi.remove(branch.id, true);
-      if (selected) await loadBranches(selected.id);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Delete failed");
     } finally {
@@ -171,11 +116,11 @@ export default function ClinicsPanel() {
           )}
         </div>
 
-        {/* Branches for selected clinic */}
+        {/* Clinic details */}
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-7">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Branches
+              Clinic details
               {selected && (
                 <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                   — {selected.name}
@@ -200,96 +145,23 @@ export default function ClinicsPanel() {
                   Delete clinic
                 </button>
               )}
-              {canBranchCreate && selected && (
-                <Link
-                  href={`/clinics/${selected.id}/branches/new`}
-                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-                >
-                  + New branch
-                </Link>
-              )}
             </div>
           </div>
           {!selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              Select a clinic to manage its branches.
-            </p>
-          ) : branchesLoading ? (
-            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              Loading branches…
-            </p>
-          ) : branches.length === 0 ? (
-            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              No branches for this clinic.
+              Select a clinic to view its details.
             </p>
           ) : (
-            <div className="max-w-full overflow-x-auto">
-              <Table>
-                <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
-                  <TableRow>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Name
-                    </TableCell>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Address
-                    </TableCell>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Phone
-                    </TableCell>
-                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                      Actions
-                    </TableCell>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {branches.map((b) => (
-                    <TableRow key={b.id}>
-                      <TableCell className="py-3">
-                        <button
-                          onClick={() => setSelectedBranch(b)}
-                          className="text-left hover:text-brand-500"
-                        >
-                          <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                            {b.name}
-                          </p>
-                          <span className="text-gray-400 text-theme-xs dark:text-gray-500">
-                            {b.timezone}
-                          </span>
-                        </button>
-                      </TableCell>
-                      <TableCell className="py-3 w-[220px] max-w-[220px] text-gray-500 text-theme-sm dark:text-gray-400">
-                        <Tooltip content={formatFullAddress(b)} className="block w-full">
-                          <span className="block truncate">{b.address}</span>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                        {b.phone}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="flex justify-end gap-1.5">
-                          {canBranchUpdate && (
-                            <Link
-                              href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-                            >
-                              Edit
-                            </Link>
-                          )}
-                          {canBranchDelete && (
-                            <button
-                              onClick={() => removeBranch(b)}
-                              disabled={busy}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="space-y-3 text-sm">
+              <p className="text-gray-600 dark:text-gray-300">
+                {selected.description ?? "No description"}
+              </p>
+              <p className="whitespace-pre-line text-gray-500 dark:text-gray-400">
+                {formatFullAddress(selected)}
+              </p>
+              <p className="text-theme-xs text-gray-400 dark:text-gray-500">
+                Created {formatDate(selected.created_at)}
+              </p>
             </div>
           )}
         </div>
@@ -299,18 +171,6 @@ export default function ClinicsPanel() {
       {selected && (
         <div className="mt-6">
           <ClinicLicensesPanel clinicId={selected.id} clinicName={selected.name} />
-        </div>
-      )}
-
-      {/* Branch gallery & licenses */}
-      {selectedBranch && selected && (
-        <div className="mt-6 space-y-6">
-          <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
-          <BranchLicensesPanel
-            clinicId={selected.id}
-            branchId={selectedBranch.id}
-            branchName={selectedBranch.name}
-          />
         </div>
       )}
     </div>

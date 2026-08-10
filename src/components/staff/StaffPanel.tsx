@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import BranchSelect from "@/components/branches/BranchSelect";
-import Checkbox from "@/components/form/input/Checkbox";
 import {
   Table,
   TableBody,
@@ -13,14 +13,11 @@ import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Branch, StaffMember, staffApi } from "@/lib/api";
-import {
-  BRANCH_STAFF_PERMISSION_MODULES,
-  BRANCH_STAFF_PERMISSION_META,
-  BranchStaffPermission,
-} from "@/lib/permissions";
+import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
 export default function StaffPanel() {
+  const router = useRouter();
   const { can } = useAuth();
   const canManage = can("staff:manage");
 
@@ -33,16 +30,6 @@ export default function StaffPanel() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
-
-  const [permMember, setPermMember] = useState<StaffMember | null>(null);
-  const [permValues, setPermValues] = useState<BranchStaffPermission[]>([]);
-  const [permBusy, setPermBusy] = useState(false);
-  const [permError, setPermError] = useState<string | null>(null);
-  const {
-    isOpen: isPermOpen,
-    openModal: openPermModal,
-    closeModal: closePermModal,
-  } = useModal();
 
   const load = useCallback(async (b: Branch | null) => {
     if (!b) {
@@ -104,41 +91,9 @@ export default function StaffPanel() {
     }
   };
 
-  const openPermissions = async (member: StaffMember) => {
+  const openPermissions = (member: StaffMember) => {
     if (!branch) return;
-    setPermMember(member);
-    setPermError(null);
-    setPermValues(
-      (member.permissions as BranchStaffPermission[] | undefined) ?? []
-    );
-    openPermModal();
-    try {
-      const res = await staffApi.getPermissions(branch.id, member.id);
-      setPermValues(res.permissions as BranchStaffPermission[]);
-    } catch (err) {
-      setPermError(err instanceof ApiError ? err.message : "Failed to load permissions");
-    }
-  };
-
-  const togglePermission = (perm: BranchStaffPermission) => {
-    setPermValues((prev) =>
-      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]
-    );
-  };
-
-  const savePermissions = async () => {
-    if (!branch || !permMember) return;
-    setPermBusy(true);
-    setPermError(null);
-    try {
-      await staffApi.setPermissions(branch.id, permMember.id, permValues);
-      closePermModal();
-      await load(branch);
-    } catch (err) {
-      setPermError(err instanceof ApiError ? err.message : "Save failed");
-    } finally {
-      setPermBusy(false);
-    }
+    router.push(`/staff/${branch.id}/${member.id}/permissions`);
   };
 
   const permissionLabels = (member: StaffMember): string => {
@@ -315,75 +270,6 @@ export default function StaffPanel() {
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Adding…" : "Add"}
-          </button>
-        </div>
-      </Modal>
-
-      {/* Permissions modal */}
-      <Modal
-        isOpen={isPermOpen}
-        onClose={closePermModal}
-        className="max-w-[640px] p-6 lg:p-8"
-      >
-        <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Permissions — {permMember?.name}
-        </h5>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Grant actions this staff member can perform at the branch.
-        </p>
-
-        {permError && (
-          <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-            {permError}
-          </div>
-        )}
-
-        <div className="mt-6 space-y-6">
-          {BRANCH_STAFF_PERMISSION_MODULES.map((mod) => (
-            <div key={mod.module}>
-              <h6 className="mb-2 text-sm font-semibold text-gray-800 dark:text-white/90">
-                {mod.label}
-              </h6>
-              <div className="space-y-3">
-                {BRANCH_STAFF_PERMISSION_META.filter(
-                  (m) => m.module === mod.module
-                ).map((meta) => (
-                  <div
-                    key={meta.permission}
-                    className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3 dark:border-gray-800"
-                  >
-                    <div>
-                      <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                        {meta.label}
-                      </p>
-                      <p className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
-                        {meta.description}
-                      </p>
-                    </div>
-                    <Checkbox
-                      checked={permValues.includes(meta.permission)}
-                      onChange={() => togglePermission(meta.permission)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={closePermModal}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-          >
-            Close
-          </button>
-          <button
-            onClick={savePermissions}
-            disabled={permBusy}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-          >
-            {permBusy ? "Saving…" : "Save permissions"}
           </button>
         </div>
       </Modal>

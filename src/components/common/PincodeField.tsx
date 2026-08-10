@@ -7,6 +7,7 @@ interface PincodeFieldProps {
   onChange: (value: string) => void;
   onSelect: (po: PostOffice) => void;
   disabled?: boolean;
+  autoValidate?: boolean;
 }
 
 const inputClass =
@@ -17,14 +18,15 @@ export default function PincodeField({
   onChange,
   onSelect,
   disabled,
+  autoValidate = true,
 }: PincodeFieldProps) {
   const { results, loading, error, lookup, clear } = usePincodeLookup();
 
   useEffect(() => {
-    if (value && value.trim().length === 6) {
+    if (autoValidate && value && value.trim().length === 6) {
       lookup(value.trim());
     }
-  }, [value, lookup]);
+  }, [autoValidate, value, lookup]);
 
   return (
     <div>

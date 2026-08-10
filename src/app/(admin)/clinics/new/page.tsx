@@ -11,7 +11,10 @@ export const metadata: Metadata = {
 export default function NewClinicPage() {
   return (
     <div>
-      <PageBreadcrumb pageTitle="New Clinic" />
+      <PageBreadcrumb
+        pageTitle="New Clinic"
+        items={[{ label: "Clinics", href: "/clinics" }]}
+      />
       <ClinicForm mode="create" />
     </div>
   );
