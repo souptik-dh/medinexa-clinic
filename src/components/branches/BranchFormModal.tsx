@@ -222,25 +222,7 @@ export default function BranchFormModal({
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Latitude">
-            <input
-              type="number"
-              step="any"
-              value={values.lat}
-              onChange={(e) => set({ lat: e.target.value })}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Longitude">
-            <input
-              type="number"
-              step="any"
-              value={values.lng}
-              onChange={(e) => set({ lng: e.target.value })}
-              className={inputClass}
-            />
-          </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Timezone *">
             <input
               type="text"
