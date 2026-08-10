@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
+import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import { formatDate } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
@@ -27,6 +28,7 @@ export default function BranchesPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selected, setSelected] = useState<Clinic | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +83,11 @@ export default function BranchesPanel() {
       loadBranches(selected.id);
     }
   }, [selected, loadBranches]);
+
+  useEffect(() => {
+    // clear selected branch when clinic selection changes
+    setSelectedBranch(null);
+  }, [selected?.id]);
 
   const openCreate = () => {
     setModalMode("create");
@@ -246,12 +253,17 @@ export default function BranchesPanel() {
                   {branches.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="py-3">
-                        <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                          {b.name}
-                        </p>
-                        <span className="text-gray-400 text-theme-xs dark:text-gray-500">
-                          {b.timezone}
-                        </span>
+                        <button
+                          onClick={() => setSelectedBranch(b)}
+                          className="text-left hover:text-brand-500"
+                        >
+                          <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                            {b.name}
+                          </p>
+                          <span className="text-gray-400 text-theme-xs dark:text-gray-500">
+                            {b.timezone}
+                          </span>
+                        </button>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.address}
@@ -289,6 +301,13 @@ export default function BranchesPanel() {
           )}
         </div>
       </div>
+
+      {/* Branch gallery */}
+      {selectedBranch && (
+        <div className="mt-6">
+          <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+        </div>
+      )}
 
       {/* Create / edit modal */}
       <BranchFormModal
