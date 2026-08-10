@@ -1,0 +1,283 @@
+"use client";
+import React, { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import PincodeField from "@/components/common/PincodeField";
+import { PostOffice } from "@/hooks/usePincodeLookup";
+import { ApiError, branchesApi, clinicsApi } from "@/lib/api";
+
+interface BranchFormProps {
+  mode: "create" | "edit";
+}
+
+const inputClass =
+  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+
+export default function BranchForm({ mode }: BranchFormProps) {
+  const router = useRouter();
+  const params = useParams<{ clinicId?: string; branchId?: string }>();
+  const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
+  const branchId = typeof params.branchId === "string" ? params.branchId : "";
+  const isEdit = mode === "edit";
+
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [timezone, setTimezone] = useState("Asia/Kolkata");
+  const [nearbyLocation, setNearbyLocation] = useState("");
+  const [city, setCity] = useState("");
+  const [district, setDistrict] = useState("");
+  const [pinCode, setPinCode] = useState("");
+  const [stateField, setStateField] = useState("");
+  const [postOffice, setPostOffice] = useState("");
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
+  const [clinicName, setClinicName] = useState("");
+  const [loading, setLoading] = useState(isEdit);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!clinicId) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    clinicsApi
+      .get(clinicId)
+      .then((c) => {
+        if (active) setClinicName(c.name);
+      })
+      .catch(() => {});
+
+    if (isEdit && branchId) {
+      branchesApi
+        .list(clinicId)
+        .then((res) => {
+          if (!active) return;
+          const b = res.items.find((x) => x.id === branchId);
+          if (!b) {
+            setError("Branch not found.");
+            return;
+          }
+          setName(b.name);
+          setAddress(b.address);
+          setPhone(b.phone);
+          setTimezone(b.timezone);
+          setNearbyLocation(b.nearby_location ?? "");
+          setCity(b.city ?? "");
+          setDistrict(b.district ?? "");
+          setPinCode(b.pin_code ?? "");
+          setStateField(b.state ?? "");
+          setPostOffice(b.post_office ?? "");
+          setLat(b.lat !== null && b.lat !== undefined ? String(b.lat) : "");
+          setLng(b.lng !== null && b.lng !== undefined ? String(b.lng) : "");
+        })
+        .catch((err) => {
+          if (active)
+            setError(
+              err instanceof ApiError ? err.message : "Failed to load branch"
+            );
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [isEdit, clinicId, branchId]);
+
+  const onSelectPostOffice = (po: PostOffice) => {
+    setPinCode(po.Pincode);
+    setDistrict(po.District);
+    setStateField(po.State);
+    setPostOffice(po.Name);
+    if (!address) setAddress(po.Name);
+  };
+
+  const submit = async () => {
+    if (!name || !address || !phone || !timezone) {
+      setError("Name, address, phone and timezone are required.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const input = {
+        name,
+        address,
+        phone,
+        timezone,
+        nearby_location: nearbyLocation || null,
+        city: city || null,
+        district: district || null,
+        pin_code: pinCode || null,
+        state: stateField || null,
+        post_office: postOffice || null,
+        lat: lat === "" ? null : Number(lat),
+        lng: lng === "" ? null : Number(lng),
+      };
+      if (isEdit) {
+        await branchesApi.update(branchId, input);
+      } else {
+        await branchesApi.create(clinicId, input);
+      }
+      router.push("/clinics");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+          {isEdit ? "Edit branch" : "Create branch"}
+          {clinicName && (
+            <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+              — {clinicName}
+            </span>
+          )}
+        </h3>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {isEdit
+            ? "Update this branch&apos;s contact and address details."
+            : "Add a new branch to the selected clinic."}
+        </p>
+
+        {loading ? (
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Loading…
+          </p>
+        ) : (
+          <div className="mt-6 space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Name *">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Phone *">
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <Field label="Address *">
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Pincode">
+              <PincodeField
+                value={pinCode}
+                onChange={setPinCode}
+                onSelect={onSelectPostOffice}
+              />
+            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Field label="Nearby location">
+                <input
+                  type="text"
+                  value={nearbyLocation}
+                  onChange={(e) => setNearbyLocation(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="City">
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="District">
+                <input
+                  type="text"
+                  value={district}
+                  onChange={(e) => setDistrict(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="State">
+                <input
+                  type="text"
+                  value={stateField}
+                  onChange={(e) => setStateField(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Post office">
+                <input
+                  type="text"
+                  value={postOffice}
+                  onChange={(e) => setPostOffice(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <Field label="Timezone *">
+              <input
+                type="text"
+                value={timezone}
+                disabled
+                onChange={(e) => setTimezone(e.target.value)}
+                className={`${inputClass} disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-500 dark:disabled:bg-gray-800`}
+              />
+            </Field>
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            onClick={() => router.push("/clinics")}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy || loading || !name || !address || !phone}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          >
+            {busy ? "Saving…" : isEdit ? "Save changes" : "Create branch"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}

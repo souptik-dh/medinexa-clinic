@@ -1,10 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
-import BranchFormModal, {
-  BranchFormValues,
-  branchFormFrom,
-} from "@/components/branches/BranchFormModal";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import {
   Table,
@@ -13,8 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Modal } from "@/components/ui/modal";
-import { useModal } from "@/hooks/useModal";
 import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
@@ -29,9 +24,6 @@ import {
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
-  const [pincodeResults, setPincodeResults] = useState<any[]>([]);
-  const [pincodeLoading, setPincodeLoading] = useState(false);
-  const [pincodeError, setPincodeError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Clinic | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
@@ -43,36 +35,13 @@ export default function ClinicsPanel() {
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
   const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
-  
+
   const canCreate = isAdmin || canCreateClinic(userPermissions);
   const canDelete = isAdmin || canDeleteClinic(userPermissions);
   const canUpdate = isAdmin || canUpdateClinic(userPermissions);
   const canBranchCreate = isAdmin || canCreateBranch(userPermissions);
   const canBranchDelete = isAdmin || canDeleteBranch(userPermissions);
   const canBranchUpdate = isAdmin || canUpdateBranch(userPermissions);
-
-  const [modalMode, setModalMode] = useState<"clinic" | "branch" | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState("");
-  const [timezone, setTimezone] = useState("Asia/Kolkata");
-  const [pinCode, setPinCode] = useState("");
-  const [nearbyLocation, setNearbyLocation] = useState("");
-  const [city, setCity] = useState("");
-  const [district, setDistrict] = useState("");
-  const [stateField, setStateField] = useState("");
-  const [postOffice, setPostOffice] = useState("");
-  const { isOpen, openModal, closeModal } = useModal();
-
-  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [editValues, setEditValues] = useState<BranchFormValues>(branchFormFrom({
-    name: "",
-    address: "",
-    phone: "",
-    timezone: "Asia/Kolkata",
-  }));
-  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,100 +79,6 @@ export default function ClinicsPanel() {
     }
   }, [selected, loadBranches]);
 
-  const openCreate = (mode: "clinic" | "branch") => {
-    setModalMode(mode);
-    setName("");
-    setDescription("");
-    setAddress("");
-    setPhone("");
-    setTimezone("Asia/Kolkata");
-    setPinCode("");
-    setNearbyLocation("");
-    setCity("");
-    setDistrict("");
-    setStateField("");
-    setPostOffice("");
-    setPincodeResults([]);
-    setPincodeError(null);
-    openModal();
-  };
-
-  const create = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      if (modalMode === "clinic") {
-        await clinicsApi.create({
-          name,
-          description: description || null,
-          nearby_location: nearbyLocation || null,
-          city: city || null,
-          district: district || null,
-          pin_code: pinCode || null,
-          state: stateField || null,
-          post_office: postOffice || null,
-          // address still sent for compatibility
-          address: address || null,
-        });
-      } else {
-        if (!selected) return;
-        await branchesApi.create(selected.id, {
-          name,
-          address,
-          phone,
-          timezone,
-          nearby_location: nearbyLocation || null,
-          city: city || null,
-          district: district || null,
-          pin_code: pinCode || null,
-          state: stateField || null,
-          post_office: postOffice || null,
-          lat: undefined,
-          lng: undefined,
-        });
-      }
-      closeModal();
-      await load();
-      if (modalMode === "branch" && selected) {
-        await loadBranches(selected.id);
-      }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Create failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const lookupPincode = async (code: string) => {
-    if (!code) return;
-    setPincodeLoading(true);
-    setPincodeError(null);
-    try {
-      const res = await branchesApi.lookupPincode(code);
-      const first = res && res.length > 0 ? res[0] : null;
-      if (!first || !first.PostOffice) {
-        setPincodeResults([]);
-        setPincodeError("No post offices found for this pincode");
-      } else {
-        setPincodeResults(first.PostOffice);
-      }
-    } catch (err) {
-      setPincodeResults([]);
-      setPincodeError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPincodeLoading(false);
-    }
-  };
-
-  const selectPostOffice = (po: any) => {
-    setPinCode(po.Pincode);
-    setDistrict(po.District);
-    setStateField(po.State);
-    setPostOffice(po.Name);
-    if (!address) setAddress(po.Name);
-    setPincodeResults([]);
-  };
-
   const removeClinic = async (clinic: Clinic) => {
     if (!window.confirm(`Delete clinic "${clinic.name}"? Active appointments must be handled first.`)) return;
     setBusy(true);
@@ -232,41 +107,6 @@ export default function ClinicsPanel() {
     }
   };
 
-  const openEditBranch = (branch: Branch) => {
-    setEditingBranch(branch);
-    setEditValues(branchFormFrom(branch));
-    setError(null);
-    setIsEditOpen(true);
-  };
-
-  const submitEditBranch = async () => {
-    if (!editingBranch) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await branchesApi.update(editingBranch.id, {
-        name: editValues.name,
-        address: editValues.address,
-        phone: editValues.phone,
-        timezone: editValues.timezone,
-        nearby_location: editValues.nearbyLocation || null,
-        city: editValues.city || null,
-        district: editValues.district || null,
-        pin_code: editValues.pinCode || null,
-        state: editValues.state || null,
-        post_office: editValues.postOffice || null,
-        lat: editValues.lat === "" ? null : Number(editValues.lat),
-        lng: editValues.lng === "" ? null : Number(editValues.lng),
-      });
-      setIsEditOpen(false);
-      if (selected) await loadBranches(selected.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div>
       {error && (
@@ -283,13 +123,12 @@ export default function ClinicsPanel() {
               Clinics
             </h3>
             {canCreate && (
-              <button
-                onClick={() => openCreate("clinic")}
-                disabled={busy}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              <Link
+                href="/clinics/new"
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
                 + New clinic
-              </button>
+              </Link>
             )}
           </div>
           {loading ? (
@@ -341,6 +180,14 @@ export default function ClinicsPanel() {
               )}
             </h3>
             <div className="flex items-center gap-2">
+              {canUpdate && selected && (
+                <Link
+                  href={`/clinics/${selected.id}/edit`}
+                  className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                >
+                  Edit clinic
+                </Link>
+              )}
               {canDelete && (
                 <button
                   onClick={() => selected && removeClinic(selected)}
@@ -350,14 +197,13 @@ export default function ClinicsPanel() {
                   Delete clinic
                 </button>
               )}
-              {canBranchCreate && (
-                <button
-                  onClick={() => openCreate("branch")}
-                  disabled={busy || !selected}
-                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              {canBranchCreate && selected && (
+                <Link
+                  href={`/clinics/${selected.id}/branches/new`}
+                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
                 >
                   + New branch
-                </button>
+                </Link>
               )}
             </div>
           </div>
@@ -417,13 +263,12 @@ export default function ClinicsPanel() {
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
                           {canBranchUpdate && (
-                            <button
-                              onClick={() => openEditBranch(b)}
-                              disabled={busy}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
                               Edit
-                            </button>
+                            </Link>
                           )}
                           {canBranchDelete && (
                             <button
@@ -451,176 +296,6 @@ export default function ClinicsPanel() {
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
         </div>
       )}
-
-      {/* Create modal */}
-      <Modal isOpen={isOpen && !!modalMode} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">
-        <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          {modalMode === "clinic" ? "Create clinic" : "Create branch"}
-        </h5>
-        <div className="mt-6 space-y-4">
-          <Field label="Name *">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
-          </Field>
-          {modalMode === "clinic" ? (
-            <>
-              <Field label="Description">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
-              </Field>
-              <Field label="Address">
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
-              </Field>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Field label="Nearby location">
-                  <input
-                    type="text"
-                    value={nearbyLocation}
-                    onChange={(e) => setNearbyLocation(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  />
-                </Field>
-                <Field label="City">
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  />
-                </Field>
-                <Field label="Pincode">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={pinCode}
-                      onChange={(e) => setPinCode(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                    />
-                    <button
-                      onClick={() => lookupPincode(pinCode)}
-                      disabled={pincodeLoading || !pinCode}
-                      className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-                    >
-                      {pincodeLoading ? "Checking…" : "Validate"}
-                    </button>
-                  </div>
-                  {pincodeError && (
-                    <p className="mt-2 text-xs text-error-600">{pincodeError}</p>
-                  )}
-                  {pincodeResults.length > 0 && (
-                    <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
-                      {pincodeResults.map((po) => (
-                        <button
-                          key={po.Name + po.BranchType}
-                          onClick={() => selectPostOffice(po)}
-                          className="w-full text-left px-2 py-1 text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03]"
-                        >
-                          <div className="font-medium">{po.Name}</div>
-                          <div className="text-xs text-gray-500">{po.BranchType} — {po.District}, {po.State}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </Field>
-                <Field label="District">
-                  <input
-                    type="text"
-                    value={district}
-                    onChange={(e) => setDistrict(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  />
-                </Field>
-                <Field label="State">
-                  <input
-                    type="text"
-                    value={stateField}
-                    onChange={(e) => setStateField(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  />
-                </Field>
-              </div>
-            </>
-          ) : (
-            <>
-              <Field label="Address *">
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
-              </Field>
-              <Field label="Phone *">
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
-              </Field>
-              <Field label="Timezone *">
-                <input
-                  type="text"
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
-              </Field>
-            </>
-          )}
-        </div>
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={closeModal}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-          >
-            Close
-          </button>
-          <button
-            onClick={create}
-            disabled={busy || !name || (modalMode === "branch" && (!address || !phone))}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-          >
-            {busy ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </Modal>
-
-      {/* Edit branch modal */}
-      <BranchFormModal
-        isOpen={isEditOpen}
-        onClose={() => setIsEditOpen(false)}
-        mode="edit"
-        clinicName={selected?.name}
-        values={editValues}
-        onChange={setEditValues}
-        busy={busy}
-        onSubmit={submitEditBranch}
-      />
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-        {label}
-      </label>
-      {children}
     </div>
   );
 }

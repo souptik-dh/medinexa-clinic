@@ -281,10 +281,12 @@ export interface Clinic {
   id: string;
   name: string;
   description: string | null;
-  address?: string | null;
-  pincode?: string | null;
+  nearby_location?: string | null;
+  city?: string | null;
   district?: string | null;
+  pin_code?: string | null;
   state?: string | null;
+  post_office?: string | null;
   branch_count?: number;
   owner_id?: string;
   created_at: string;
@@ -296,9 +298,12 @@ export interface Branch {
   name: string;
   address: string;
   phone: string;
-  pincode?: string | null;
+  nearby_location?: string | null;
+  city?: string | null;
   district?: string | null;
+  pin_code?: string | null;
   state?: string | null;
+  post_office?: string | null;
   lat: number | null;
   lng: number | null;
   timezone: string;
@@ -319,9 +324,12 @@ export interface BranchCreateInput {
   name: string;
   address: string;
   phone: string;
-  pincode?: string | null;
+  nearby_location?: string | null;
+  city?: string | null;
   district?: string | null;
+  pin_code?: string | null;
   state?: string | null;
+  post_office?: string | null;
   lat?: number | null;
   lng?: number | null;
   timezone: string;
@@ -596,7 +604,7 @@ export const clinicsApi = {
     );
   },
 
-  async create(input: { name: string; description?: string | null; address?: string | null; pincode?: string | null; district?: string | null; state?: string | null }): Promise<Clinic> {
+  async create(input: { name: string; description?: string | null; address?: string | null; nearby_location?: string | null; city?: string | null; district?: string | null; pin_code?: string | null; state?: string | null; post_office?: string | null }): Promise<Clinic> {
     return apiFetch<Clinic>("/clinics", {
       method: "POST",
       body: JSON.stringify(input),
@@ -607,12 +615,13 @@ export const clinicsApi = {
     return apiFetch<Clinic>(`/clinics/${id}`);
   },
 
-  async update(id: string, input: { name?: string; description?: string | null; address?: string | null; pincode?: string | null; district?: string | null; state?: string | null }): Promise<Clinic> {
+  async update(id: string, input: { name?: string; description?: string | null; address?: string | null; nearby_location?: string | null; city?: string | null; district?: string | null; pin_code?: string | null; state?: string | null; post_office?: string | null }): Promise<Clinic> {
     return apiFetch<Clinic>(`/clinics/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     });
   },
+
 
   async remove(id: string, force = false): Promise<void> {
     return apiFetch<void>(`/clinics/${id}${force ? "?force=true" : ""}`, {
@@ -643,6 +652,7 @@ export const branchesApi = {
       body: JSON.stringify(input),
     });
   },
+
 
   // Postal pincode lookup using India Post public API
   async lookupPincode(pincode: string): Promise<{

@@ -1,11 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
-import BranchFormModal, {
-  BranchFormValues,
-  branchFormFrom,
-  emptyBranchForm,
-} from "@/components/branches/BranchFormModal";
 import {
   Table,
   TableBody,
@@ -37,15 +33,10 @@ export default function BranchesPanel() {
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
   const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
-  
+
   const canCreate = isAdmin || canCreateBranch(userPermissions);
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
-
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-  const [editing, setEditing] = useState<Branch | null>(null);
-  const [values, setValues] = useState<BranchFormValues>(emptyBranchForm());
-  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,55 +79,6 @@ export default function BranchesPanel() {
     // clear selected branch when clinic selection changes
     setSelectedBranch(null);
   }, [selected?.id]);
-
-  const openCreate = () => {
-    setModalMode("create");
-    setEditing(null);
-    setValues(emptyBranchForm());
-    setError(null);
-    setIsFormOpen(true);
-  };
-
-  const openEdit = (branch: Branch) => {
-    setModalMode("edit");
-    setEditing(branch);
-    setValues(branchFormFrom(branch));
-    setError(null);
-    setIsFormOpen(true);
-  };
-
-  const submit = async () => {
-    if (!selected) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const input = {
-        name: values.name,
-        address: values.address,
-        phone: values.phone,
-        timezone: values.timezone,
-        nearby_location: values.nearbyLocation || null,
-        city: values.city || null,
-        district: values.district || null,
-        pin_code: values.pinCode || null,
-        state: values.state || null,
-        post_office: values.postOffice || null,
-        lat: values.lat === "" ? null : Number(values.lat),
-        lng: values.lng === "" ? null : Number(values.lng),
-      };
-      if (modalMode === "create") {
-        await branchesApi.create(selected.id, input);
-      } else if (editing) {
-        await branchesApi.update(editing.id, input);
-      }
-      setIsFormOpen(false);
-      await loadBranches(selected.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const removeBranch = async (branch: Branch) => {
     if (!window.confirm(`Delete branch "${branch.name}"? Active appointments must be handled first.`)) return;
@@ -214,14 +156,13 @@ export default function BranchesPanel() {
                 </span>
               )}
             </h3>
-            {canCreate && (
-              <button
-                onClick={openCreate}
-                disabled={busy || !selected}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            {canCreate && selected && (
+              <Link
+                href={`/clinics/${selected.id}/branches/new`}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
                 + New branch
-              </button>
+              </Link>
             )}
           </div>
           {!selected ? (
@@ -280,13 +221,12 @@ export default function BranchesPanel() {
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
                           {canUpdate && (
-                            <button
-                              onClick={() => openEdit(b)}
-                              disabled={busy}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
                               Edit
-                            </button>
+                            </Link>
                           )}
                           {canDelete && (
                             <button
@@ -314,18 +254,6 @@ export default function BranchesPanel() {
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
         </div>
       )}
-
-      {/* Create / edit modal */}
-      <BranchFormModal
-        isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
-        mode={modalMode}
-        clinicName={selected?.name}
-        values={values}
-        onChange={setValues}
-        busy={busy}
-        onSubmit={submit}
-      />
     </div>
   );
 }

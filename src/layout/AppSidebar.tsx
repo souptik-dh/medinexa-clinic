@@ -116,29 +116,24 @@ const AppSidebar: React.FC = () => {
 
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const isStaff = user?.role === "branch_staff";
-
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const mainItems = React.useMemo(
-    () =>
-      navItems.filter((item) => {
-        switch (item.name) {
-          case "Clinics":
-            return isOwner;
-          case "Branches":
-            return isOwner;
-          case "Staff":
-            return isOwner || can("staff:manage");
-          case "Doctors":
-            return isOwner || can("doctors:manage");
-          case "Appointments":
-            return isOwner || canAccessAppointments(user?.permissions);
-          case "Calendar":
-            return isOwner || canAccessAppointments(user?.permissions);
-          default:
-            return true;
-        }
-      }),
-    [isOwner, can, user]
-  );
+  () =>
+    navItems.filter((item) => {
+      if (!mounted) return true; // render full list on server + first client pass
+      switch (item.name) {
+        case "Clinics": return isOwner;
+        case "Branches": return isOwner;
+        case "Staff": return isOwner || can("staff:manage");
+        case "Doctors": return isOwner || can("doctors:manage");
+        case "Appointments": return isOwner || canAccessAppointments(user?.permissions);
+        case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
+        default: return true;
+      }
+    }),
+  [mounted, isOwner, can, user]
+);
   const showOthers = isOwner || !isStaff;
 
   const renderMenuItems = (

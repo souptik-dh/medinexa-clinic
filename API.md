@@ -405,7 +405,12 @@ Auth: `clinic_owner`.
 ```json
 {
   "name": "Sunrise Multispeciality",
-  "description": "General & cardiac care"
+  "description": "General & cardiac care",
+  "nearby_location": "Near SV Road Bridge",
+  "city": "Mumbai",
+  "district": "Mumbai Suburban",
+  "pin_code": "400058",
+  "state": "Maharashtra"
 }
 ```
 
@@ -416,6 +421,11 @@ Auth: `clinic_owner`.
   "id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
   "name": "Sunrise Multispeciality",
   "description": "General & cardiac care",
+  "nearby_location": null,
+  "city": null,
+  "district": null,
+  "pin_code": null,
+  "state": null,
   "owner_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "created_at": "2026-08-09T10:00:00.000Z"
 }
