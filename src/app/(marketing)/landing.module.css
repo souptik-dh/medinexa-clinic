@@ -1,0 +1,339 @@
+/* Scoped under .page so these rules never leak into the authenticated app,
+   which relies on Tailwind utility classes for all of its own typography. */
+.page {
+  --primary-color: #465fff;
+  --primary-hover: #3641f5;
+  --secondary-color: #0f172a;
+  --bg-light: #f8fafc;
+  --bg-banner: #0f172a;
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --card-border: #e2e8f0;
+  --max-width: 1200px;
+
+  color: var(--text-main);
+  background-color: #ffffff;
+  line-height: 1.6;
+}
+
+.page * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.page h1,
+.page h2 {
+  line-height: 1.2;
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+
+.page h1 {
+  font-size: 2.75rem;
+}
+
+.page h2 {
+  font-size: 2rem;
+}
+
+.page p {
+  color: var(--text-muted);
+}
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.textCenter {
+  text-align: center;
+}
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 0.65rem 1.25rem;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+.btnPrimary:hover {
+  background-color: var(--primary-hover);
+}
+
+.btnSecondary {
+  background-color: #e2e8f0;
+  color: var(--secondary-color);
+}
+.btnSecondary:hover {
+  background-color: #cbd5e1;
+}
+
+.btnTertiary {
+  color: var(--text-main);
+}
+.btnTertiary:hover {
+  color: var(--primary-color);
+}
+
+.btnLight {
+  background-color: #ffffff;
+  color: var(--secondary-color);
+}
+.btnLight:hover {
+  background-color: #f1f5f9;
+}
+
+.btnLg {
+  padding: 0.85rem 1.75rem;
+  font-size: 1rem;
+}
+
+/* Navigation */
+.navbar {
+  border-bottom: 1px solid var(--card-border);
+  padding: 1rem 0;
+  position: sticky;
+  top: 0;
+  background: #ffffff;
+  z-index: 100;
+}
+
+.navContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.brandLogo {
+  font-size: 1.4rem;
+  font-weight: bold;
+  text-decoration: none;
+  color: var(--secondary-color);
+}
+
+.logoAccent {
+  color: var(--primary-color);
+}
+
+.navLinks a {
+  margin: 0 1rem;
+  text-decoration: none;
+  color: var(--text-main);
+  font-weight: 500;
+}
+.navLinks a:hover {
+  color: var(--primary-color);
+}
+
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Hero Section */
+.hero {
+  padding: 5rem 0;
+  background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
+  text-align: center;
+}
+
+.heroContent {
+  max-width: 800px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 50px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.heroSubtext {
+  font-size: 1.2rem;
+  margin-bottom: 2rem;
+}
+
+.heroButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* Health Grid Cards */
+.healthGrid {
+  padding: 4rem 0;
+}
+
+.sectionHeader {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.gridCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.card {
+  padding: 2rem;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: #ffffff;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+}
+
+.cardIcon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.card h3 {
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.cardLink {
+  display: inline-block;
+  margin-top: 1rem;
+  color: var(--primary-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+/* Custom Solutions Banner */
+.customSolutions {
+  background-color: var(--bg-banner);
+  color: #ffffff;
+  padding: 3.5rem 0;
+  margin: 3rem 0;
+}
+
+.customSolutions p {
+  color: #94a3b8;
+}
+
+.customContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.customText {
+  max-width: 700px;
+}
+
+/* App Suite */
+.appSuite {
+  padding: 4rem 0;
+  background-color: var(--bg-light);
+}
+
+.suiteGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+}
+
+.suiteItem {
+  background: #ffffff;
+  padding: 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+}
+
+/* Security Section */
+.securitySection {
+  padding: 4rem 0;
+}
+
+.badgesRow {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.badgeItem {
+  border: 1px solid var(--card-border);
+  padding: 1rem 1.75rem;
+  border-radius: 8px;
+  font-weight: 700;
+  background-color: var(--bg-light);
+  color: var(--secondary-color);
+}
+
+/* Final CTA */
+.finalCta {
+  padding: 4rem 0;
+  background: #f0f7ff;
+}
+
+.finalCta h2 {
+  margin-bottom: 0.5rem;
+}
+
+.finalCta p {
+  margin-bottom: 1.5rem;
+}
+
+/* Footer */
+.siteFooter {
+  border-top: 1px solid var(--card-border);
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+
+.footerContent {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footerLinks a {
+  margin-left: 1rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .page h1 {
+    font-size: 2rem;
+  }
+  .navLinks {
+    display: none;
+  }
+  .customContent {
+    flex-direction: column;
+    text-align: center;
+  }
+  .footerContent {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+}

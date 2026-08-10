@@ -5,16 +5,18 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
-import { canAccessAppointments } from "@/lib/permissions";
+import { canAccessAppointments, canViewPatients } from "@/lib/permissions";
 import {
   BoxCubeIcon,
   CalenderIcon,
   ChevronDownIcon,
   DocsIcon,
+  DollarLineIcon,
   GridIcon,
   GroupIcon,
   HorizontaLDots,
   ListIcon,
+  PageIcon,
   PieChartIcon,
   PlugInIcon,
   TableIcon,
@@ -34,7 +36,7 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
-    path: "/",
+    path: "/dashboard",
   },
   {
     icon: <CalenderIcon />,
@@ -65,6 +67,16 @@ const navItems: NavItem[] = [
     icon: <UserIcon />,
     name: "Doctors",
     path: "/doctors",
+  },
+  {
+    icon: <PageIcon />,
+    name: "Patients",
+    path: "/patients",
+  },
+  {
+    icon: <DollarLineIcon />,
+    name: "Payment Ledger",
+    path: "/ledger",
   },
   {
     icon: <DocsIcon />,
@@ -127,6 +139,8 @@ const AppSidebar: React.FC = () => {
         case "Branches": return isOwner;
         case "Staff": return isOwner || can("staff:manage");
         case "Doctors": return isOwner || can("doctors:manage");
+        case "Patients": return isOwner || canViewPatients(user?.permissions);
+        case "Payment Ledger": return isOwner;
         case "Appointments": return isOwner || canAccessAppointments(user?.permissions);
         case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
         default: return true;
@@ -340,7 +354,7 @@ const AppSidebar: React.FC = () => {
           !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
         }`}
       >
-        <Link href="/">
+        <Link href="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
             <>
               <Image
@@ -397,13 +411,13 @@ const AppSidebar: React.FC = () => {
                       : "justify-start"
                   }`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? (
+                  {/* {isExpanded || isHovered || isMobileOpen ? (
                     "Others"
                   ) : (
                     <HorizontaLDots />
-                  )}
+                  )} */}
                 </h2>
-                {renderMenuItems(othersItems, "others")}
+                {/* {renderMenuItems(othersItems, "others")} */}
               </div>
             )}
           </div>

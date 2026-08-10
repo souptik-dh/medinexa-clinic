@@ -5,9 +5,9 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Next.js Avatars | TailAdmin - Next.js Dashboard Template",
+  title: Medinexa Avatars ",
   description:
-    "This is Next.js Avatars page for TailAdmin - Next.js Tailwind CSS Admin Dashboard Template",
+    "This is Next.js Avatars page for  - Next.js Tailwind CSS Admin Dashboard Template",
 };
 
 export default function AvatarPage() {

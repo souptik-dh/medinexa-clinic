@@ -605,6 +605,35 @@ export interface MedicalDocument {
   uploaded_at: string;
 }
 
+export interface Patient {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  address: string | null;
+  photo_url: string | null;
+  visit_count: number;
+  is_new_patient: boolean;
+  first_visit_date: string;
+  last_visit_date: string;
+}
+
+export interface PatientListResponse {
+  items: Patient[];
+  has_more: boolean;
+}
+
+export interface LedgerEntry {
+  id: string;
+  branch_id: string;
+  branch_name: string;
+  period_month: string;
+  currency: string;
+  total_amount: number;
+  payment_count: number;
+  updated_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
@@ -1169,5 +1198,44 @@ export const medicalDocumentsApi = {
 
   async remove(id: string): Promise<void> {
     return apiFetch<void>(`/medical-documents/${id}`, { method: "DELETE" });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Patients
+// ---------------------------------------------------------------------------
+
+export interface PatientListParams {
+  search?: string;
+  type?: "new" | "old";
+  limit?: number;
+  offset?: number;
+}
+
+export const patientsApi = {
+  async listByBranch(
+    branchId: string,
+    params: PatientListParams = {}
+  ): Promise<PatientListResponse> {
+    return apiFetch<PatientListResponse>(
+      `/branches/${branchId}/patients${query({
+        search: params.search,
+        type: params.type,
+        limit: params.limit,
+        offset: params.offset,
+      })}`
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Payment ledger
+// ---------------------------------------------------------------------------
+
+export const ledgerApi = {
+  async list(clinicId: string, month?: string): Promise<{ items: LedgerEntry[] }> {
+    return apiFetch<{ items: LedgerEntry[] }>(
+      `/clinics/${clinicId}/ledger${query({ month })}`
+    );
   },
 };
