@@ -115,6 +115,12 @@ export default function BranchesPanel() {
         address: values.address,
         phone: values.phone,
         timezone: values.timezone,
+        nearby_location: values.nearbyLocation || null,
+        city: values.city || null,
+        district: values.district || null,
+        pin_code: values.pinCode || null,
+        state: values.state || null,
+        post_office: values.postOffice || null,
         lat: values.lat === "" ? null : Number(values.lat),
         lng: values.lng === "" ? null : Number(values.lng),
       };
