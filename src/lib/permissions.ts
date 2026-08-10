@@ -5,6 +5,7 @@ export const BRANCH_STAFF_PERMISSIONS = [
   "appointments:cancel",
   "staff:manage",
   "doctors:manage",
+  "patients:view",
   "clinics:manage",
   "clinic:create",
   "clinic:delete",
@@ -30,7 +31,7 @@ export const DEFAULT_BRANCH_STAFF_PERMISSIONS: readonly BranchStaffPermission[] 
 
 export const BRANCH_STAFF_PERMISSION_META: {
   permission: BranchStaffPermission;
-  module: "appointments" | "staff" | "doctors" | "clinics" | "branch";
+  module: "appointments" | "staff" | "doctors" | "patients" | "clinics" | "branch";
   label: string;
   description: string;
 }[] = [
@@ -69,6 +70,12 @@ export const BRANCH_STAFF_PERMISSION_META: {
     module: "doctors",
     label: "Manage doctors",
     description: "Invite, edit, and remove doctors on the branch",
+  },
+  {
+    permission: "patients:view",
+    module: "patients",
+    label: "View patients",
+    description: "View the branch patient list",
   },
   {
     permission: "clinics:manage",
@@ -148,6 +155,7 @@ export const BRANCH_STAFF_PERMISSION_MODULES = [
   { module: "appointments" as const, label: "Appointments" },
   { module: "staff" as const, label: "Staff" },
   { module: "doctors" as const, label: "Doctors" },
+  { module: "patients" as const, label: "Patients" },
   { module: "clinics" as const, label: "Clinics" },
   { module: "branch" as const, label: "Branch" },
 ];
@@ -168,6 +176,12 @@ export function canAccessAppointments(
     hasPermission(permissions, "appointments:complete") ||
     hasPermission(permissions, "appointments:cancel")
   );
+}
+
+export function canViewPatients(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patients:view");
 }
 
 export function canManageClinics(

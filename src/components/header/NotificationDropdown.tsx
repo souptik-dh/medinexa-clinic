@@ -2,19 +2,44 @@
 import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { Notification, notificationsApi } from "@/lib/api";
+import { Notification, NotificationType, notificationsApi } from "@/lib/api";
 import { notificationTypeLabel, timeAgo } from "@/lib/utils";
+
+const POLL_INTERVAL_MS = 30000;
+
+const notificationLink = (type: NotificationType): string => {
+  switch (type) {
+    case "new_booking":
+    case "booking_confirmed":
+    case "appointment_cancelled":
+    case "consultation_completed":
+      return "/appointments";
+    case "payment_received":
+      return "/ledger";
+    case "prescription_ready":
+      return "/prescriptions";
+    case "doctor_invited":
+      return "/doctors/invite";
+    case "doctor_invite_accepted":
+      return "/doctors";
+    default:
+      return "/dashboard";
+  }
+};
 
 export default function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await notificationsApi.list({ limit: 10 });
       setItems(res.items);
+      setUnreadCount(res.unread_count);
     } catch {
       setItems([]);
     } finally {
@@ -24,9 +49,9 @@ export default function NotificationDropdown() {
 
   useEffect(() => {
     load();
+    const interval = setInterval(load, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [load]);
-
-  const unread = items.filter((n) => !n.read_at).length;
 
   function toggleDropdown() {
     setIsOpen((prev) => !prev);
@@ -42,11 +67,29 @@ export default function NotificationDropdown() {
   };
 
   const handleMarkRead = async (id: string) => {
+    const target = items.find((n) => n.id === id);
+    if (!target || target.read_at) return;
     try {
       await notificationsApi.markRead(id);
       setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch {
       // ignore read failures
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (markingAll || unreadCount === 0) return;
+    setMarkingAll(true);
+    try {
+      await notificationsApi.markAllRead();
+      const now = new Date().toISOString();
+      setItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
+      setUnreadCount(0);
+    } catch {
+      // ignore mark-all failures
+    } finally {
+      setMarkingAll(false);
     }
   };
 
@@ -58,7 +101,7 @@ export default function NotificationDropdown() {
       >
         <span
           className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-orange-400 ${
-            !unread ? "hidden" : "flex"
+            !unreadCount ? "hidden" : "flex"
           }`}
         >
           <span className="absolute inline-flex w-full h-full bg-orange-400 rounded-full opacity-75 animate-ping"></span>
@@ -86,31 +129,42 @@ export default function NotificationDropdown() {
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-gray-700">
           <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
             Notification
-            {unread > 0 && (
+            {unreadCount > 0 && (
               <span className="ml-2 rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-medium text-brand-500">
-                {unread} new
+                {unreadCount} new
               </span>
             )}
           </h5>
-          <button
-            onClick={toggleDropdown}
-            className="text-gray-500 transition dropdown-toggle dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-          >
-            <svg
-              className="fill-current"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
+          <div className="flex items-center gap-3">
+            {unreadCount > 0 && (
+              <button
+                onClick={handleMarkAllRead}
+                disabled={markingAll}
+                className="text-xs font-medium text-brand-500 transition hover:text-brand-600 disabled:opacity-50"
+              >
+                Mark all read
+              </button>
+            )}
+            <button
+              onClick={toggleDropdown}
+              className="text-gray-500 transition dropdown-toggle dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             >
-              <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M6.21967 7.28131C5.92678 6.98841 5.92678 6.51354 6.21967 6.22065C6.51256 5.92775 6.98744 5.92775 7.28033 6.22065L11.999 10.9393L16.7176 6.22078C17.0105 5.92789 17.4854 5.92788 17.7782 6.22078C18.0711 6.51367 18.0711 6.98855 17.7782 7.28144L13.0597 12L17.7782 16.7186C18.0711 17.0115 18.0711 17.4863 17.7782 17.7792C17.4854 18.0721 17.0105 18.0721 16.7176 17.7792L11.999 13.0607L7.28033 17.7794C6.98744 18.0722 6.51256 18.0722 6.21967 17.7794C5.92678 17.4865 5.92678 17.0116 6.21967 16.7187L10.9384 12L6.21967 7.28131Z"
-                fill="currentColor"
-              />
-            </svg>
-          </button>
+              <svg
+                className="fill-current"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M6.21967 7.28131C5.92678 6.98841 5.92678 6.51354 6.21967 6.22065C6.51256 5.92775 6.98744 5.92775 7.28033 6.22065L11.999 10.9393L16.7176 6.22078C17.0105 5.92789 17.4854 5.92788 17.7782 6.22078C18.0711 6.51367 18.0711 6.98855 17.7782 7.28144L13.0597 12L17.7782 16.7186C18.0711 17.0115 18.0711 17.4863 17.7782 17.7792C17.4854 18.0721 17.0105 18.0721 16.7176 17.7792L11.999 13.0607L7.28033 17.7794C6.98744 18.0722 6.51256 18.0722 6.21967 17.7794C5.92678 17.4865 5.92678 17.0116 6.21967 16.7187L10.9384 12L6.21967 7.28131Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
         {loading ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
@@ -122,8 +176,12 @@ export default function NotificationDropdown() {
           <ul className="flex flex-col h-auto overflow-y-auto custom-scrollbar">
             {items.map((item) => (
               <li key={item.id}>
-                <button
-                  onClick={() => handleMarkRead(item.id)}
+                <Link
+                  href={notificationLink(item.type)}
+                  onClick={() => {
+                    handleMarkRead(item.id);
+                    closeDropdown();
+                  }}
                   className={`flex w-full gap-3 rounded-lg border-b border-gray-100 p-3 px-4.5 py-3 text-left hover:bg-gray-100 dark:border-gray-800 dark:hover:bg-white/5 ${
                     !item.read_at ? "bg-brand-50 dark:bg-brand-500/10" : ""
                   }`}
@@ -138,13 +196,13 @@ export default function NotificationDropdown() {
                       {timeAgo(item.created_at)}
                     </span>
                   </span>
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
         )}
         <Link
-          href="/"
+          href="/dashboard"
           onClick={closeDropdown}
           className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
         >

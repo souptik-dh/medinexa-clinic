@@ -32,7 +32,7 @@ export default function SignUpForm() {
     setSubmitting(true);
     try {
       await register({ name, email, phone: phone || undefined, password });
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create account");
     } finally {

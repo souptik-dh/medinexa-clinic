@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Staff Permissions | MediBook",
+  title: "Staff Permissions | Medinexa",
   description: "Manage a branch staff member's permissions",
 };
 

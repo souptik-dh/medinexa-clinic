@@ -75,7 +75,7 @@ export default function Dashboard() {
       <div className="rounded-2xl border border-error-500/30 bg-error-50 p-6 text-error-600 dark:bg-error-500/10 dark:text-error-400">
         <p className="font-medium">{error}</p>
         <p className="mt-1 text-sm">
-          Make sure the MediBook API is running at the configured base URL, then try again.
+          Make sure the Medinexa API is running at the configured base URL, then try again.
         </p>
         <button
           onClick={load}

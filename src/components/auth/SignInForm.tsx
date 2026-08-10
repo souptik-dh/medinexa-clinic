@@ -34,7 +34,7 @@ export default function SignInForm() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
     } finally {
@@ -64,7 +64,7 @@ export default function SignInForm() {
     setSubmitting(true);
     try {
       await verifyStaffOtp(staffEmail, otp);
-      router.push("/");
+      router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to verify the OTP");
     } finally {
