@@ -109,7 +109,12 @@ function OwnerBranchPicker({
     clinicsApi
       .list({ limit: 100 })
       .then((res) => {
-        if (active) setClinics(res.items);
+        if (!active) return;
+        setClinics(res.items);
+        if (res.items.length > 0) {
+          setClinicId(res.items[0].id);
+          setLoadingBranches(true);
+        }
       })
       .catch((err) => {
         if (active)
@@ -129,7 +134,11 @@ function OwnerBranchPicker({
     branchesApi
       .list(clinicId)
       .then((res) => {
-        if (active) setBranches(res.items);
+        if (!active) return;
+        setBranches(res.items);
+        if (!value && res.items.length > 0) {
+          onChange(res.items[0]);
+        }
       })
       .catch(() => {
         if (active) {
@@ -143,6 +152,7 @@ function OwnerBranchPicker({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
 
   const onClinicChange = (id: string) => {

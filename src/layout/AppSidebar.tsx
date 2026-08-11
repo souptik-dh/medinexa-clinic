@@ -84,11 +84,11 @@ const navItems: NavItem[] = [
     name: "Prescriptions",
     path: "/prescriptions",
   },
-  {
-    icon: <BellIcon />,
-    name: "Notifications",
-    path: "/notifications",
-  },
+  // {
+  //   icon: <BellIcon />,
+  //   name: "Notifications",
+  //   path: "/notifications",
+  // },
   {
     icon: <UserCircleIcon />,
     name: "Profile",
