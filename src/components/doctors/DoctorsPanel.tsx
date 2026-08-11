@@ -2,7 +2,7 @@
 import React, { useCallback, useState } from "react";
 import Image from "next/image";
 import Badge from "@/components/ui/badge/Badge";
-import BranchSelect from "@/components/branches/BranchSelect";
+import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   Table,
   TableBody,
@@ -15,7 +15,6 @@ import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
-  Branch,
   BranchDoctor,
   DoctorInvite,
   DoctorSearchResult,
@@ -45,7 +44,7 @@ const initials = (name: string): string =>
 export default function DoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
-  const [branch, setBranch] = useState<Branch | null>(null);
+  const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [tab, setTab] = useState<Tab>("doctors");
 
   const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
@@ -74,7 +73,7 @@ export default function DoctorsPanel() {
   } = useModal();
 
   const load = useCallback(
-    async (b: Branch | null, activeTab: Tab) => {
+    async (b: BranchSelectValue | null, activeTab: Tab) => {
       if (!b) {
         setDoctors([]);
         setInvites([]);
@@ -101,7 +100,7 @@ export default function DoctorsPanel() {
     []
   );
 
-  const onBranchChange = (b: Branch | null) => {
+  const onBranchChange = (b: BranchSelectValue | null) => {
     setBranch(b);
     load(b, tab);
   };

@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
-import BranchSelect from "@/components/branches/BranchSelect";
+import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import Badge from "@/components/ui/badge/Badge";
 import {
   Table,
@@ -9,13 +9,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError, Branch, Patient, patientsApi } from "@/lib/api";
+import { ApiError, Patient, patientsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
 export default function PatientsPanel() {
-  const [branch, setBranch] = useState<Branch | null>(null);
+  const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [items, setItems] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
   const [type, setType] = useState<"" | "new" | "old">("");
@@ -26,7 +26,7 @@ export default function PatientsPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (b: Branch | null, nextOffset: number, append: boolean) => {
+    async (b: BranchSelectValue | null, nextOffset: number, append: boolean) => {
       if (!b) {
         setItems([]);
         setHasMore(false);
@@ -61,7 +61,7 @@ export default function PatientsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch, search, type]);
 
-  const onBranchChange = (b: Branch | null) => {
+  const onBranchChange = (b: BranchSelectValue | null) => {
     setBranch(b);
   };
 

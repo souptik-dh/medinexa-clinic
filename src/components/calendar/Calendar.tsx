@@ -119,18 +119,19 @@ const Calendar: React.FC = () => {
               <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
                 Appointment
               </h5>
+            
+            </div>
               <Badge size="sm" color={appointmentStatusColor(selected.status)}>
                 {appointmentStatusLabel(selected.status)}
               </Badge>
-            </div>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {formatDateTime(selected.created_at)}
             </p>
             <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Detail label="Date" value={selected.scheduled_date} />
               <Detail label="Time" value={`${selected.scheduled_time} · ${selected.duration_minutes} min`} />
-              <Detail label="Doctor" value={selected.doctor_id} />
-              <Detail label="Branch" value={selected.branch_id} />
+              <Detail label="Doctor" value={selected.doctor_name ?? selected.doctor_id} />
+              <Detail label="Branch" value={selected.branch_name ?? selected.branch_id} />
               <Detail label="Fee" value={formatCurrency(selected.fee_amount, selected.currency)} />
               <Detail label="Payment" value={selected.payment_method ?? "Not paid"} />
             </dl>

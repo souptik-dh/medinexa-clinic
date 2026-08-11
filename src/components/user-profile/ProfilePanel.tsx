@@ -9,10 +9,11 @@ import { BRANCH_STAFF_PERMISSION_META } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
 export default function ProfilePanel() {
-  const { user, clinic, logout } = useAuth();
+  const { user, clinic, staffClinic, staffBranch, logout } = useAuth();
+  const isBranchStaff = user?.role === "branch_staff";
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isBranchStaff);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,8 +29,12 @@ export default function ProfilePanel() {
   }, []);
 
   useEffect(() => {
+    // branch_staff belongs to exactly one clinic/branch, sourced from
+    // GET /branch-staff/me via AuthContext - the clinics directory (which
+    // lists every clinic in the system) is only relevant to clinic_owner.
+    if (isBranchStaff) return;
     load();
-  }, [load]);
+  }, [load, isBranchStaff]);
 
   const initials = (user?.name ?? "?")
     .split(" ")
@@ -63,7 +68,14 @@ export default function ProfilePanel() {
         <dl className="mt-6 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
           <ProfileRow label="Email" value={user?.email} />
           <ProfileRow label="Phone" value={user?.phone ?? "—"} />
-          <ProfileRow label="Clinics" value={String(clinics.length)} />
+          {isBranchStaff ? (
+            <>
+              <ProfileRow label="Clinic" value={staffClinic?.name ?? "—"} />
+              <ProfileRow label="Branch" value={staffBranch?.name ?? "—"} />
+            </>
+          ) : (
+            <ProfileRow label="Clinics" value={String(clinics.length)} />
+          )}
         </dl>
         <button
           onClick={logout}
@@ -92,53 +104,90 @@ export default function ProfilePanel() {
         </div>
       )}
 
-      {/* Clinics */}
-      <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
-        <div className="mb-5 flex items-center justify-between lg:mb-7">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            My Clinics
+      {isBranchStaff ? (
+        /* Clinic & branch this staff member belongs to */
+        <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
+          <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-7">
+            My Clinic &amp; Branch
           </h3>
-          <a
-            href="/clinics"
-            className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
-          >
-            Manage →
-          </a>
-        </div>
-        {loading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
-        ) : error ? (
-          <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
-        ) : clinics.length === 0 ? (
-          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
-            {clinic
-              ? "Your clinic hasn't been set up yet."
-              : "No clinics found. Create one from the Clinics page."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {clinics.map((c) => (
-              <div
-                key={c.id}
-                className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-semibold text-gray-800 dark:text-white/90">{c.name}</h4>
-                    <p className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
-                      {c.description ?? "No description"}
-                    </p>
-                  </div>
-                  <Badge color="info">{c.branch_count ?? 0} branches</Badge>
+          {!staffClinic || !staffBranch ? (
+            <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
+              Couldn&apos;t load your branch. Try refreshing the page.
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-theme-xs text-gray-400 dark:text-gray-500">Clinic</p>
+                  <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                    {staffClinic.name}
+                  </h4>
                 </div>
-                <p className="mt-4 text-theme-xs text-gray-400 dark:text-gray-500">
-                  Created {formatDate(c.created_at)}
+              </div>
+              <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <p className="text-theme-xs text-gray-400 dark:text-gray-500">Branch</p>
+                <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                  {staffBranch.name}
+                </h4>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {staffBranch.address}
+                </p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {staffBranch.phone}
                 </p>
               </div>
-            ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Clinics */
+        <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
+          <div className="mb-5 flex items-center justify-between lg:mb-7">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+              My Clinics
+            </h3>
+            <a
+              href="/clinics"
+              className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+            >
+              Manage →
+            </a>
           </div>
-        )}
-      </div>
+          {loading ? (
+            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : error ? (
+            <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
+          ) : clinics.length === 0 ? (
+            <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
+              {clinic
+                ? "Your clinic hasn't been set up yet."
+                : "No clinics found. Create one from the Clinics page."}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {clinics.map((c) => (
+                <div
+                  key={c.id}
+                  className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white/90">{c.name}</h4>
+                      <p className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
+                        {c.description ?? "No description"}
+                      </p>
+                    </div>
+                    <Badge color="info">{c.branch_count ?? 0} branches</Badge>
+                  </div>
+                  <p className="mt-4 text-theme-xs text-gray-400 dark:text-gray-500">
+                    Created {formatDate(c.created_at)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import BranchSelect from "@/components/branches/BranchSelect";
+import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError, Branch, StaffMember, staffApi } from "@/lib/api";
+import { ApiError, StaffMember, staffApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
@@ -21,7 +21,7 @@ export default function StaffPanel() {
   const { can } = useAuth();
   const canManage = can("staff:manage");
 
-  const [branch, setBranch] = useState<Branch | null>(null);
+  const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [items, setItems] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export default function StaffPanel() {
   const [email, setEmail] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
 
-  const load = useCallback(async (b: Branch | null) => {
+  const load = useCallback(async (b: BranchSelectValue | null) => {
     if (!b) {
       setItems([]);
       return;
@@ -49,7 +49,7 @@ export default function StaffPanel() {
     }
   }, []);
 
-  const onBranchChange = (b: Branch | null) => {
+  const onBranchChange = (b: BranchSelectValue | null) => {
     setBranch(b);
     load(b);
   };

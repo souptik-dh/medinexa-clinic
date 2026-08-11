@@ -427,6 +427,18 @@ export interface BranchCreateInput {
   clinical_establishment_reg_number?: string | null;
 }
 
+export interface BranchStaffMe {
+  clinic: { id: string; name: string };
+  branch: {
+    id: string;
+    name: string;
+    address: string;
+    phone: string;
+    timezone: string;
+  };
+  permissions: BranchStaffPermission[];
+}
+
 export interface StaffMember {
   id: string;
   branch_id: string;
@@ -918,6 +930,16 @@ export const branchesApi = {
 // ---------------------------------------------------------------------------
 // Branch staff
 // ---------------------------------------------------------------------------
+
+// GET /branch-staff/me is the authoritative source for a logged-in staff
+// member's clinic/branch/permissions - it never trusts a client-supplied
+// clinic_id/branch_id, so the UI should drive the "my branch" view from
+// this instead of letting staff pick a branch out of the full directory.
+export const branchStaffApi = {
+  async me(): Promise<BranchStaffMe> {
+    return apiFetch<BranchStaffMe>("/branch-staff/me");
+  },
+};
 
 export const staffApi = {
   async list(branchId: string): Promise<Paginated<StaffMember>> {

@@ -3,9 +3,10 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { useRouter } from "next/navigation";
 import {
   ApiError,
+  BranchStaffMe,
   Clinic,
   authApi,
-  staffApi,
+  branchStaffApi,
   clearTokens,
   ensureActiveSession,
   getAccessTokenExpiryMs,
@@ -31,9 +32,34 @@ function readStoredClinic(): Clinic | null {
   }
 }
 
+function readStoredStaffBranch(): BranchStaffMe["branch"] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("medinexa.staffBranch");
+    return raw ? (JSON.parse(raw) as BranchStaffMe["branch"]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredStaffClinic(): BranchStaffMe["clinic"] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem("medinexa.staffClinic");
+    return raw ? (JSON.parse(raw) as BranchStaffMe["clinic"]) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface AuthContextValue {
   user: User | null;
   clinic: Clinic | null;
+  // The clinic/branch a branch_staff user is assigned to, sourced from
+  // GET /branch-staff/me rather than any client-supplied id - drives the
+  // "my branch" view so staff can never browse into another branch.
+  staffClinic: BranchStaffMe["clinic"] | null;
+  staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (input: {
@@ -54,11 +80,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(() => getStoredUser());
   const [clinic, setClinic] = useState<Clinic | null>(() => readStoredClinic());
+  const [staffClinic, setStaffClinic] = useState<BranchStaffMe["clinic"] | null>(() =>
+    readStoredStaffClinic()
+  );
+  const [staffBranch, setStaffBranch] = useState<BranchStaffMe["branch"] | null>(() =>
+    readStoredStaffBranch()
+  );
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
       setUser(null);
       setClinic(null);
+      setStaffClinic(null);
+      setStaffBranch(null);
+      window.localStorage.removeItem("medinexa.staffClinic");
+      window.localStorage.removeItem("medinexa.staffBranch");
       router.push("/signin?reason=session_expired");
     });
     return () => setSessionExpiredHandler(null);
@@ -88,6 +124,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (timer) clearTimeout(timer);
     };
   }, [user]);
+
+  // Backfills clinic/branch for a branch_staff session that doesn't have it
+  // yet - either a page refresh of a session from before this existed, or
+  // one where the login-time GET /branch-staff/me call failed transiently.
+  // Without this, such a session would be stuck with no branch until the
+  // user explicitly logs out and back in.
+  useEffect(() => {
+    if (!user || user.role !== "branch_staff" || staffBranch) return;
+    let cancelled = false;
+    branchStaffApi
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setStaffClinic(me.clinic);
+        setStaffBranch(me.branch);
+        window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(me.clinic));
+        window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(me.branch));
+        setUser((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, branch_id: me.branch.id, permissions: me.permissions };
+          setStoredUser(updated);
+          return updated;
+        });
+      })
+      .catch(() => {
+        // Leave staffBranch null; BranchSelect surfaces an explicit
+        // "couldn't load your branch" state until this succeeds.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, staffBranch]);
 
   const persist = useCallback(
     (nextUser: User, nextClinic?: Clinic) => {
@@ -163,17 +231,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await authApi.verifyStaffOtp({ email, otp });
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
 
-    // Ensure branch staff receive their permissions in the client even if the
-    // auth response doesn't include them (some API versions return permissions
-    // in a separate endpoint). Attempt to fetch and merge permissions.
     let userToStore = res.user;
+    let nextStaffClinic: BranchStaffMe["clinic"] | null = null;
+    let nextStaffBranch: BranchStaffMe["branch"] | null = null;
     if (userToStore.role === "branch_staff") {
+      // GET /branch-staff/me is the authoritative source for this staff
+      // member's clinic/branch/permissions - drive the whole "my branch"
+      // view from it rather than trusting the branch_id on the login
+      // response or letting the UI pick a branch out of the full directory.
       try {
-        const perms = await staffApi.getPermissions(userToStore.branch_id!, userToStore.id);
-        userToStore = { ...userToStore, permissions: perms.permissions as BranchStaffPermission[] };
-      } catch (err) {
-        // Non-fatal: continue with whatever permissions (if any) were returned
-        // by the auth response.
+        const me = await branchStaffApi.me();
+        userToStore = { ...userToStore, branch_id: me.branch.id, permissions: me.permissions };
+        nextStaffClinic = me.clinic;
+        nextStaffBranch = me.branch;
+      } catch {
+        // Non-fatal: continue with whatever permissions (if any) were
+        // returned by the auth response; the branch panels will show an
+        // explicit "couldn't load your branch" state until this succeeds.
       }
     }
 
@@ -181,6 +255,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStoredUser(userToStore);
     window.localStorage.removeItem("medinexa.clinic");
     setClinic(null);
+    setStaffClinic(nextStaffClinic);
+    setStaffBranch(nextStaffBranch);
+    if (nextStaffClinic) {
+      window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(nextStaffClinic));
+    } else {
+      window.localStorage.removeItem("medinexa.staffClinic");
+    }
+    if (nextStaffBranch) {
+      window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(nextStaffBranch));
+    } else {
+      window.localStorage.removeItem("medinexa.staffBranch");
+    }
   }, []);
 
   const can = useCallback(
@@ -207,14 +293,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearTokens();
     setStoredUser(null);
     window.localStorage.removeItem("medinexa.clinic");
+    window.localStorage.removeItem("medinexa.staffClinic");
+    window.localStorage.removeItem("medinexa.staffBranch");
     setUser(null);
     setClinic(null);
+    setStaffClinic(null);
+    setStaffBranch(null);
     router.push("/signin");
   }, [router]);
 
   return (
     <AuthContext.Provider
-      value={{ user, clinic, can, login, register, staffLogin, verifyStaffOtp, logout }}
+      value={{
+        user,
+        clinic,
+        staffClinic,
+        staffBranch,
+        can,
+        login,
+        register,
+        staffLogin,
+        verifyStaffOtp,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
