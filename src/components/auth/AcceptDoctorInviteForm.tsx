@@ -31,12 +31,13 @@ export default function AcceptDoctorInviteForm() {
     }
     setSubmitting(true);
     try {
-      await authApi.acceptDoctorInvite({
+      const res = await authApi.acceptDoctorInvite({
         email: email ?? "",
         invite_code: inviteCode,
         password,
         reg_no: regNo.trim() || undefined,
       });
+      setRegNo(res.doctor.reg_no ?? "");
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Unable to accept this invite");
@@ -63,6 +64,12 @@ export default function AcceptDoctorInviteForm() {
               <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
                 Your account is now active. You can sign in from the Medinexa doctor app.
               </div>
+              {regNo && (
+                <div>
+                  <Label>Registration number</Label>
+                  <Input type="text" value={regNo} disabled />
+                </div>
+              )}
             </div>
           ) : !email ? (
             <div className="space-y-5">

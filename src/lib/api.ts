@@ -41,6 +41,7 @@ export interface DoctorInviteAcceptResponse extends AuthTokens {
     id: string;
     name: string;
     specialization: string | null;
+    reg_no: string | null;
     phone: string | null;
     certificate_url: string | null;
     photo_url: string | null;
