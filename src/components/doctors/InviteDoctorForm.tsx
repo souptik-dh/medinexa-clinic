@@ -42,8 +42,8 @@ export default function InviteDoctorForm() {
     setInviteName(doc.name);
     setRegNo(doc.registrationNo);
     setSmcName(doc.council);
-    if (doc.qualification) {
-      setDoctorDegree(doc.qualification);
+    if (doc.doctorDegree) {
+      setDoctorDegree(doc.doctorDegree);
     }
   };
 
@@ -137,7 +137,7 @@ export default function InviteDoctorForm() {
                 </p>
                 <p className="text-theme-xs text-gray-600 dark:text-gray-300">
                   {verified.name} · Reg. {verified.registrationNo} · {verified.council}
-                  {verified.qualification ? ` · ${verified.qualification}` : ""}
+                  {verified.doctorDegree ? ` · ${verified.doctorDegree}` : ""}
                 </p>
               </div>
               <button
@@ -165,13 +165,13 @@ export default function InviteDoctorForm() {
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
             </Field>
             <Field label="Registration no.">
-              <input type="text" value={regNo} onChange={(e) => setRegNo(e.target.value)} className={inputClass} />
+              <input type="text" value={regNo} disabled className={inputClass} />
             </Field>
             <Field label="State medical council">
-              <input type="text" value={smcName} onChange={(e) => setSmcName(e.target.value)} className={inputClass} />
+              <input type="text" value={smcName} disabled className={inputClass} />
             </Field>
             <Field label="Degree / qualification">
-              <input type="text" value={doctorDegree} onChange={(e) => setDoctorDegree(e.target.value)} className={inputClass} />
+              <input type="text" value={doctorDegree} disabled className={inputClass} />
             </Field>
             <Field label="Fee amount *">
               <input type="number" min="0" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={inputClass} />
