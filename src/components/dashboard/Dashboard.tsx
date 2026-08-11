@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/context/AuthContext";
 import {
   Appointment,
   ApiError,
@@ -37,6 +38,8 @@ interface DashboardData {
 const STATUSES = ["pending", "confirmed", "paid", "completed", "cancelled", "no_show"] as const;
 
 export default function Dashboard() {
+  const { user, staffClinic, staffBranch } = useAuth();
+  const isBranchStaff = user?.role === "branch_staff";
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +48,11 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
+      // branch_staff has no reason to fetch the full clinics directory -
+      // their view is scoped to the single clinic/branch on their session
+      // (see staffClinic/staffBranch from GET /branch-staff/me).
       const [clinicRes, apptRes, notifRes] = await Promise.all([
-        clinicsApi.list({ limit: 50 }),
+        isBranchStaff ? Promise.resolve({ items: [] as Clinic[] }) : clinicsApi.list({ limit: 50 }),
         appointmentsApi.list({ limit: 100 }),
         notificationsApi.list({ limit: 20 }),
       ]);
@@ -60,7 +66,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isBranchStaff]);
 
   useEffect(() => {
     load();
@@ -106,16 +112,31 @@ export default function Dashboard() {
     <div className="grid grid-cols-12 gap-4 md:gap-6">
       {/* Metrics */}
       <div className="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 xl:col-span-7">
-        <MetricCard
-          icon={<BoxCubeIcon className="text-gray-800 size-6 dark:text-white/90" />}
-          label="Clinics"
-          value={String(clinics.length)}
-        />
-        <MetricCard
-          icon={<BoxIconLine className="text-gray-800 size-6 dark:text-white/90" />}
-          label="Branches"
-          value={String(branchCount)}
-        />
+        {isBranchStaff ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6 sm:col-span-2">
+            <p className="text-theme-xs text-gray-400 dark:text-gray-500">Clinic</p>
+            <h4 className="font-semibold text-gray-800 dark:text-white/90">
+              {staffClinic?.name ?? "—"}
+            </h4>
+            <p className="mt-3 text-theme-xs text-gray-400 dark:text-gray-500">Branch</p>
+            <h4 className="font-semibold text-gray-800 dark:text-white/90">
+              {staffBranch?.name ?? "—"}
+            </h4>
+          </div>
+        ) : (
+          <>
+            <MetricCard
+              icon={<BoxCubeIcon className="text-gray-800 size-6 dark:text-white/90" />}
+              label="Clinics"
+              value={String(clinics.length)}
+            />
+            <MetricCard
+              icon={<BoxIconLine className="text-gray-800 size-6 dark:text-white/90" />}
+              label="Branches"
+              value={String(branchCount)}
+            />
+          </>
+        )}
         <MetricCard
           icon={<CalenderIcon className="text-gray-800 size-6 dark:text-white/90" />}
           label="Appointments today"

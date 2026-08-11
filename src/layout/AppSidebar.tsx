@@ -149,10 +149,11 @@ const AppSidebar: React.FC = () => {
         case "Payment Ledger": return isOwner;
         case "Appointments": return isOwner || canAccessAppointments(user?.permissions);
         case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
+        case "Notifications": return !isStaff;
         default: return true;
       }
     }),
-  [mounted, isOwner, can, user]
+  [mounted, isOwner, isStaff, can, user]
 );
   const showOthers = isOwner || !isStaff;
 

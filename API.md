@@ -168,16 +168,8 @@ The account is created with `status = 'pending'`. No usable `access_token`/`refr
 **Request body**
 
 ```json
-{ "name": "Suresh Nair", "email": "owner@example.com", "phone": "+919876543211", "clinic_name": "Sunrise Multispeciality", "password": "password123" }
+{ "name": "Suresh Nair", "email": "owner@example.com", "phone": "+919876543211", "password": "password123" }
 ```
-
-| Field | Type | Notes |
-|---|---|---|
-| `name` | string | required, 1–255 chars |
-| `email` | string | required, lowercase, must be valid |
-| `phone` | string? | optional, max 32 |
-| `clinic_name` | string? | optional, 1–255 chars — name of the auto-created initial clinic; defaults to the owner's `name` if omitted |
-| `password` | string | required, 8–128 chars |
 
 **Response `201`**
 
@@ -965,6 +957,31 @@ Permission keys:
 | `patients:view` | `GET /branches/:id/patients` |
 
 New staff default to `["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]`. The `clinic_owner` is always allowed and is unaffected. A `branch_staff` calling a gated action without the required permission gets `403 PERMISSION_DENIED`.
+
+### GET /branch-staff/me
+
+Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member is assigned to, plus their own permissions. Use this to drive the "my branch" view instead of trusting any client-supplied `clinic_id`/`branch_id`.
+
+**Response `200`**
+
+```json
+{
+  "clinic": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Sunrise Health Clinic"
+  },
+  "branch": {
+    "id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+    "name": "Sunrise Health Clinic - Andheri",
+    "address": "123 Link Road, Andheri West",
+    "phone": "+919812345678",
+    "timezone": "Asia/Kolkata"
+  },
+  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+}
+```
+
+**Errors:** `404 BRANCH_NOT_FOUND` if the account has no active branch assignment.
 
 ### GET /branches/:id/staff
 

@@ -481,8 +481,14 @@ export default function AppointmentsPanel() {
             </div>
 
             <dl className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
-              <DetailRow label="Doctor" value={detail.doctor_name ?? shortId(detail.doctor_id)} />
-              <DetailRow label="Branch" value={detail.branch_name ?? shortId(detail.branch_id)} />
+              <DetailRow
+                label="Doctor"
+                value={detail.doctor_name ?? active?.doctor_name ?? shortId(detail.doctor_id)}
+              />
+              <DetailRow
+                label="Branch"
+                value={detail.branch_name ?? active?.branch_name ?? shortId(detail.branch_id)}
+              />
             </dl>
 
             <div className="border-t border-gray-100 pt-4 dark:border-gray-800">

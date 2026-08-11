@@ -38,8 +38,16 @@ export default function ClinicsPanel() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (isAdmin) load();
+  }, [isAdmin, load]);
+
+  if (!isAdmin) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        Only clinic owners can view the clinic directory.
+      </div>
+    );
+  }
 
   const removeClinic = async (clinic: Clinic) => {
     if (!window.confirm(`Delete clinic "${clinic.name}"? Active appointments must be handled first.`)) return;

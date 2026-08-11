@@ -1,13 +1,12 @@
 "use client";
 import React, { useCallback, useState } from "react";
-import BranchSelect from "@/components/branches/BranchSelect";
+import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import NmcDoctorSearch, {
   NmcDoctorResult,
 } from "@/components/doctors/NmcDoctorSearch";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
-  Branch,
   SlotTemplateItem,
   doctorInvitesApi,
 } from "@/lib/api";
@@ -20,7 +19,7 @@ const inputClass =
 export default function InviteDoctorForm() {
   const router = useRouter();
 
-  const [branch, setBranch] = useState<Branch | null>(null);
+  const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [specialization, setSpecialization] = useState("");
