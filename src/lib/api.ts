@@ -36,6 +36,18 @@ export interface ClinicOwnerAuthResponse extends AuthTokens {
   clinic?: Clinic;
 }
 
+export interface DoctorInviteAcceptResponse extends AuthTokens {
+  doctor: {
+    id: string;
+    name: string;
+    specialization: string | null;
+    phone: string | null;
+    certificate_url: string | null;
+    photo_url: string | null;
+    bio: string | null;
+  };
+}
+
 // POST /auth/clinic-owner/register leaves the account `pending` until the
 // emailed verification link is followed, so unlike login it returns null
 // tokens and a message instead of a usable session.
@@ -713,6 +725,19 @@ export const authApi = {
     confirm_password: string;
   }): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async acceptDoctorInvite(input: {
+    email: string;
+    invite_code: string;
+    password: string;
+    reg_no?: string;
+  }): Promise<DoctorInviteAcceptResponse> {
+    return apiFetch<DoctorInviteAcceptResponse>("/auth/doctor/accept-invite", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
