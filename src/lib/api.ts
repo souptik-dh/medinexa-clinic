@@ -474,6 +474,9 @@ export interface DoctorInviteCreateInput {
   specialization?: string | null;
   email: string;
   phone?: string | null;
+  reg_no?: string | null;
+  smc_name?: string | null;
+  doctor_degree?: string | null;
   fee_amount: number;
   currency: string;
   certificate?: string | null;
@@ -485,6 +488,9 @@ export interface DoctorInvite {
   branch_id: string;
   name?: string | null;
   email: string;
+  reg_no?: string | null;
+  smc_name?: string | null;
+  doctor_degree?: string | null;
   status: "pending" | "accepted" | "expired" | "revoked";
   expires_at: string;
   created_at?: string;

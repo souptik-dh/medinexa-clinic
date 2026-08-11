@@ -452,6 +452,9 @@ export default function DoctorsPanel() {
                     Doctor
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                    Reg. no
+                  </TableCell>
+                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Status
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
@@ -472,6 +475,14 @@ export default function DoctorsPanel() {
                       <span className="text-gray-400 text-theme-xs dark:text-gray-500">
                         {inv.email}
                       </span>
+                    </TableCell>
+                    <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                      {inv.reg_no ?? "—"}
+                      {inv.smc_name && (
+                        <span className="block text-gray-400 text-theme-xs dark:text-gray-500">
+                          {inv.smc_name}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={inviteStatusColor(inv.status)}>

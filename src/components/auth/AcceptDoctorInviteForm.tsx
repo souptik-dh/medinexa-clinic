@@ -12,9 +12,10 @@ export default function AcceptDoctorInviteForm() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
   const codeFromLink = searchParams.get("code");
+  const reg_no = searchParams.get("reg_no");
 
   const [inviteCode, setInviteCode] = useState(codeFromLink ?? "");
-  const [regNo, setRegNo] = useState("");
+  const [regNo, setRegNo] = useState(reg_no ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);

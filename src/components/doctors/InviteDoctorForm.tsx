@@ -24,6 +24,9 @@ export default function InviteDoctorForm() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [specialization, setSpecialization] = useState("");
   const [phone, setPhone] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [smcName, setSmcName] = useState("");
+  const [doctorDegree, setDoctorDegree] = useState("");
   const [feeAmount, setFeeAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [certificate, setCertificate] = useState("");
@@ -37,8 +40,10 @@ export default function InviteDoctorForm() {
   const onNmcSelect = (doc: NmcDoctorResult) => {
     setVerified(doc);
     setInviteName(doc.name);
+    setRegNo(doc.registrationNo);
+    setSmcName(doc.council);
     if (doc.qualification) {
-      setSpecialization(doc.qualification);
+      setDoctorDegree(doc.qualification);
     }
   };
 
@@ -87,6 +92,9 @@ export default function InviteDoctorForm() {
         specialization: specialization || null,
         email: inviteEmail,
         phone: phone || null,
+        reg_no: regNo || null,
+        smc_name: smcName || null,
+        doctor_degree: doctorDegree || null,
         fee_amount: amount,
         currency,
         certificate: certificate || null,
@@ -155,6 +163,15 @@ export default function InviteDoctorForm() {
             </Field>
             <Field label="Phone">
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Registration no.">
+              <input type="text" value={regNo} onChange={(e) => setRegNo(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="State medical council">
+              <input type="text" value={smcName} onChange={(e) => setSmcName(e.target.value)} className={inputClass} />
+            </Field>
+            <Field label="Degree / qualification">
+              <input type="text" value={doctorDegree} onChange={(e) => setDoctorDegree(e.target.value)} className={inputClass} />
             </Field>
             <Field label="Fee amount *">
               <input type="number" min="0" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={inputClass} />
