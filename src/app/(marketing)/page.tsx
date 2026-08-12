@@ -4,7 +4,7 @@ import React from "react";
 import styles from "./landing.module.css";
 
 export const metadata: Metadata = {
-  title: "Medinexa - Unified Patient & Practice Platform",
+  title: "Jido Healthcare - Unified Patient & Practice Platform",
   description:
     "Streamline clinical operations, improve patient care delivery, and securely scale your healthcare practice on a single cloud platform.",
 };
@@ -16,7 +16,7 @@ export default function LandingPage() {
       <header className={styles.navbar}>
         <div className={`${styles.container} ${styles.navContainer}`}>
           <Link href="/" className={styles.brandLogo}>
-            <span className={styles.logoAccent}>Medinexa</span> Health Cloud
+            <span className={styles.logoAccent}>Jido Healthcare</span> Health Cloud
           </Link>
           <nav className={styles.navLinks}>
             <a href="#grid">Health Grid</a>
@@ -171,7 +171,7 @@ export default function LandingPage() {
       <section className={`${styles.finalCta} ${styles.textCenter}`}>
         <div className={styles.container}>
           <h2>Bring your clinic online today.</h2>
-          <p>Join clinics that trust Medinexa to run their day-to-day operations.</p>
+          <p>Join clinics that trust Jido Healthcare to run their day-to-day operations.</p>
           <Link href="/signup" className={`${styles.btn} ${styles.btnPrimary} ${styles.btnLg}`}>
             Get Started
           </Link>
@@ -181,7 +181,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className={styles.siteFooter}>
         <div className={`${styles.container} ${styles.footerContent}`}>
-          <p>&copy; 2026 Medinexa. All rights reserved.</p>
+          <p>&copy; 2026 Jido Healthcare. All rights reserved.</p>
           <div className={styles.footerLinks}>
             <Link href="/signin">Sign In</Link>
             <Link href="/signup">Sign Up</Link>

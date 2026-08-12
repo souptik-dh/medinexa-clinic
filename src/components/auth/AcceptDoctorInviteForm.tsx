@@ -56,14 +56,14 @@ export default function AcceptDoctorInviteForm() {
               Accept your invitation
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Set a password to activate your Medinexa doctor account.
+              Set a password to activate your Jido Healthcare doctor account.
             </p>
           </div>
 
           {done ? (
             <div className="space-y-5">
               <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
-                Your account is now active. You can sign in from the Medinexa doctor app.
+                Your account is now active. You can sign in from the Jido Healthcare doctor app.
               </div>
               {regNo && (
                 <div>

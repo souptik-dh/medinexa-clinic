@@ -5,7 +5,7 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Medinexa Basic Table ",
+  title: "Jido Healthcare Basic Table ",
   description:
     "This is Next.js Basic Table  page for   Tailwind CSS Admin Dashboard Template",
   // other metadata

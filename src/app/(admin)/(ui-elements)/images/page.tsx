@@ -7,7 +7,7 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Medinexa | Images",
+  title: "Jido Healthcare | Images",
   description:
     "A collection of image components and layouts for displaying images in various formats, including responsive images and grid layouts.",
   // other metadata

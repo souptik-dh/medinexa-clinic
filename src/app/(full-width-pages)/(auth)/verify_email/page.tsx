@@ -3,8 +3,8 @@ import { Metadata } from "next";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "Verify Email | Medinexa",
-  description: "Verify your Medinexa clinic owner account",
+  title: "Verify Email | Jido Healthcare",
+  description: "Verify your Jido Healthcare clinic owner account",
 };
 
 export default function VerifyEmailPage() {

@@ -3,8 +3,8 @@ import { Metadata } from "next";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "Set New Password | Medinexa",
-  description: "Choose a new password for your Medinexa account",
+  title: "Set New Password | Jido Healthcare",
+  description: "Choose a new password for your Jido Healthcare account",
 };
 
 export default function NewPasswordPage() {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Medinexa | Error 404",
+  title: "Jido Healthcare | Error 404",
   description:
     "The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.",
 };
