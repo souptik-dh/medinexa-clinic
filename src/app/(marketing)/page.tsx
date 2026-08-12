@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import React from "react";
 import styles from "./landing.module.css";
@@ -16,7 +17,13 @@ export default function LandingPage() {
       <header className={styles.navbar}>
         <div className={`${styles.container} ${styles.navContainer}`}>
           <Link href="/" className={styles.brandLogo}>
-            <span className={styles.logoAccent}>Jido Healthcare</span> Health Cloud
+            <Image
+              src="/images/logo/logo.png"
+              alt="Jido Healthcare"
+              width={152}
+              height={32}
+              className={styles.logoImage}
+            />
           </Link>
           <nav className={styles.navLinks}>
             <a href="#grid">Health Grid</a>
