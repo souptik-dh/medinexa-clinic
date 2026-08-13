@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import flatpickr from 'flatpickr';
 import 'flatpickr/dist/flatpickr.css';
 import Label from './Label';
-import { CalenderIcon } from '../../icons';
+import { CalenderIcon, TimeIcon } from '../../icons';
 import Hook = flatpickr.Options.Hook;
 import DateOption = flatpickr.Options.DateOption;
 
@@ -23,12 +23,17 @@ export default function DatePicker({
   defaultDate,
   placeholder,
 }: PropsType) {
+  const isTime = mode === "time";
+
   useEffect(() => {
     const flatPickr = flatpickr(`#${id}`, {
-      mode: mode || "single",
+      mode: isTime ? "single" : mode || "single",
       static: true,
       monthSelectorType: "static",
-      dateFormat: "Y-m-d",
+      dateFormat: isTime ? "H:i" : "Y-m-d",
+      noCalendar: isTime,
+      enableTime: isTime,
+      time_24hr: isTime,
       defaultDate,
       onChange,
     });
@@ -38,7 +43,7 @@ export default function DatePicker({
         flatPickr.destroy();
       }
     };
-  }, [mode, onChange, id, defaultDate]);
+  }, [mode, isTime, onChange, id, defaultDate]);
 
   return (
     <div>
@@ -52,7 +57,7 @@ export default function DatePicker({
         />
 
         <span className="absolute text-gray-500 -translate-y-1/2 pointer-events-none right-3 top-1/2 dark:text-gray-400">
-          <CalenderIcon className="size-6" />
+          {isTime ? <TimeIcon className="size-6" /> : <CalenderIcon className="size-6" />}
         </span>
       </div>
     </div>

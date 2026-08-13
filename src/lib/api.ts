@@ -467,6 +467,16 @@ export interface SlotTemplateItem {
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+  start_date: string;
+  end_date?: string | null;
+}
+
+export interface DoctorAssignmentException {
+  id: string;
+  doctor_branch_assignment_id?: string;
+  excluded_date: string;
+  reason: string | null;
+  created_at?: string;
 }
 
 export type SlotType = "fixed" | "sequential";
@@ -546,7 +556,7 @@ export interface DoctorSearchResult {
 
 export interface AvailabilityResponse {
   date: string;
-  slots: { time: string; available: boolean }[];
+  slots: { time: string; available: boolean; slot_type: SlotType }[];
 }
 
 export type AppointmentStatus =
@@ -1130,6 +1140,29 @@ export const doctorsApi = {
 
   async removeAssignment(id: string): Promise<void> {
     return apiFetch<void>(`/doctor-assignments/${id}`, { method: "DELETE" });
+  },
+
+  async listExceptions(assignmentId: string): Promise<Paginated<DoctorAssignmentException>> {
+    return apiFetch<Paginated<DoctorAssignmentException>>(
+      `/doctor-assignments/${assignmentId}/exceptions`
+    );
+  },
+
+  async createException(
+    assignmentId: string,
+    input: { excluded_date: string; reason?: string | null }
+  ): Promise<DoctorAssignmentException> {
+    return apiFetch<DoctorAssignmentException>(
+      `/doctor-assignments/${assignmentId}/exceptions`,
+      { method: "POST", body: JSON.stringify(input) }
+    );
+  },
+
+  async removeException(assignmentId: string, exceptionId: string): Promise<void> {
+    return apiFetch<void>(
+      `/doctor-assignments/${assignmentId}/exceptions/${exceptionId}`,
+      { method: "DELETE" }
+    );
   },
 };
 
