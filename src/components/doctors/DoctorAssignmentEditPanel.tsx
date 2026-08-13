@@ -1,20 +1,44 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ApiError, BranchDoctor, SlotTemplateItem, SlotType, doctorsApi } from "@/lib/api";
-import { SlotTypeOption } from "@/components/doctors/InviteDoctorForm";
+import {
+  ApiError,
+  BranchDoctor,
+  DoctorAssignmentException,
+  SlotTemplateItem,
+  SlotType,
+  doctorsApi,
+} from "@/lib/api";
+import {
+  SlotTemplateRow,
+  SlotTypeOption,
+  defaultSlotTemplate,
+  inputClass,
+  validateSlotTemplates,
+} from "@/components/doctors/InviteDoctorForm";
+import DatePicker from "@/components/form/date-picker";
+import { formatDate, today } from "@/lib/utils";
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+function formatDateOnly(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
-const defaultSlot: SlotTemplateItem = {
-  weekday: 1,
-  start_time: "09:00",
-  end_time: "13:00",
-  slot_duration_minutes: 20,
-};
-
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+function enumerateDates(from: string, to: string): string[] {
+  if (!from || !to) return [];
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
+  const dates: string[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    dates.push(formatDateOnly(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
 
 export default function DoctorAssignmentEditPanel() {
   const router = useRouter();
@@ -28,10 +52,24 @@ export default function DoctorAssignmentEditPanel() {
   const [fee, setFee] = useState("");
   const [certificate, setCertificate] = useState("");
   const [slotType, setSlotType] = useState<SlotType>("fixed");
-  const [slots, setSlots] = useState<SlotTemplateItem[]>([defaultSlot]);
+  const [slots, setSlots] = useState<SlotTemplateItem[]>([defaultSlotTemplate()]);
   const [slotsDirty, setSlotsDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [exceptions, setExceptions] = useState<DoctorAssignmentException[]>([]);
+  const [exceptionsLoading, setExceptionsLoading] = useState(false);
+  const [exceptionsError, setExceptionsError] = useState<string | null>(null);
+  const [exceptionMode, setExceptionMode] = useState<"single" | "range">("single");
+  const [newExceptionDate, setNewExceptionDate] = useState(today());
+  const [rangeFrom, setRangeFrom] = useState(today());
+  const [rangeTo, setRangeTo] = useState(today());
+  const [newExceptionReason, setNewExceptionReason] = useState("");
+  const [exceptionBusy, setExceptionBusy] = useState(false);
+
+  const MAX_RANGE_DAYS = 180;
+
+  const rangeDates = enumerateDates(rangeFrom, rangeTo);
 
   const load = useCallback(async () => {
     if (!branchId || !doctorId) {
@@ -50,7 +88,7 @@ export default function DoctorAssignmentEditPanel() {
         setFee(String(found.fee_amount));
         setCertificate(found.certificate_url ?? "");
         setSlotType(found.slot_type ?? "fixed");
-        setSlots([defaultSlot]);
+        setSlots([defaultSlotTemplate()]);
         setSlotsDirty(false);
       }
     } catch (err) {
@@ -64,6 +102,67 @@ export default function DoctorAssignmentEditPanel() {
     load();
   }, [load]);
 
+  const loadExceptions = useCallback(async (assignmentId: string) => {
+    setExceptionsLoading(true);
+    setExceptionsError(null);
+    try {
+      const res = await doctorsApi.listExceptions(assignmentId);
+      setExceptions(res.items);
+    } catch (err) {
+      setExceptions([]);
+      setExceptionsError(err instanceof ApiError ? err.message : "Failed to load leave dates");
+    } finally {
+      setExceptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (doctor) loadExceptions(doctor.assignment_id);
+  }, [doctor, loadExceptions]);
+
+  const addExceptions = async () => {
+    if (!doctor) return;
+    const dates = exceptionMode === "single" ? [newExceptionDate].filter(Boolean) : rangeDates;
+    if (dates.length === 0) return;
+    if (dates.length > MAX_RANGE_DAYS) {
+      setExceptionsError(`That range spans ${dates.length} days — please pick ${MAX_RANGE_DAYS} days or fewer at a time.`);
+      return;
+    }
+    setExceptionBusy(true);
+    setExceptionsError(null);
+    const reason = newExceptionReason.trim() || null;
+    let failed = 0;
+    for (const date of dates) {
+      try {
+        await doctorsApi.createException(doctor.assignment_id, { excluded_date: date, reason });
+      } catch {
+        failed += 1;
+      }
+    }
+    setNewExceptionReason("");
+    await loadExceptions(doctor.assignment_id);
+    setExceptionBusy(false);
+    if (failed > 0) {
+      setExceptionsError(
+        `${failed} of ${dates.length} date${dates.length === 1 ? "" : "s"} could not be added (already marked unavailable, most likely).`
+      );
+    }
+  };
+
+  const removeException = async (exception: DoctorAssignmentException) => {
+    if (!doctor) return;
+    setExceptionBusy(true);
+    setExceptionsError(null);
+    try {
+      await doctorsApi.removeException(doctor.assignment_id, exception.id);
+      await loadExceptions(doctor.assignment_id);
+    } catch (err) {
+      setExceptionsError(err instanceof ApiError ? err.message : "Could not remove leave date");
+    } finally {
+      setExceptionBusy(false);
+    }
+  };
+
   const updateSlot = (index: number, patch: Partial<SlotTemplateItem>) => {
     setSlotsDirty(true);
     setSlots((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -71,7 +170,7 @@ export default function DoctorAssignmentEditPanel() {
 
   const addSlot = () => {
     setSlotsDirty(true);
-    setSlots((prev) => [...prev, { ...defaultSlot }]);
+    setSlots((prev) => [...prev, defaultSlotTemplate()]);
   };
 
   const removeSlot = (index: number) => {
@@ -87,19 +186,10 @@ export default function DoctorAssignmentEditPanel() {
       return;
     }
     if (slotsDirty) {
-      if (slots.length === 0) {
-        setError("At least one slot is required.");
+      const slotError = validateSlotTemplates(slots);
+      if (slotError) {
+        setError(slotError);
         return;
-      }
-      for (const slot of slots) {
-        if (slot.end_time <= slot.start_time) {
-          setError(`Slot end time must be after start time (${slot.start_time}).`);
-          return;
-        }
-        if (slot.slot_duration_minutes < 5 || slot.slot_duration_minutes > 240) {
-          setError("Slot duration must be between 5 and 240 minutes.");
-          return;
-        }
       }
     }
     setBusy(true);
@@ -220,72 +310,148 @@ export default function DoctorAssignmentEditPanel() {
           </p>
           <div className="space-y-3">
             {slots.map((slot, index) => (
-              <div
+              <SlotTemplateRow
                 key={index}
-                className="grid grid-cols-2 items-end gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-800 sm:grid-cols-5"
-              >
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Day
-                  </label>
-                  <select
-                    value={slot.weekday}
-                    onChange={(e) => updateSlot(index, { weekday: Number(e.target.value) })}
-                    className={inputClass}
-                  >
-                    {WEEKDAYS.map((day, d) => (
-                      <option key={d} value={d}>
-                        {day}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Start
-                  </label>
-                  <input
-                    type="time"
-                    value={slot.start_time}
-                    onChange={(e) => updateSlot(index, { start_time: e.target.value })}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    End
-                  </label>
-                  <input
-                    type="time"
-                    value={slot.end_time}
-                    onChange={(e) => updateSlot(index, { end_time: e.target.value })}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Duration (min)
-                  </label>
-                  <input
-                    type="number"
-                    min="5"
-                    max="240"
-                    value={slot.slot_duration_minutes}
-                    onChange={(e) =>
-                      updateSlot(index, { slot_duration_minutes: Number(e.target.value) })
-                    }
-                    className={inputClass}
-                  />
-                </div>
-                <button
-                  onClick={() => removeSlot(index)}
-                  disabled={slots.length === 1}
-                  className="mb-1 rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
-                >
-                  Remove
-                </button>
-              </div>
+                slot={slot}
+                onChange={(patch) => updateSlot(index, patch)}
+                onRemove={() => removeSlot(index)}
+                canRemove={slots.length > 1}
+              />
             ))}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 pt-5 dark:border-gray-800">
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-400">
+            Leave / unavailable dates
+          </label>
+          <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+            Mark individual dates within the schedule above where this doctor is unavailable
+            (holiday, leave, etc.) — the recurring weekly pattern is skipped only on these dates.
+          </p>
+
+          {exceptionsError && (
+            <div className="mb-3 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+              {exceptionsError}
+            </div>
+          )}
+
+          {exceptionsLoading ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : exceptions.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No leave dates added.</p>
+          ) : (
+            <ul className="mb-4 space-y-2">
+              {exceptions.map((exception) => (
+                <li
+                  key={exception.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-white/90">
+                      {formatDate(exception.excluded_date)}
+                    </p>
+                    {exception.reason && (
+                      <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                        {exception.reason}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeException(exception)}
+                    disabled={exceptionBusy}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mb-3 flex gap-3">
+            <SlotTypeOption
+              label="Single date"
+              description="Mark one date unavailable."
+              selected={exceptionMode === "single"}
+              onClick={() => setExceptionMode("single")}
+            />
+            <SlotTypeOption
+              label="Date range"
+              description="Mark every date in a range unavailable, with the same reason."
+              selected={exceptionMode === "range"}
+              onClick={() => setExceptionMode("range")}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            {exceptionMode === "single" ? (
+              <div>
+                <DatePicker
+                  id="exception-date"
+                  label="Date"
+                  placeholder="Select a date"
+                  defaultDate={newExceptionDate || undefined}
+                  onChange={(_, dateStr) => {
+                    if (dateStr) setNewExceptionDate(dateStr);
+                  }}
+                />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <DatePicker
+                    id="exception-range-from"
+                    label="From"
+                    placeholder="Select a date"
+                    defaultDate={rangeFrom || undefined}
+                    onChange={(_, dateStr) => {
+                      if (dateStr) {
+                        setRangeFrom(dateStr);
+                        if (rangeTo < dateStr) setRangeTo(dateStr);
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <DatePicker
+                    id="exception-range-to"
+                    label="To"
+                    placeholder="Select a date"
+                    defaultDate={rangeTo || undefined}
+                    onChange={(_, dateStr) => {
+                      if (dateStr) setRangeTo(dateStr);
+                    }}
+                  />
+                </div>
+              </>
+            )}
+            <div className="flex-1">
+              <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                Reason (optional, applied to {exceptionMode === "range" ? "every date in the range" : "this date"})
+              </label>
+              <input
+                type="text"
+                value={newExceptionReason}
+                onChange={(e) => setNewExceptionReason(e.target.value)}
+                placeholder="On leave"
+                className={inputClass}
+              />
+            </div>
+            <button
+              onClick={addExceptions}
+              disabled={
+                exceptionBusy ||
+                (exceptionMode === "single" ? !newExceptionDate : rangeDates.length === 0)
+              }
+              className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            >
+              {exceptionBusy
+                ? "Adding…"
+                : exceptionMode === "range"
+                  ? `Add ${rangeDates.length || ""} date${rangeDates.length === 1 ? "" : "s"}`
+                  : "Add"}
+            </button>
           </div>
         </div>
       </div>
