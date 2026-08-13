@@ -469,6 +469,8 @@ export interface SlotTemplateItem {
   slot_duration_minutes: number;
 }
 
+export type SlotType = "fixed" | "sequential";
+
 export interface DoctorInviteCreateInput {
   name: string;
   specialization?: string | null;
@@ -480,6 +482,7 @@ export interface DoctorInviteCreateInput {
   fee_amount: number;
   currency: string;
   certificate?: string | null;
+  slot_type?: SlotType;
   slot_template: SlotTemplateItem[];
 }
 
@@ -507,6 +510,7 @@ export interface BranchDoctor {
   fee_amount: number;
   currency: string;
   branch_id: string;
+  slot_type: SlotType;
   next_available_slot: string | null;
 }
 
@@ -517,6 +521,7 @@ export interface DoctorAssignment {
   fee_amount: number;
   currency: string;
   certificate_url: string | null;
+  slot_type: SlotType;
 }
 
 export interface DoctorProfile {
@@ -1110,7 +1115,12 @@ export const doctorsApi = {
 
   async updateAssignment(
     id: string,
-    input: Partial<{ fee_amount: number; slot_template: SlotTemplateItem[]; certificate: string }>
+    input: Partial<{
+      fee_amount: number;
+      slot_type: SlotType;
+      slot_template: SlotTemplateItem[];
+      certificate: string;
+    }>
   ): Promise<DoctorAssignment> {
     return apiFetch<DoctorAssignment>(`/doctor-assignments/${id}`, {
       method: "PATCH",

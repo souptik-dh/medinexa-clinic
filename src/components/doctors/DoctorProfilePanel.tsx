@@ -13,6 +13,11 @@ import {
 } from "@/lib/api";
 import { formatCurrency, today } from "@/lib/utils";
 
+const formatNextSlot = (iso: string | null): string => {
+  if (!iso) return "—";
+  return iso.replace("T", " ").slice(0, 16);
+};
+
 const initials = (name: string): string =>
   name
     .split(" ")
@@ -84,7 +89,7 @@ export default function DoctorProfilePanel() {
   }, [doctorId, date]);
 
   useEffect(() => {
-    if (doctor) checkAvailability();
+    if (doctor && doctor.slot_type !== "sequential") checkAvailability();
   }, [doctor, checkAvailability]);
 
   const uploadPhoto = async (file: File) => {
@@ -148,9 +153,12 @@ export default function DoctorProfilePanel() {
           <h3 className="mt-4 text-xl font-semibold text-gray-800 dark:text-white/90">
             {doctor.name}
           </h3>
-          <Badge color="primary" className="mt-2">
-            {doctor.specialization ?? "Doctor"}
-          </Badge>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+            <Badge color="primary">{doctor.specialization ?? "Doctor"}</Badge>
+            <Badge color={doctor.slot_type === "sequential" ? "info" : "light"}>
+              {doctor.slot_type === "sequential" ? "Sequential booking" : "Fixed booking"}
+            </Badge>
+          </div>
         </div>
         <dl className="mt-6 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
           <ProfileRow label="Phone" value={doctor.phone ?? "—"} />
@@ -218,52 +226,68 @@ export default function DoctorProfilePanel() {
             <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
               Availability
             </h4>
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="h-11 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                />
+
+            {doctor.slot_type === "sequential" ? (
+              <div className="mt-3">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This doctor books as per bookings — patients don&apos;t pick a time slot.
+                  Each new appointment is automatically assigned the next open slot within
+                  the configured range.
+                </p>
+                <p className="mt-3 text-sm font-medium text-gray-800 dark:text-white/90">
+                  Next available slot: {formatNextSlot(doctor.next_available_slot)}
+                </p>
               </div>
-              <button
-                onClick={checkAvailability}
-                disabled={availLoading || !date}
-                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-              >
-                {availLoading ? "Checking…" : "Check"}
-              </button>
-            </div>
+            ) : (
+              <>
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="h-11 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                  </div>
+                  <button
+                    onClick={checkAvailability}
+                    disabled={availLoading || !date}
+                    className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                  >
+                    {availLoading ? "Checking…" : "Check"}
+                  </button>
+                </div>
 
-            {availError && (
-              <p className="mt-3 text-sm text-error-600 dark:text-error-400">{availError}</p>
-            )}
-
-            {availability && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {availability.slots.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No slots configured for this date.
-                  </p>
-                ) : (
-                  availability.slots.map((slot) => (
-                    <span
-                      key={slot.time}
-                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
-                        slot.available
-                          ? "border-success-500/30 bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-500"
-                          : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
-                      }`}
-                    >
-                      {slot.time}
-                    </span>
-                  ))
+                {availError && (
+                  <p className="mt-3 text-sm text-error-600 dark:text-error-400">{availError}</p>
                 )}
-              </div>
+
+                {availability && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {availability.slots.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No slots configured for this date.
+                      </p>
+                    ) : (
+                      availability.slots.map((slot) => (
+                        <span
+                          key={slot.time}
+                          className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+                            slot.available
+                              ? "border-success-500/30 bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-500"
+                              : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
+                          }`}
+                        >
+                          {slot.time}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

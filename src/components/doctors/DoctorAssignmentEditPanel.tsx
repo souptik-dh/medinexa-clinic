@@ -1,7 +1,8 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ApiError, BranchDoctor, SlotTemplateItem, doctorsApi } from "@/lib/api";
+import { ApiError, BranchDoctor, SlotTemplateItem, SlotType, doctorsApi } from "@/lib/api";
+import { SlotTypeOption } from "@/components/doctors/InviteDoctorForm";
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -26,6 +27,7 @@ export default function DoctorAssignmentEditPanel() {
 
   const [fee, setFee] = useState("");
   const [certificate, setCertificate] = useState("");
+  const [slotType, setSlotType] = useState<SlotType>("fixed");
   const [slots, setSlots] = useState<SlotTemplateItem[]>([defaultSlot]);
   const [slotsDirty, setSlotsDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,6 +49,7 @@ export default function DoctorAssignmentEditPanel() {
         setDoctor(found);
         setFee(String(found.fee_amount));
         setCertificate(found.certificate_url ?? "");
+        setSlotType(found.slot_type ?? "fixed");
         setSlots([defaultSlot]);
         setSlotsDirty(false);
       }
@@ -105,6 +108,7 @@ export default function DoctorAssignmentEditPanel() {
       await doctorsApi.updateAssignment(doctor.assignment_id, {
         fee_amount: amount,
         certificate: certificate.trim() || undefined,
+        slot_type: slotType,
         ...(slotsDirty ? { slot_template: slots } : {}),
       });
       router.push("/doctors");
@@ -180,9 +184,29 @@ export default function DoctorAssignmentEditPanel() {
         </div>
 
         <div>
+          <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
+            Booking type
+          </label>
+          <div className="flex gap-3">
+            <SlotTypeOption
+              label="Fixed"
+              description="Patients pick a specific time slot."
+              selected={slotType === "fixed"}
+              onClick={() => setSlotType("fixed")}
+            />
+            <SlotTypeOption
+              label="Sequential"
+              description="As per bookings — patients get the next free slot in the range, no time picker."
+              selected={slotType === "sequential"}
+              onClick={() => setSlotType("sequential")}
+            />
+          </div>
+        </div>
+
+        <div>
           <div className="mb-2 flex items-center justify-between">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
-              Slot template
+              {slotType === "sequential" ? "Booking range(s)" : "Slot template"}
             </label>
             <button
               onClick={addSlot}
