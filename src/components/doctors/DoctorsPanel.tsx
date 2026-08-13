@@ -355,6 +355,9 @@ export default function DoctorsPanel() {
                       Fee
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                      Booking type
+                    </TableCell>
+                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Next slot
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
@@ -399,6 +402,11 @@ export default function DoctorsPanel() {
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {formatCurrency(doc.fee_amount, doc.currency)}
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <Badge size="sm" color={doc.slot_type === "sequential" ? "info" : "light"}>
+                          {doc.slot_type === "sequential" ? "Sequential" : "Fixed"}
+                        </Badge>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {formatNextSlot(doc.next_available_slot)}

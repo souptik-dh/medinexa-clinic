@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import {
   ApiError,
   SlotTemplateItem,
+  SlotType,
   doctorInvitesApi,
 } from "@/lib/api";
 
@@ -30,6 +31,7 @@ export default function InviteDoctorForm() {
   const [feeAmount, setFeeAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [certificate, setCertificate] = useState("");
+  const [slotType, setSlotType] = useState<SlotType>("fixed");
   const [slots, setSlots] = useState<SlotTemplateItem[]>([
     { weekday: 1, start_time: "09:00", end_time: "13:00", slot_duration_minutes: 20 },
   ]);
@@ -98,6 +100,7 @@ export default function InviteDoctorForm() {
         fee_amount: amount,
         currency,
         certificate: certificate || null,
+        slot_type: slotType,
         slot_template: slots,
       });
       router.push("/doctors");
@@ -185,9 +188,29 @@ export default function InviteDoctorForm() {
           </Field>
 
           <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Booking type *
+            </label>
+            <div className="flex gap-3">
+              <SlotTypeOption
+                label="Fixed"
+                description="Patients pick a specific time slot."
+                selected={slotType === "fixed"}
+                onClick={() => setSlotType("fixed")}
+              />
+              <SlotTypeOption
+                label="Sequential"
+                description="As per bookings — patients get the next free slot in the range, no time picker."
+                selected={slotType === "sequential"}
+                onClick={() => setSlotType("sequential")}
+              />
+            </div>
+          </div>
+
+          <div>
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                Slot template *
+                {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
               </label>
               <button
                 onClick={addSlot}
@@ -262,5 +285,38 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </label>
       {children}
     </div>
+  );
+}
+
+export function SlotTypeOption({
+  label,
+  description,
+  selected,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-lg border p-3 text-left transition-colors ${
+        selected
+          ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
+          : "border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
+      }`}
+    >
+      <p
+        className={`text-sm font-medium ${
+          selected ? "text-brand-600 dark:text-brand-400" : "text-gray-800 dark:text-white/90"
+        }`}
+      >
+        {label}
+      </p>
+      <p className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">{description}</p>
+    </button>
   );
 }

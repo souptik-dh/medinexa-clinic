@@ -1,4 +1,4 @@
-# MediBook — REST API Reference
+# Jido Healthcare — REST API Reference
 
 Live implementation reference for the MediBook API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
 
@@ -12,22 +12,23 @@ Live implementation reference for the MediBook API. Every endpoint below documen
 ## Table of contents
 
 1. [Conventions](#conventions)
-2. [Roles & scope](#roles--scope)
-3. [Authentication](#authentication)
-4. [Clinics](#clinics)
-5. [Branches](#branches)
-6. [Clinic & branch licenses](#clinic--branch-licenses)
-7. [Branch staff](#branch-staff)
-8. [Doctors, invites & assignments](#doctors-invites--assignments)
-9. [Patients](#patients)
-10. [Appointments](#appointments)
-11. [Payment ledger](#payment-ledger)
-12. [Prescriptions](#prescriptions)
-13. [Medical documents](#medical-documents)
-14. [Notifications](#notifications)
-15. [Files (signed URLs)](#files-signed-urls)
-16. [Error codes](#error-codes)
-17. [Status transition table](#status-transition-table)
+2. [Health](#health)
+3. [Roles & scope](#roles--scope)
+4. [Authentication](#authentication)
+5. [Clinics](#clinics)
+6. [Branches](#branches)
+7. [Clinic & branch licenses](#clinic--branch-licenses)
+8. [Branch staff](#branch-staff)
+9. [Doctors, invites & assignments](#doctors-invites--assignments)
+10. [Patients](#patients)
+11. [Appointments](#appointments)
+12. [Payment ledger](#payment-ledger)
+13. [Prescriptions](#prescriptions)
+14. [Medical documents](#medical-documents)
+15. [Notifications](#notifications)
+16. [Files (signed URLs)](#files-signed-urls)
+17. [Error codes](#error-codes)
+18. [Status transition table](#status-transition-table)
 
 ---
 
@@ -85,7 +86,7 @@ Default `100 req/min` per token. Auth endpoints `10 req/min` per IP. Overrides:
 
 Two upload models are used:
 
-**Photos (doctor, branch, branch gallery)** — uploaded directly to Cloudinary from the client, in two steps:
+**Photos (patient, doctor, branch, branch gallery)** — uploaded directly to Cloudinary from the client, in two steps:
 
 1. `POST <resource>/photo/signature` (auth required) returns a short-lived signed upload grant. The client **must** upload to the exact `public_id` it was issued.
 2. The client uploads the file directly to the returned `upload_url` (Cloudinary), sending `file` + `public_id` + `timestamp` + `api_key` + `cloud_name` + `allowed_formats` + `signature` as `multipart/form-data`.
@@ -102,6 +103,26 @@ Common upload errors: `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `400 F
 ### Partial updates
 
 `PATCH` bodies are partial — omitted fields are unchanged, `null` explicitly clears a nullable field.
+
+---
+
+## Health
+
+### GET /health
+
+Auth: none. Unauthenticated liveness/readiness check — pings the database and reports its status. Rate-limited at 60 requests/min per IP.
+
+**Response `200`**
+
+```json
+{ "status": "ok", "db": "up" }
+```
+
+**Response `503`** (database unreachable)
+
+```json
+{ "status": "error", "db": "down" }
+```
 
 ---
 
@@ -130,6 +151,13 @@ Public. Rate limited 10/min per IP.
   "name": "Aisha Verma",
   "email": "aisha@example.com",
   "phone": "+919876543210",
+  "address": "123 Link Road, Andheri West",
+  "nearby_location": "Near Andheri Station",
+  "city": "Mumbai",
+  "district": "Mumbai Suburban",
+  "pin_code": "400058",
+  "state": "Maharashtra",
+  "post_office": "Andheri West HO",
   "password": "password123"
 }
 ```
@@ -139,6 +167,13 @@ Public. Rate limited 10/min per IP.
 | `name` | string | required, 1–255 chars |
 | `email` | string | required, lowercase, must be valid |
 | `phone` | string? | optional, max 32 |
+| `address` | string | required, 1–500 chars |
+| `nearby_location` | string? | optional, max 500 |
+| `city` | string? | optional, max 255 |
+| `district` | string? | optional, max 255 |
+| `pin_code` | string? | optional, max 20 |
+| `state` | string? | optional, max 255 |
+| `post_office` | string? | optional, max 255 |
 | `password` | string | required, 8–128 chars |
 
 **Response `201`**
@@ -150,6 +185,13 @@ Public. Rate limited 10/min per IP.
     "name": "Aisha Verma",
     "email": "aisha@example.com",
     "phone": "+919876543210",
+    "address": "123 Link Road, Andheri West",
+    "nearby_location": "Near Andheri Station",
+    "city": "Mumbai",
+    "district": "Mumbai Suburban",
+    "pin_code": "400058",
+    "state": "Maharashtra",
+    "post_office": "Andheri West HO",
     "role": "patient"
   },
   "access_token": "<jwt>",
@@ -233,7 +275,10 @@ Same shape as patient login; requires `role = clinic_owner`.
 
 ### POST /auth/verify-email
 
-Public. Rate limited 10/min per IP. Activates a `clinic_owner` account (`status: 'pending'` → `'active'`) using the token from the welcome email sent by `POST /auth/clinic-owner/register`. The token is single-use and expires after 24 hours.
+Public. Rate limited 10/min per IP. Single-use, 24h-expiry token; shared by two flows:
+
+1. **Signup verification** — activates a `clinic_owner` account (`status: 'pending'` → `'active'`) using the token from the welcome email sent by `POST /auth/clinic-owner/register`.
+2. **Email change** — confirms a pending email change requested via `POST /patients/me/change-email`; on success, updates `users.email` to the new address instead of touching `status`.
 
 The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERIFICATION_TOKEN}` — `VERIFY_EMAIL_URL` defaults to `https://medinexa-clinic.onrender.com`.
 
@@ -251,7 +296,9 @@ The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERI
 }
 ```
 
-**Errors:** `400 VALIDATION_ERROR`, `400 VERIFICATION_TOKEN_INVALID`, `410 VERIFICATION_TOKEN_EXPIRED`.
+For the email-change flow, `message` is `"Your email address has been updated."` instead.
+
+**Errors:** `400 VALIDATION_ERROR`, `400 VERIFICATION_TOKEN_INVALID`, `409 EMAIL_ALREADY_REGISTERED` (new email was claimed by someone else in the meantime), `410 VERIFICATION_TOKEN_EXPIRED`.
 
 ### POST /auth/doctor/login
 
@@ -294,7 +341,9 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
   "email": "dr.smith@example.com",
   "invite_code": "K7QX2Z9P",
   "password": "password123",
-  "reg_no": "MC-123456"
+  "reg_no": "MC-123456",
+  "smc_name": "Medical Council of India",
+  "doctor_degree": "MBBS, MD"
 }
 ```
 
@@ -304,6 +353,8 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
 | `invite_code` | string | required, 1–32 chars |
 | `password` | string | required, 8–128 chars |
 | `reg_no` | string? | optional registration number, max 64, unique — ignored if the invite already has one set (from invite creation) |
+| `smc_name` | string? | max 255 — ignored if the invite already has one set |
+| `doctor_degree` | string? | max 100 — ignored if the invite already has one set |
 
 **Response `200`**
 
@@ -316,6 +367,8 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
     "name": "Dr. Smith",
     "specialization": "Cardiologist",
     "reg_no": "MC-123456",
+    "smc_name": "Medical Council of India",
+    "doctor_degree": "MBBS, MD",
     "phone": "+919900000001",
     "certificate_url": null,
     "bio": null
@@ -481,6 +534,37 @@ Public. Paginated. If the request is authenticated as a `clinic_owner`, results 
   "next_cursor": null
 }
 ```
+
+### GET /clinics/nearby
+
+Auth: `patient`. Paginated. Matches clinics against the caller's own saved `city`/`district`/`pin_code`/`state`/`post_office` (set at [`POST /auth/patient/register`](#post-authpatientregister) or via profile update) — a clinic is returned if **any** one of those fields matches (OR, not AND). Fields the patient hasn't set are skipped.
+
+**Query:** `?limit=&cursor=`
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+      "name": "Sunrise Multispeciality",
+      "description": "General & cardiac care",
+      "nearby_location": null,
+      "city": "Mumbai",
+      "district": "Mumbai Suburban",
+      "pin_code": "400058",
+      "state": "Maharashtra",
+      "post_office": null,
+      "branch_count": 2,
+      "created_at": "2026-08-01T09:30:00Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+**Errors:** `400 ADDRESS_NOT_SET` if the caller has none of `city`/`district`/`pin_code`/`state`/`post_office` set on their profile.
 
 ### GET /clinics/mine
 
@@ -719,6 +803,48 @@ Public. Same clinic-owner isolation as `GET /clinics/:clinicId`: a `clinic_owner
 ```
 
 **Errors:** `404 CLINIC_NOT_FOUND`.
+
+### GET /branches/nearby
+
+Auth: `patient`. Paginated. Same OR-match as [`GET /clinics/nearby`](#get-clinicsnearby), but against branches across all clinics — matches if any one of the caller's saved `city`/`district`/`pin_code`/`state`/`post_office` equals the branch's corresponding field.
+
+**Query:** `?limit=&cursor=`
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+      "name": "Sunrise — Andheri",
+      "address": "12, SV Road, Andheri West, Mumbai 400058",
+      "nearby_location": null,
+      "city": "Mumbai",
+      "district": "Mumbai Suburban",
+      "pin_code": "400058",
+      "state": "Maharashtra",
+      "post_office": null,
+      "phone": "+912240010010",
+      "lat": 19.1195670,
+      "lng": 72.8470000,
+      "timezone": "Asia/Kolkata",
+      "photo_url": null,
+      "trade_license_number": "TL-2026-009812",
+      "trade_license_url": null,
+      "drug_license_number": null,
+      "drug_license_url": null,
+      "clinical_establishment_reg_number": null,
+      "clinical_establishment_reg_url": null,
+      "created_at": "2026-08-02T11:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+**Errors:** `400 ADDRESS_NOT_SET` if the caller has none of `city`/`district`/`pin_code`/`state`/`post_office` set on their profile.
 
 ### POST /clinics/:clinicId/branches
 
@@ -1095,9 +1221,12 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
   "email": "dr.smith@example.com",
   "phone": "+919900000001",
   "reg_no": "MC-123456",
+  "smc_name": "Medical Council of India",
+  "doctor_degree": "MBBS, MD",
   "fee_amount": 500,
   "currency": "INR",
   "certificate": "https://example.com/cert.pdf",
+  "slot_type": "fixed",
   "slot_template": [
     {
       "weekday": 1,
@@ -1122,14 +1251,24 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 | `email` | string | required |
 | `phone` | string? | max 32 |
 | `reg_no` | string? | max 64, optional — pre-fill the doctor's registration number; if omitted, the doctor supplies it on accept |
+| `smc_name` | string? | max 255, optional — State Medical Council name |
+| `doctor_degree` | string? | max 100, optional — e.g. `MBBS, MD` |
 | `fee_amount` | number | required, > 0, ≤ 1,000,000 |
 | `currency` | string | required, 3-letter code |
 | `certificate` | string? | max 500 |
+| `slot_type` | string? | `fixed` \| `sequential`, defaults to `fixed` — see [Slot types](#slot-types) |
 | `slot_template` | array | required, ≥ 1 entry |
 | `slot_template[].weekday` | number | 0 (Sun) – 6 (Sat) |
 | `slot_template[].start_time` | string | `HH:MM` |
 | `slot_template[].end_time` | string | `HH:MM`, must be after start |
 | `slot_template[].slot_duration_minutes` | number | 5–240 |
+
+#### Slot types
+
+A doctor's booking behavior for a branch is controlled by `slot_type` on the assignment (`doctor_branch_assignments.slot_type`), set at invite time and editable via `PATCH /doctor-assignments/:id`:
+
+- **`fixed`** (default) — the patient picks one specific `HH:MM` slot from `GET /doctors/:id/availability`, and `POST /appointments` requires a `time` that aligns to the doctor's slot template.
+- **`sequential`** ("as per bookings") — the doctor only defines a time range and slot duration (e.g. 7 PM–9 PM, 15 min slots); patients do **not** choose a time. `POST /appointments` omits `time`, and the server assigns the next free slot in order: 1st booking gets 7:00–7:15, 2nd gets 7:15–7:30, 3rd gets 7:30–7:45, and so on. If the range is full for that date, `POST /appointments` returns `409 DOCTOR_FULLY_BOOKED`.
 
 **Response `201`**
 
@@ -1139,6 +1278,8 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "email": "dr.smith@example.com",
   "reg_no": "MC-123456",
+  "smc_name": "Medical Council of India",
+  "doctor_degree": "MBBS, MD",
   "status": "pending",
   "expires_at": "2026-08-16T10:00:00Z"
 }
@@ -1160,6 +1301,8 @@ Auth: `clinic_owner` **or** `branch_staff` with `doctors:manage`.
       "name": "Dr. Smith",
       "email": "dr.smith@example.com",
       "reg_no": "MC-123456",
+      "smc_name": "Medical Council of India",
+      "doctor_degree": "MBBS, MD",
       "status": "pending",
       "expires_at": "2026-08-16T10:00:00Z",
       "created_at": "2026-08-09T10:00:00Z"
@@ -1196,16 +1339,18 @@ Public. Returns only **accepted** doctors assigned to the branch.
       "doctor_degree": "MBBS, MD",
       "phone": "+919900000001",
       "certificate_url": null,
+      "photo_url": null,
       "fee_amount": 500,
       "currency": "INR",
       "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "slot_type": "fixed",
       "next_available_slot": "2026-08-10T09:20:00"
     }
   ]
 }
 ```
 
-`id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`.
+`id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker.
 
 ### POST /branches/:id/doctors/:doctorId/photo/signature
 
@@ -1237,17 +1382,20 @@ Auth: `clinic_owner`, must own the branch **or** `branch_staff` with `doctors:ma
 
 ### PATCH /doctor-assignments/:id
 
-Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Doctors may only update `slot_template`/`certificate`; attempting to set `fee_amount` as a doctor returns `403 FEE_OWNER_CONTROLLED`.
+Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Doctors may only update `slot_type`/`slot_template`/`certificate`; attempting to set `fee_amount` as a doctor returns `403 FEE_OWNER_CONTROLLED`.
 
 **Request body** (partial)
 
 ```json
 {
   "fee_amount": 600,
+  "slot_type": "sequential",
   "slot_template": [{ "weekday": 2, "start_time": "10:00", "end_time": "14:00", "slot_duration_minutes": 30 }],
   "certificate": "https://example.com/new-cert.pdf"
 }
 ```
+
+`slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types). Switching an assignment to `sequential` does not require changing `slot_template`; the same weekday/time-range/duration rows are reused, just booked in order instead of by patient-picked time.
 
 **Response `200`**
 
@@ -1258,6 +1406,7 @@ Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff`
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "fee_amount": 600,
   "currency": "INR",
+  "slot_type": "sequential",
   "certificate_url": "https://example.com/new-cert.pdf"
 }
 ```
@@ -1288,6 +1437,7 @@ Auth: `doctor`.
   "doctor_degree": "MBBS, MD",
   "phone": "+919900000001",
   "certificate_url": null,
+  "photo_url": null,
   "bio": null
 }
 ```
@@ -1391,12 +1541,14 @@ Public.
 {
   "date": "2026-08-10",
   "slots": [
-    { "time": "09:00", "available": true },
-    { "time": "09:20", "available": true },
-    { "time": "09:40", "available": false }
+    { "time": "09:00", "available": true, "slot_type": "fixed" },
+    { "time": "09:20", "available": true, "slot_type": "fixed" },
+    { "time": "09:40", "available": false, "slot_type": "fixed" }
   ]
 }
 ```
+
+Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)). For a `sequential` assignment, the listed slots show the doctor's queue positions and their availability, but the client should not let the patient pick one directly — `POST /appointments` auto-assigns the next open one.
 
 **Errors:** `422 VALIDATION_ERROR` (bad date), `404 DOCTOR_NOT_FOUND`.
 
@@ -1405,6 +1557,264 @@ Public.
 ## Patients
 
 Patients are `users` rows with `role = 'patient'` — there is no separate `patients` table. This section lists patients who have booked at least one (non-cancelled) appointment at a given branch.
+
+### GET /patients/me
+
+Auth: `patient`. Returns the caller's own profile, including their preferred clinic/branch.
+
+**Response `200`**
+
+```json
+{
+  "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "name": "Aisha Verma",
+  "first_name": "Aisha",
+  "last_name": "Verma",
+  "email": "aisha@example.com",
+  "phone": "+919876543210",
+  "date_of_birth": "1994-03-12",
+  "gender": "female",
+  "address": "123 Link Road, Andheri West",
+  "nearby_location": "Near Andheri Station",
+  "city": "Mumbai",
+  "district": "Mumbai Suburban",
+  "pin_code": "400058",
+  "state": "Maharashtra",
+  "post_office": "Andheri West HO",
+  "photo_url": null,
+  "push_topic": "medinexa_1tQvWf4n3sBm7KpLzXr2c9hJ8dY6uEaSgHwM5vN0bA",
+  "preferred_clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+  "preferred_clinic_name": "Sunrise Clinic",
+  "preferred_branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+  "preferred_branch_name": "Andheri West Branch",
+  "created_at": "2026-08-01T09:30:00Z",
+  "updated_at": "2026-08-01T09:30:00Z"
+}
+```
+
+`push_topic` is the patient's private ntfy topic — the mobile app subscribes to `https://ntfy.sh/{push_topic}` to receive push notifications. It is generated at registration (or lazily on first push for pre-existing accounts) and is read-only via this API.
+
+`first_name`/`last_name` are optional and independent of `name` — `name` remains the canonical display name (required, shown across appointments/notifications/emails). `preferred_clinic_id`/`preferred_clinic_name`/`preferred_branch_id`/`preferred_branch_name` are `null` until the patient sets a preferred branch via `PATCH /patients/me`.
+
+### PATCH /patients/me
+
+Auth: `patient`. Partial update of the caller's own profile — see [Partial updates](#partial-updates). `name` and `address` cannot be cleared to empty/`null` (both are required at registration); the remaining fields accept `null` to clear them.
+
+**Request body** (any subset)
+
+```json
+{ "phone": "+919876543211", "city": "Pune", "pin_code": "411001" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string? | 1–255 chars |
+| `first_name` | string? | 1–150 chars. If `name` is omitted, `name` is recomputed as `"{first_name} {last_name}"` |
+| `last_name` | string? | 1–150 chars. See above |
+| `phone` | string?\|null | max 32 |
+| `date_of_birth` | string?\|null | `YYYY-MM-DD`, cannot be in the future |
+| `gender` | string?\|null | one of `male`, `female`, `other`, `prefer_not_to_say` |
+| `address` | string? | 1–500 chars |
+| `nearby_location` | string?\|null | max 500 |
+| `city` | string?\|null | max 255 |
+| `district` | string?\|null | max 255 |
+| `pin_code` | string?\|null | max 20 |
+| `state` | string?\|null | max 255 |
+| `post_office` | string?\|null | max 255 |
+| `preferred_clinic_id` | string (UUID)?\|null | must be an existing, non-deleted clinic. Setting to `null` also clears `preferred_branch_id` |
+| `preferred_branch_id` | string (UUID)?\|null | must be an existing, non-deleted branch. Also sets `preferred_clinic_id` to that branch's clinic (overriding any `preferred_clinic_id` in the same request). Setting to `null` clears only the branch |
+
+**Response `200`**: same shape as `GET /patients/me`.
+
+**Errors:** `400 VALIDATION_ERROR`, `404 CLINIC_NOT_FOUND`, `404 BRANCH_NOT_FOUND`.
+
+### GET /patients/me/medical-info
+
+Auth: `patient`. Returns the caller's medical profile and emergency contact — kept in a separate table from the general profile above. Fields default to `null` if the patient hasn't filled them in yet (never 404s).
+
+**Response `200`**
+
+```json
+{
+  "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "blood_group": "O+",
+  "allergies": "Penicillin, peanuts",
+  "medical_conditions": "Type 2 diabetes",
+  "current_medications": "Metformin 500mg twice daily",
+  "previous_surgeries": "Appendectomy (2018)",
+  "medical_notes": "Prefers morning appointments due to medication schedule.",
+  "emergency_contact": {
+    "name": "Rohan Verma",
+    "relationship": "Spouse",
+    "phone": "+919876500000"
+  },
+  "updated_at": "2026-08-01T09:30:00Z"
+}
+```
+
+### PATCH /patients/me/medical-info
+
+Auth: `patient`. Partial update — see [Partial updates](#partial-updates). Creates the record on first write.
+
+**Request body** (any subset)
+
+```json
+{ "blood_group": "O+", "allergies": "Penicillin, peanuts" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `blood_group` | string?\|null | one of `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`, `unknown` |
+| `allergies` | string?\|null | max 2000 |
+| `medical_conditions` | string?\|null | max 2000 |
+| `current_medications` | string?\|null | max 2000 |
+| `previous_surgeries` | string?\|null | max 2000 |
+| `medical_notes` | string?\|null | max 2000 |
+| `emergency_contact_name` | string?\|null | max 255 |
+| `emergency_contact_relationship` | string?\|null | max 100 |
+| `emergency_contact_phone` | string?\|null | max 32 |
+
+**Response `200`**: same shape as `GET /patients/me/medical-info`.
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### GET /patients/me/appointment-summary
+
+Auth: `patient`. Compact counts plus the soonest upcoming appointment, for the profile page's appointment summary card.
+
+**Response `200`**
+
+```json
+{
+  "upcoming_count": 2,
+  "completed_count": 5,
+  "cancelled_count": 1,
+  "no_show_count": 0,
+  "total_count": 8,
+  "next_appointment": {
+    "id": "f1e2d3c4-b5a6-7980-9a8b-7c6d5e4f3a2b",
+    "scheduled_date": "2026-08-15",
+    "scheduled_time": "09:20",
+    "status": "confirmed",
+    "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "doctor_name": "Dr. Kavita Rao",
+    "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+    "branch_name": "Andheri West Branch"
+  },
+  "previous_appointment": {
+    "id": "a9b8c7d6-e5f4-3210-9a8b-7c6d5e4f3a2b",
+    "scheduled_date": "2026-07-20",
+    "scheduled_time": "11:00",
+    "status": "completed",
+    "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "doctor_name": "Dr. Kavita Rao",
+    "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+    "branch_name": "Andheri West Branch"
+  }
+}
+```
+
+`upcoming_count` counts non-terminal appointments (`pending`/`confirmed`/`paid`) scheduled today or later. `next_appointment` is the soonest such appointment, or `null` if there is none. `previous_appointment` is the most recent `completed` appointment (the patient's last visit), or `null` if there is none.
+
+### POST /patients/me/change-password
+
+Auth: `patient`. Rate limited 10/min. Changes the caller's password and revokes all of their active sessions (they must log in again everywhere).
+
+**Request body**
+
+```json
+{ "current_password": "OldPass123", "new_password": "NewPass456", "confirm_password": "NewPass456" }
+```
+
+**Response `200`**
+
+```json
+{ "message": "Password changed. Please log in again on your other devices." }
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`.
+
+### POST /patients/me/change-email
+
+Auth: `patient`. Rate limited 10/min. Starts an email change: verifies the current password, then emails a confirmation link to the **new** address (reusing the `POST /auth/verify-email` flow — the token carries the pending new email). The old address is notified of the request. The email only changes once the new address is confirmed.
+
+**Request body**
+
+```json
+{ "new_email": "aisha.new@example.com", "current_password": "OldPass123" }
+```
+
+**Response `200`**
+
+```json
+{ "message": "Check your new email address for a confirmation link to complete the change." }
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS`, `409 EMAIL_ALREADY_REGISTERED`.
+
+### GET /patients/me/sessions
+
+Auth: `patient`. Lists the caller's active (non-revoked, non-expired) login sessions, i.e. refresh tokens.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    { "id": "a1b2c3d4-...", "created_at": "2026-08-01T09:30:00Z", "expires_at": "2026-08-31T09:30:00Z" }
+  ]
+}
+```
+
+### DELETE /patients/me/sessions/:id
+
+Auth: `patient`. Revokes one of the caller's sessions by id (e.g. "log out this device").
+
+**Response `204 No Content`**
+
+**Errors:** `404 SESSION_NOT_FOUND`.
+
+### POST /patients/me/logout-all
+
+Auth: `patient`. Revokes **all** of the caller's active sessions ("log out everywhere").
+
+**Response `204 No Content`**
+
+### POST /patients/me/photo/signature
+
+Auth: `patient`. Issues a signed Cloudinary upload grant for the caller's own profile photo — same two-step flow as [File uploads](#file-uploads) (folder `patients`).
+
+**Response `200`**
+
+```json
+{
+  "upload_url": "https://api.cloudinary.com/v1_1/<cloud_name>/image/upload",
+  "cloud_name": "<cloud_name>",
+  "api_key": "<api_key>",
+  "timestamp": 1770000000,
+  "public_id": "patients/3c2f6a1b-9e8d-4c7a-b5f0-1a2b3c4d5e6f",
+  "allowed_formats": ["jpg", "png", "webp", "gif"],
+  "signature": "<sha1>"
+}
+```
+
+### POST /patients/me/photo
+
+Auth: `patient`. Persists the photo uploaded to the `public_id` issued above.
+
+**Request body**
+
+```json
+{ "public_id": "patients/3c2f6a1b-9e8d-4c7a-b5f0-1a2b3c4d5e6f" }
+```
+
+**Response `200`**
+
+```json
+{ "photo_url": "https://res.cloudinary.com/<cloud_name>/image/upload/patients/3c2f6a1b-9e8d-4c7a-b5f0-1a2b3c4d5e6f" }
+```
+
+**Errors:** `400 INVALID_PUBLIC_ID`.
 
 ### GET /branches/:id/patients
 
@@ -1477,6 +1887,11 @@ Auth: `patient`. Header `Idempotency-Key` **required**.
 
 On success, an in-app notification (`new_booking`) is created for every branch staff member **and** the clinic owner, and each of them is emailed the patient's name/email/phone and the doctor's name.
 
+Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Slot types](#slot-types)):
+
+- **`fixed`** — `time` is required and must be one of the doctor's aligned slots for that date (from `GET /doctors/:id/availability`).
+- **`sequential`** — `time` is ignored/omitted; the server books the next free slot in the doctor's range for that date, in booking order (1st patient gets the range's first slot, 2nd patient gets the next, etc.).
+
 **Request body**
 
 ```json
@@ -1493,11 +1908,11 @@ On success, an in-app notification (`new_booking`) is created for every branch s
 | `doctor_id` | string (UUID) | required |
 | `branch_id` | string (UUID) | required |
 | `date` | string | required, `YYYY-MM-DD`, not in the past |
-| `time` | string | required, `HH:MM`, must be an aligned slot |
+| `time` | string? | required and must be an aligned slot when the doctor's `slot_type` is `fixed`; omit for `sequential` doctors |
 
-**Response `201`** — Appointment object (`status: "pending"`).
+**Response `201`** — Appointment object (`status: "pending"`, `scheduled_time` is the server-assigned time for `sequential` bookings).
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `409 SLOT_ALREADY_BOOKED`, `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
 ### GET /appointments
 
@@ -1752,6 +2167,7 @@ Auth: `doctor` (assigned) or `patient` (own). Sends the prescription email (fire
 {
   "id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e",
   "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "category": "lab_report",
   "file_url": "https://api.medibook.app/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
   "file_name": "blood-report.pdf",
   "mime_type": "application/pdf",
@@ -1760,24 +2176,30 @@ Auth: `doctor` (assigned) or `patient` (own). Sends the prescription email (fire
 }
 ```
 
+`category` ∈ `prescription | lab_report | doctor_note | other` (defaults to `other`). Note that finalized in-app prescriptions live under [Prescriptions](#prescriptions) (`GET /appointments/:id/prescription`) — this `category` is for patient-uploaded scans/photos of prescriptions, not the digitized record.
+
 ### POST /patients/me/medical-documents
 
-Auth: `patient`. `multipart/form-data`, field `file`.
+Auth: `patient`. `multipart/form-data`, fields `file` (required) and `category` (optional, defaults to `other`).
 Allowed: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, ≤ 20MB.
 
 **Response `201`** — MedicalDocument object.
 
-**Errors:** `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
+**Errors:** `400 VALIDATION_ERROR` (bad `category`), `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
 
 ### GET /patients/me/medical-documents
 
 Auth: `patient`.
+
+**Query:** `?category=` (optional — one of `prescription`, `lab_report`, `doctor_note`, `other`)
 
 **Response `200`**
 
 ```json
 { "items": [ /* MedicalDocument objects, newest first */ ] }
 ```
+
+**Errors:** `400 VALIDATION_ERROR` (bad `category`).
 
 ### DELETE /medical-documents/:id
 
@@ -1818,6 +2240,8 @@ Auth: `doctor` **only**, and only with a non-cancelled appointment relationship 
 ```
 
 `type` ∈ `new_booking | booking_confirmed | payment_received | consultation_completed | prescription_ready | doctor_invited | doctor_invite_accepted | appointment_cancelled`
+
+**Delivery:** notifications are stored in-app and polled via the endpoints below. Patient-facing events (`booking_confirmed`, `payment_received`, `consultation_completed`, `prescription_ready`, and patient-cancelled/`appointment_cancelled` by staff) additionally fan out a **push** notification to the patient's device through [ntfy](https://ntfy.sh). Each patient has a private topic (`users.push_topic`, returned by `GET /patients/me`) the app subscribes to at `${NTFY_BASE_URL}/${push_topic}`; the server publishes via `NTFY_BASE_URL` (default `https://ntfy.sh`) with an optional `NTFY_TOKEN` for self-hosted instances. Push failures never fail the triggering request.
 
 ### GET /notifications
 
@@ -1892,7 +2316,7 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `NO_APPOINTMENT_RELATIONSHIP` | 403 | No appointment link with the patient |
 | `FEE_OWNER_CONTROLLED` | 403 | Doctor tried to change the fee |
 | `INVALID_SIGNED_URL` | 403 | Bad/expired file URL signature |
-| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
+| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
 | `INVITE_EXPIRED` / `OTP_EXPIRED` / `RESET_TOKEN_EXPIRED` | 410 | Expired one-time code |
 | `FILE_TOO_LARGE` | 413 | Upload exceeds size limit |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Upload has a disallowed MIME type |
@@ -1903,7 +2327,8 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `INVITE_ALREADY_ACCEPTED` | 409 | Invite already accepted |
 | `DOCTOR_ALREADY_ASSIGNED` | 409 | Doctor already at this branch |
 | `STAFF_ALREADY_EXISTS_FOR_BRANCH` | 409 | Staff email already registered to the branch |
-| `SLOT_ALREADY_BOOKED` | 409 | Slot taken (DB-level unique guard) |
+| `SLOT_ALREADY_BOOKED` | 409 | Slot taken (DB-level unique guard, `fixed` doctors) |
+| `DOCTOR_FULLY_BOOKED` | 409 | No slots left that date (`sequential` doctors) |
 | `INVALID_STATUS_TRANSITION` | 409 | Appointment status change not allowed |
 | `CANNOT_CANCEL_PAID_APPOINTMENT` | 409 | Patient cannot cancel a paid appointment |
 | `DOCTOR_HAS_ACTIVE_APPOINTMENTS` | 409 | Cannot remove doctor with live appointments |
@@ -1938,7 +2363,7 @@ Any other transition returns `409 INVALID_STATUS_TRANSITION`.
 POST /auth/clinic-owner/register
 POST /clinics                       {name, trade_license_number}
 POST /clinics/:clinicId/branches    {name, address, phone, timezone, trade_license_number}
-POST /branches/:id/doctor-invites   {name, specialization, email, fee_amount, currency, slot_template}
+POST /branches/:id/doctor-invites   {name, specialization, email, fee_amount, currency, slot_type, slot_template}
   → invite code emailed to the doctor
 POST /auth/doctor/accept-invite     {email, invite_code, password, reg_no}
 GET  /branches/:id/doctors          → doctor now listed
@@ -1951,7 +2376,7 @@ GET  /clinics?search=Sunrise
 GET  /clinics/:clinicId/branches
 GET  /branches/:id/doctors
 GET  /doctors/:doctorId/availability?date=2026-08-10
-POST /appointments   {doctor_id, branch_id, date, time}   [Idempotency-Key]
+POST /appointments   {doctor_id, branch_id, date, time?}   [Idempotency-Key]   (time omitted for "sequential" doctors)
 PATCH /appointments/:id/confirm
 PATCH /appointments/:id/payment     {fee_amount, method}   [Idempotency-Key]
 PUT   /appointments/:id/prescription {text}
