@@ -1027,6 +1027,104 @@ Auth: `clinic_owner`, must own the branch. Removes an image from the gallery.
 
 ---
 
+## Branch schedule
+
+A **branch-level operating calendar** sits above every doctor's own scheduling (`doctor_slot_templates` + leaves) in the availability rule: a doctor can never be bookable on a weekday the branch itself is marked closed, or a date covered by an active branch-wide closure — regardless of what the doctor's own template/leaves say. This is computed live by every availability endpoint and by `POST /appointments`, never cached or stored per-doctor. Managed in this portal via `branchScheduleApi` in `src/lib/api.ts` and `BranchSchedulePanel.tsx` (`/clinics/:clinicId/branches/:branchId/schedule`).
+
+`operating_days` covers all 7 weekdays (0=Sun..6=Sat) — a weekday with no explicit override defaults to **open**, so an existing branch with zero rows in `branch_operating_days` behaves exactly as before this feature shipped, until a clinic owner customizes it.
+
+### GET /branches/:id/schedule
+
+Auth: `clinic_owner` (owns branch) **or** `branch_staff` (assigned to branch, any permission) **or** `doctor` (assigned to branch). Returns the full 7-day week regardless of how many days have been customized.
+
+**Response `200`**
+
+```json
+{
+  "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+  "operating_days": [
+    { "weekday": 0, "is_open": true },
+    { "weekday": 1, "is_open": true },
+    { "weekday": 2, "is_open": true },
+    { "weekday": 3, "is_open": false },
+    { "weekday": 4, "is_open": true },
+    { "weekday": 5, "is_open": true },
+    { "weekday": 6, "is_open": false }
+  ]
+}
+```
+
+**Errors:** `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED` (doctor not assigned to this branch).
+
+### PATCH /branches/:id/schedule
+
+Auth: `clinic_owner` **or** `branch_staff` with `branch:settings`. Upserts the given weekdays only — any weekday not included keeps its current value (or the open default). Not a full-replace like `slot_template`.
+
+**Request body**
+
+```json
+{ "operating_days": [{ "weekday": 3, "is_open": false }, { "weekday": 6, "is_open": false }] }
+```
+
+**Response `200`** — full 7-day week, same shape as `GET`.
+
+**Errors:** `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`, `400 VALIDATION_ERROR`.
+
+### GET /branches/:id/schedule/closures
+
+Auth: same read access as `GET /branches/:id/schedule`. Lists branch-wide closures (holidays, maintenance, etc). Both active and cancelled closures are returned, kept as an audit record.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "c3d4e5f6-...",
+      "start_date": "2026-10-02",
+      "end_date": "2026-10-02",
+      "reason": "Public holiday",
+      "status": "active",
+      "created_at": "2026-08-13T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### POST /branches/:id/schedule/closures
+
+Auth: `clinic_owner` **or** `branch_staff` with `branch:settings`. Marks a date range unavailable for **every** doctor at this branch in one call.
+
+**Request body**
+
+```json
+{ "start_date": "2026-10-02", "end_date": "2026-10-02", "reason": "Public holiday" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `start_date` | string | required, `YYYY-MM-DD` (inclusive) |
+| `end_date` | string? | `YYYY-MM-DD`, nullable — defaults to `start_date` for a single day |
+| `reason` | string? | max 255 |
+
+**Response `201`**
+
+```json
+{ "id": "c3d4e5f6-...", "branch_id": "5e8f6c7a-...", "start_date": "2026-10-02", "end_date": "2026-10-02", "reason": "Public holiday", "status": "active" }
+```
+
+**Errors:** `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`, `400 VALIDATION_ERROR` (`end_date` before `start_date`).
+
+### DELETE /branches/:id/schedule/closures/:closureId
+
+Auth: same as `POST`. **Cancels** the closure (`status` → `cancelled`) rather than deleting it, restoring availability across its date range immediately — same soft-cancel pattern as doctor leaves.
+
+**Response `204 No Content`**
+
+**Errors:** `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`, `404 CLOSURE_NOT_FOUND`.
+
+---
+
 ## Clinic & branch licenses
 
 Both clinics and branches carry three license fields — a **Trade License** from the local municipality (required), a **Drug License** (optional, only needed if the clinic/branch sells or stocks medicines), and a **Clinical Establishment Registration** (optional, for healthcare operations). The `*_number` fields are set via `POST /clinics`, `POST /clinics/:clinicId/branches`, `PATCH /clinics/:clinicId`, or `PATCH /branches/:id`. The corresponding document is uploaded separately with the endpoints below, which persist a `*_url` field on the clinic/branch.
@@ -1084,6 +1182,7 @@ Permission keys:
 | `staff:manage` | Add/remove staff + read/update permissions |
 | `doctors:manage` | Invite/revoke doctors, update/remove assignments, doctor photos |
 | `patients:view` | `GET /branches/:id/patients` |
+| `branch:settings` | `PATCH /branches/:id/schedule`, `POST`/`DELETE` on `/branches/:id/schedule/closures` |
 
 New staff default to `["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]`. The `clinic_owner` is always allowed and is unaffected. A `branch_staff` calling a gated action without the required permission gets `403 PERMISSION_DENIED`.
 
@@ -1335,6 +1434,7 @@ Public. Returns only **accepted** doctors assigned to the branch.
 
 ```json
 {
+  "total": 1,
   "items": [
     {
       "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
@@ -1350,13 +1450,19 @@ Public. Returns only **accepted** doctors assigned to the branch.
       "currency": "INR",
       "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
       "slot_type": "fixed",
-      "next_available_slot": "2026-08-10T09:20:00"
+      "start_date": "2026-01-15",
+      "end_date": null,
+      "next_available_slot": "2026-08-10T09:20:00",
+      "unavailable_dates": [
+        { "start_date": "2026-08-20", "end_date": "2026-08-20", "reason": "Holiday" },
+        { "start_date": "2026-09-01", "end_date": "2026-09-07", "reason": "Annual leave" }
+      ]
     }
   ]
 }
 ```
 
-`id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker.
+`total` is the count of doctors in `items` (this endpoint is not paginated). `id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `start_date`/`end_date` are derived from the assignment's `slot_template` rows (`doctor_slot_templates`, set via `POST /branches/:id/doctor-invites` or `PATCH /doctor-assignments/:id`): `start_date` is the earliest `slot_template[].start_date` across all of the assignment's weekly entries, and `end_date` is the latest `slot_template[].end_date` — but `null` if **any** entry has no `end_date` (i.e. repeats indefinitely), since that makes the assignment's overall end open-ended. Both are `null` if the assignment has no slot template rows. `unavailable_dates` lists the assignment's upcoming active leaves (`doctor_slot_exceptions`, see `GET /doctor-assignments/:id/exceptions`) as `{ start_date, end_date, reason }` — a leave is a genuine inclusive date range now (`start_date` and `end_date` can differ), not always a single day. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker.
 
 ### POST /branches/:id/doctors/:doctorId/photo/signature
 
@@ -1410,7 +1516,7 @@ Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff`
 
 `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types). Switching an assignment to `sequential` does not require changing `slot_template`; the same weekday/time-range/duration rows are reused, just booked in order instead of by patient-picked time.
 
-Sending `slot_template` fully replaces the assignment's existing rows — it is not a diff/patch of individual entries. Each entry's `weekday` pattern repeats every week between `start_date` and `end_date` (or indefinitely if `end_date` is `null`). To keep a doctor's weekly schedule but pull them off a single date within that range (holiday, leave, etc.), use the exceptions endpoints below instead of shrinking the date range.
+Sending `slot_template` fully replaces the assignment's existing rows — it is not a diff/patch of individual entries. Each entry's `weekday` pattern repeats every week between `start_date` and `end_date` (or indefinitely if `end_date` is `null`). To keep a doctor's weekly schedule but pull them off a single date within that range (holiday, leave, etc.), use the exceptions endpoints below instead of shrinking the date range. These per-entry dates are also what `GET /branches/:id/doctors` aggregates into its top-level `start_date`/`end_date` per doctor — see that endpoint's docs.
 
 **Response `200`**
 
@@ -1438,44 +1544,61 @@ Auth: `clinic_owner` **or** `branch_staff` with `doctors:manage`. Deactivates th
 
 ### GET /doctor-assignments/:id/exceptions
 
-Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Lists the dates within the assignment's slot-template range where the doctor is marked unavailable, overriding the otherwise-recurring weekly pattern.
+Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Lists the doctor's **leaves** for this assignment — inclusive date ranges within the assignment's slot-template range where the doctor is unavailable, overriding the otherwise-recurring weekly pattern. Both active and cancelled leaves are returned (cancelled ones are kept as an audit record); the clinic portal filters to `status === "active"` when rendering the leave list (`DoctorAssignmentEditPanel.tsx`).
 
 **Response `200`**
 
 ```json
 {
   "items": [
-    { "id": "b1c2d3e4-...", "excluded_date": "2026-09-07", "reason": "On leave", "created_at": "2026-08-13T10:00:00.000Z" }
+    {
+      "id": "b1c2d3e4-...",
+      "excluded_date": "2026-09-01",
+      "end_date": "2026-09-07",
+      "reason": "Annual leave",
+      "status": "active",
+      "created_at": "2026-08-13T10:00:00.000Z"
+    }
   ]
 }
 ```
 
+`excluded_date` is the leave's (inclusive) start date; `end_date` is the (inclusive) end date — equal to `excluded_date` for a single-day leave. `status` ∈ `active | cancelled`; only `active` leaves block availability/booking.
+
 ### POST /doctor-assignments/:id/exceptions
 
-Auth: same as above. Marks a single date unavailable, even if it falls inside an active `slot_template` weekday/date-range.
+Auth: same as above. Marks a date range unavailable ("doctor leave") in one call, even if it falls inside an active `slot_template` weekday/date-range. The leave does not need to fall entirely inside the assignment's slot-template range — the effective unavailable window is the **intersection** of the leave and the doctor's availability period, computed live by every availability/booking endpoint rather than stored.
 
 **Request body**
 
 ```json
-{ "excluded_date": "2026-09-07", "reason": "On leave" }
+{ "excluded_date": "2026-09-01", "end_date": "2026-09-07", "reason": "Annual leave" }
 ```
 
 | Field | Type | Notes |
 |---|---|---|
-| `excluded_date` | string | required, `YYYY-MM-DD` |
+| `excluded_date` | string | required, `YYYY-MM-DD` — leave start date (inclusive) |
+| `end_date` | string? | `YYYY-MM-DD`, nullable — leave end date (inclusive); omit for a single-day leave (defaults to `excluded_date`) |
 | `reason` | string? | max 255 |
 
 **Response `201`**
 
 ```json
-{ "id": "b1c2d3e4-...", "doctor_branch_assignment_id": "e4f5a6b7-...", "excluded_date": "2026-09-07", "reason": "On leave" }
+{
+  "id": "b1c2d3e4-...",
+  "doctor_branch_assignment_id": "e4f5a6b7-...",
+  "excluded_date": "2026-09-01",
+  "end_date": "2026-09-07",
+  "reason": "Annual leave",
+  "status": "active"
+}
 ```
 
-**Errors:** `404 ASSIGNMENT_NOT_FOUND`, `409 EXCEPTION_ALREADY_EXISTS`.
+**Errors:** `404 ASSIGNMENT_NOT_FOUND`, `400 VALIDATION_ERROR` (`end_date` before `excluded_date`). Overlapping leaves for the same assignment are allowed (the union of active ranges is what matters for availability), so there is no `409 EXCEPTION_ALREADY_EXISTS` in this version of the contract.
 
 ### DELETE /doctor-assignments/:id/exceptions/:exceptionId
 
-Auth: same as above. Re-enables the doctor's normal recurring availability on that date.
+Auth: same as above. **Cancels** the leave (`status` → `cancelled`) rather than deleting the row, so it's kept as an audit record — this immediately restores the doctor's normal recurring availability across the leave's date range, without touching `slot_template`.
 
 **Response `204 No Content`**
 
@@ -1501,6 +1624,32 @@ Auth: `doctor`.
   "bio": null
 }
 ```
+
+### GET /doctors/me/assignments
+
+Auth: `doctor`. Lets a logged-in doctor discover which branch(es) they're assigned to, and the `assignment_id` each needs for `PATCH /doctor-assignments/:id` and the exceptions/leave endpoints — there was previously no self-service way to find this. Powers the "My Schedule" page (`/doctor-schedule`, `DoctorMySchedulePanel.tsx`) added for the new doctor login (`SignInForm.tsx`'s "Doctor" tab, `AuthContext.doctorLogin`).
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "assignment_id": "e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "timezone": "Asia/Kolkata",
+      "fee_amount": 500,
+      "currency": "INR",
+      "slot_type": "fixed",
+      "start_date": "2026-01-15",
+      "end_date": null
+    }
+  ]
+}
+```
+
+`start_date`/`end_date` are the same derived-from-`slot_template` values as `GET /branches/:id/doctors`. From here, the client navigates to the existing `/doctors/:branchId/:doctorId/edit` page (already doctor-self-editable) to manage slot template/leaves for a given branch.
 
 ### PATCH /doctors/me
 
@@ -1591,15 +1740,36 @@ Searches `reg_no` (prefix), `name` (contains), and `specialization` (contains). 
 
 ### GET /doctors/:id/availability
 
-Public.
+Public. The authoritative availability rule (applied identically here, in `/availability/week`, `/availability/calendar`, and `POST /appointments`) is:
 
-**Query:** `?date=2026-08-10` (required, `YYYY-MM-DD`)
+```text
+AVAILABLE =
+    the branch is open on that weekday                       (branch_operating_days)
+    AND NOT EXISTS an ACTIVE branch closure covering date     (branch_closures)
+    AND date >= assignment's derived availability start date  (inclusive)
+    AND date <= assignment's derived availability end date    (inclusive, if set)
+    AND date >= today
+    AND NOT EXISTS an ACTIVE leave covering date               (doctor_slot_exceptions)
+    AND at least one bookable slot exists for that date
+```
+
+The branch-level check is the outermost gate — see [Branch schedule](#branch-schedule) — and is checked before the doctor's own schedule, so it gets its own `clinic_closed` status distinct from `outside_schedule`/`leave`.
+
+The availability start/end dates are never stored directly — they're derived as the union of the assignment's `doctor_slot_templates` date ranges (same aggregation as `GET /branches/:id/doctors`'s `start_date`/`end_date`). All date comparisons are on `YYYY-MM-DD` strings, never JS `Date` timestamps, so there's no timezone drift between "today" and stored dates.
+
+Two modes, selected by which query params are present:
+
+**Single-date mode** — `?date=2026-08-10` (`YYYY-MM-DD`, required for this mode), `?branch_id=` optional (defaults to the doctor's first active assignment if omitted, for backward compatibility). This is the mode `doctorsApi.availability()` in `src/lib/api.ts` calls from `DoctorProfilePanel.tsx`.
 
 **Response `200`**
 
 ```json
 {
   "date": "2026-08-10",
+  "status": "available",
+  "is_bookable": true,
+  "leave": null,
+  "closure": null,
   "slots": [
     { "time": "09:00", "available": true, "slot_type": "fixed" },
     { "time": "09:20", "available": true, "slot_type": "fixed" },
@@ -1608,11 +1778,109 @@ Public.
 }
 ```
 
-Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)). For a `sequential` assignment, the listed slots show the doctor's queue positions and their availability, but the client should not let the patient pick one directly — `POST /appointments` auto-assigns the next open one.
+`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one.
 
-If `date` matches an entry in the assignment's exceptions list (see `GET /doctor-assignments/:id/exceptions`), `slots` is returned empty regardless of the weekly `slot_template`.
+**Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day (`doctorsApi.availabilityRange()`).
 
-**Errors:** `422 VALIDATION_ERROR` (bad date), `404 DOCTOR_NOT_FOUND`.
+**Response `200`**
+
+```json
+{
+  "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+  "availability_period": { "start_date": "2026-08-16", "end_date": "2026-08-23" },
+  "leaves": [
+    { "start_date": "2026-08-20", "end_date": "2026-08-22", "reason": "Doctor unavailable" }
+  ],
+  "closures": [
+    { "start_date": "2026-08-27", "end_date": "2026-08-27", "reason": "Public holiday" }
+  ],
+  "dates": [
+    {
+      "date": "2026-08-16",
+      "day": "Sunday",
+      "status": "available",
+      "is_bookable": true,
+      "leave": null,
+      "closure": null,
+      "slots": [{ "time": "09:00", "available": true, "slot_type": "fixed" }]
+    },
+    {
+      "date": "2026-08-20",
+      "day": "Thursday",
+      "status": "leave",
+      "is_bookable": false,
+      "leave": { "start_date": "2026-08-20", "end_date": "2026-08-22", "reason": "Doctor unavailable" },
+      "closure": null,
+      "slots": []
+    },
+    {
+      "date": "2026-08-27",
+      "day": "Thursday",
+      "status": "clinic_closed",
+      "is_bookable": false,
+      "leave": null,
+      "closure": { "start_date": "2026-08-27", "end_date": "2026-08-27", "reason": "Public holiday" },
+      "slots": []
+    }
+  ]
+}
+```
+
+`closures` (top-level) lists the branch's active closures overlapping `[from, to]`, mirroring `leaves` — see [Branch schedule](#branch-schedule).
+
+**Errors:** `422 VALIDATION_ERROR` (bad `date`, single-date mode) / `400 VALIDATION_ERROR` (missing/invalid `branch_id`, `from`, `to`, or range too large), `404 DOCTOR_NOT_FOUND`.
+
+### GET /doctors/:id/availability/week
+
+Public. `doctorsApi.availabilityWeek()`. Drives a doctor profile's "Availability this week" cards without the client generating dates or hardcoding a weekly pattern itself.
+
+**Query:** `?branch_id=<id>` (required), `?date=2026-08-16` (optional anchor date, `YYYY-MM-DD`, defaults to today) — the response covers exactly the 7 calendar days starting at `date`.
+
+**Response `200`**
+
+```json
+{
+  "week_start": "2026-08-16",
+  "week_end": "2026-08-22",
+  "dates": [
+    { "date": "2026-08-16", "day": "Sun", "status": "available", "is_bookable": true, "display_time": "9:00 AM" },
+    { "date": "2026-08-17", "day": "Mon", "status": "unavailable", "is_bookable": false, "display_time": "No slots" },
+    { "date": "2026-08-20", "day": "Thu", "status": "leave", "is_bookable": false, "display_time": "Doctor on leave" },
+    { "date": "2026-08-21", "day": "Fri", "status": "clinic_closed", "is_bookable": false, "display_time": "Clinic closed" }
+  ]
+}
+```
+
+`display_time` is a UI-ready label: the first open slot formatted 12-hour (`"9:00 AM"`) when bookable, `"Doctor on leave"` for `leave`, `"Clinic closed"` for `clinic_closed`, `"Fully booked"` for `fully_booked`, else `"No slots"`.
+
+**Errors:** `400 VALIDATION_ERROR` (missing `branch_id`, bad `date`), `404 DOCTOR_NOT_FOUND`.
+
+### GET /doctors/:id/availability/calendar
+
+Public. `doctorsApi.availabilityCalendar()`. Drives a full-month calendar picker in one call.
+
+**Query:** `?branch_id=<id>&year=2026&month=8` (all required; `month` is 1–12).
+
+**Response `200`**
+
+```json
+{
+  "year": 2026,
+  "month": 8,
+  "availability_period": { "start_date": "2026-08-16", "end_date": "2026-08-23" },
+  "dates": [
+    { "date": "2026-08-16", "status": "available", "is_bookable": true },
+    { "date": "2026-08-20", "status": "leave", "is_bookable": false },
+    { "date": "2026-08-21", "status": "clinic_closed", "is_bookable": false },
+    { "date": "2026-08-24", "status": "outside_schedule", "is_bookable": false }
+  ]
+}
+```
+
+Every day of the month is included (not just the availability period) so the client can render the full grid and grey out non-bookable days without extra logic — dates with open slots should be visually highlighted; all others (outside the doctor's schedule, the clinic closed, fully booked, on leave, or in the past) rendered disabled.
+
+**Errors:** `400 VALIDATION_ERROR` (missing/invalid `branch_id`, `year`, or `month`), `404 DOCTOR_NOT_FOUND`.
 
 ---
 
@@ -1974,7 +2242,9 @@ Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Sl
 
 **Response `201`** — Appointment object (`status: "pending"`, `scheduled_time` is the server-assigned time for `sequential` bookings).
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
+The server never trusts the client's disabled-calendar rendering — every check re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
+
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
 ### GET /appointments
 
@@ -2378,7 +2648,7 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `NO_APPOINTMENT_RELATIONSHIP` | 403 | No appointment link with the patient |
 | `FEE_OWNER_CONTROLLED` | 403 | Doctor tried to change the fee |
 | `INVALID_SIGNED_URL` | 403 | Bad/expired file URL signature |
-| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` / `EXCEPTION_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
+| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` / `EXCEPTION_NOT_FOUND` / `CLOSURE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
 | `INVITE_EXPIRED` / `OTP_EXPIRED` / `RESET_TOKEN_EXPIRED` | 410 | Expired one-time code |
 | `FILE_TOO_LARGE` | 413 | Upload exceeds size limit |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Upload has a disallowed MIME type |
@@ -2389,9 +2659,10 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `INVITE_ALREADY_ACCEPTED` | 409 | Invite already accepted |
 | `DOCTOR_ALREADY_ASSIGNED` | 409 | Doctor already at this branch |
 | `STAFF_ALREADY_EXISTS_FOR_BRANCH` | 409 | Staff email already registered to the branch |
-| `EXCEPTION_ALREADY_EXISTS` | 409 | Date already marked unavailable for this assignment |
 | `SLOT_ALREADY_BOOKED` | 409 | Slot taken (DB-level unique guard, `fixed` doctors) |
 | `DOCTOR_FULLY_BOOKED` | 409 | No slots left that date (`sequential` doctors) |
+| `DOCTOR_ON_LEAVE` | 409 | Booking date falls within an active doctor leave |
+| `CLINIC_CLOSED` | 409 | Branch not open (or under an active closure) on the selected date |
 | `INVALID_STATUS_TRANSITION` | 409 | Appointment status change not allowed |
 | `CANNOT_CANCEL_PAID_APPOINTMENT` | 409 | Patient cannot cancel a paid appointment |
 | `DOCTOR_HAS_ACTIVE_APPOINTMENTS` | 409 | Cannot remove doctor with live appointments |
@@ -2438,7 +2709,8 @@ GET  /branches/:id/doctors          → doctor now listed
 GET  /clinics?search=Sunrise
 GET  /clinics/:clinicId/branches
 GET  /branches/:id/doctors
-GET  /doctors/:doctorId/availability?date=2026-08-10
+GET  /doctors/:doctorId/availability/calendar?branch_id=...&year=2026&month=8
+GET  /doctors/:doctorId/availability?date=2026-08-10&branch_id=...
 POST /appointments   {doctor_id, branch_id, date, time?}   [Idempotency-Key]   (time omitted for "sequential" doctors)
 PATCH /appointments/:id/confirm
 PATCH /appointments/:id/payment     {fee_amount, method}   [Idempotency-Key]

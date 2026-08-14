@@ -62,6 +62,7 @@ interface AuthContextValue {
   staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
   login: (email: string, password: string) => Promise<void>;
+  doctorLogin: (email: string, password: string) => Promise<void>;
   register: (input: {
     name: string;
     email: string;
@@ -223,6 +224,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
+  const doctorLogin = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const res = await authApi.loginDoctor({ email, password });
+        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+        // POST /auth/doctor/login doesn't echo back the email used to sign in, so it's
+        // filled in from the input here to satisfy User.email (used only for display).
+        const nextUser: User = {
+          id: res.doctor.id,
+          name: res.doctor.name,
+          email,
+          phone: res.doctor.phone,
+          role: "doctor",
+        };
+        setClinic(null);
+        setStaffClinic(null);
+        setStaffBranch(null);
+        window.localStorage.removeItem("medinexa.clinic");
+        window.localStorage.removeItem("medinexa.staffClinic");
+        window.localStorage.removeItem("medinexa.staffBranch");
+        persist(nextUser);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          throw new Error(err.message);
+        }
+        throw err;
+      }
+    },
+    [persist]
+  );
+
   const staffLogin = useCallback(async (email: string) => {
     await authApi.branchStaffLogin(email);
   }, []);
@@ -311,6 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         staffBranch,
         can,
         login,
+        doctorLogin,
         register,
         staffLogin,
         verifyStaffOtp,

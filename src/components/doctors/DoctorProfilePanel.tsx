@@ -6,12 +6,33 @@ import { useParams } from "next/navigation";
 import Badge from "@/components/ui/badge/Badge";
 import { useAuth } from "@/context/AuthContext";
 import {
+  Appointment,
+  AppointmentStatus,
   ApiError,
   AvailabilityResponse,
   BranchDoctor,
+  DoctorInvite,
+  appointmentsApi,
+  doctorInvitesApi,
   doctorsApi,
 } from "@/lib/api";
-import { formatCurrency, today } from "@/lib/utils";
+import {
+  appointmentStatusColor,
+  appointmentStatusLabel,
+  formatCurrency,
+  inviteStatusColor,
+  inviteStatusLabel,
+  today,
+} from "@/lib/utils";
+
+const APPOINTMENT_STATUSES: AppointmentStatus[] = [
+  "pending",
+  "confirmed",
+  "paid",
+  "completed",
+  "cancelled",
+  "no_show",
+];
 
 const formatNextSlot = (iso: string | null): string => {
   if (!iso) return "—";
@@ -48,6 +69,14 @@ export default function DoctorProfilePanel() {
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
 
+  const [bookings, setBookings] = useState<Appointment[] | null>(null);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+
+  const [invites, setInvites] = useState<DoctorInvite[] | null>(null);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [invitesError, setInvitesError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!branchId || !doctorId) {
       setLoading(false);
@@ -78,7 +107,7 @@ export default function DoctorProfilePanel() {
     setAvailLoading(true);
     setAvailError(null);
     try {
-      const res = await doctorsApi.availability(doctorId, date);
+      const res = await doctorsApi.availability(doctorId, date, branchId);
       setAvailability(res);
     } catch (err) {
       setAvailability(null);
@@ -86,11 +115,62 @@ export default function DoctorProfilePanel() {
     } finally {
       setAvailLoading(false);
     }
-  }, [doctorId, date]);
+  }, [doctorId, date, branchId]);
 
   useEffect(() => {
     if (doctor && doctor.slot_type !== "sequential") checkAvailability();
   }, [doctor, checkAvailability]);
+
+  const loadBookings = useCallback(async () => {
+    setBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      const all: Appointment[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await appointmentsApi.list({ cursor, limit: 100 });
+        all.push(...page.items);
+        cursor = page.next_cursor ?? undefined;
+      } while (cursor);
+      setBookings(all.filter((a) => a.doctor_id === doctorId && a.branch_id === branchId));
+    } catch (err) {
+      setBookingsError(err instanceof ApiError ? err.message : "Failed to load bookings");
+    } finally {
+      setBookingsLoading(false);
+    }
+  }, [doctorId, branchId]);
+
+  const loadInvites = useCallback(async () => {
+    if (!branchId || !doctor) return;
+    setInvitesLoading(true);
+    setInvitesError(null);
+    try {
+      const res = await doctorInvitesApi.list(branchId);
+      const normalizedName = doctor.name.trim().toLowerCase();
+      setInvites(res.items.filter((inv) => inv.name?.trim().toLowerCase() === normalizedName));
+    } catch (err) {
+      setInvitesError(err instanceof ApiError ? err.message : "Failed to load invites");
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, [branchId, doctor]);
+
+  useEffect(() => {
+    if (!doctor) return;
+    loadBookings();
+    loadInvites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctor]);
+
+  const bookingCounts = bookings
+    ? APPOINTMENT_STATUSES.reduce(
+        (acc, status) => {
+          acc[status] = bookings.filter((a) => a.status === status).length;
+          return acc;
+        },
+        {} as Record<AppointmentStatus, number>
+      )
+    : null;
 
   const uploadPhoto = async (file: File) => {
     if (!doctor) return;
@@ -189,6 +269,66 @@ export default function DoctorProfilePanel() {
         </Link>
       </div>
 
+      {/* Invites & bookings totals */}
+      <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+          Invites &amp; bookings
+        </h3>
+
+        <div className="mt-5">
+          <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+            Bookings at this branch
+          </h4>
+          {bookingsLoading ? (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : bookingsError ? (
+            <p className="mt-2 text-sm text-error-600 dark:text-error-400">{bookingsError}</p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300">
+                Total: {bookings?.length ?? 0}
+              </span>
+              {bookingCounts &&
+                APPOINTMENT_STATUSES.filter((s) => bookingCounts[s] > 0).map((s) => (
+                  <Badge key={s} size="sm" color={appointmentStatusColor(s)}>
+                    {appointmentStatusLabel(s)}: {bookingCounts[s]}
+                  </Badge>
+                ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-800">
+          <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+            Invite record
+          </h4>
+          {invitesLoading ? (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          ) : invitesError ? (
+            <p className="mt-2 text-sm text-error-600 dark:text-error-400">{invitesError}</p>
+          ) : invites && invites.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {invites.map((inv) => (
+                <div key={inv.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <Badge size="sm" color={inviteStatusColor(inv.status)}>
+                    {inviteStatusLabel(inv.status)}
+                  </Badge>
+                  {inv.created_at && (
+                    <span className="text-gray-500 dark:text-gray-400">
+                      sent {inv.created_at.slice(0, 10)}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              No matching invite found for this branch (matched by name — may be inexact).
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* Photo upload */}
       {canManage && (
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
@@ -267,7 +407,12 @@ export default function DoctorProfilePanel() {
 
                 {availability && (
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {availability.slots.length === 0 ? (
+                    {availability.status === "leave" ? (
+                      <p className="text-sm text-error-600 dark:text-error-400">
+                        Doctor is on leave for this date
+                        {availability.leave?.reason ? ` — ${availability.leave.reason}` : ""}.
+                      </p>
+                    ) : availability.slots.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         No slots configured for this date.
                       </p>

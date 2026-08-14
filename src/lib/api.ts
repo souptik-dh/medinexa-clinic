@@ -49,6 +49,21 @@ export interface DoctorInviteAcceptResponse extends AuthTokens {
   };
 }
 
+// POST /auth/doctor/login returns the same doctor shape as accept-invite.
+export type DoctorAuthResponse = DoctorInviteAcceptResponse;
+
+export interface DoctorAssignmentSummary {
+  assignment_id: string;
+  branch_id: string;
+  branch_name: string;
+  timezone: string;
+  fee_amount: number;
+  currency: string;
+  slot_type: SlotType;
+  start_date: string | null;
+  end_date: string | null;
+}
+
 // POST /auth/clinic-owner/register leaves the account `pending` until the
 // emailed verification link is followed, so unlike login it returns null
 // tokens and a message instead of a usable session.
@@ -475,7 +490,9 @@ export interface DoctorAssignmentException {
   id: string;
   doctor_branch_assignment_id?: string;
   excluded_date: string;
+  end_date: string;
   reason: string | null;
+  status: "active" | "cancelled";
   created_at?: string;
 }
 
@@ -509,6 +526,12 @@ export interface DoctorInvite {
   created_at?: string;
 }
 
+export interface UnavailableDateRange {
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+}
+
 export interface BranchDoctor {
   id: string;
   assignment_id: string;
@@ -521,7 +544,15 @@ export interface BranchDoctor {
   currency: string;
   branch_id: string;
   slot_type: SlotType;
+  start_date: string | null;
+  end_date: string | null;
   next_available_slot: string | null;
+  unavailable_dates: UnavailableDateRange[];
+}
+
+export interface BranchDoctorsResponse {
+  total: number;
+  items: BranchDoctor[];
 }
 
 export interface DoctorAssignment {
@@ -554,9 +585,69 @@ export interface DoctorSearchResult {
   clinic_count: number;
 }
 
+export type AvailabilityStatus =
+  | "available"
+  | "leave"
+  | "unavailable"
+  | "fully_booked"
+  | "outside_schedule"
+  | "past";
+
+export interface AvailabilityLeave {
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+}
+
 export interface AvailabilityResponse {
   date: string;
+  status?: AvailabilityStatus;
+  is_bookable?: boolean;
+  leave?: AvailabilityLeave | null;
   slots: { time: string; available: boolean; slot_type: SlotType }[];
+}
+
+export interface AvailabilityPeriod {
+  start_date: string | null;
+  end_date: string | null;
+}
+
+// GET /doctors/:id/availability?from=&to=&branch_id= — range mode.
+export interface AvailabilityRangeResponse {
+  doctor_id: string;
+  branch_id: string;
+  availability_period: AvailabilityPeriod;
+  leaves: AvailabilityLeave[];
+  dates: AvailabilityResponse[];
+}
+
+// GET /doctors/:id/availability/week
+export interface WeekAvailabilityDay {
+  date: string;
+  day: string;
+  status: AvailabilityStatus;
+  is_bookable: boolean;
+  display_time: string;
+}
+
+export interface WeekAvailabilityResponse {
+  week_start: string;
+  week_end: string;
+  dates: WeekAvailabilityDay[];
+}
+
+// GET /doctors/:id/availability/calendar
+export interface CalendarAvailabilityDay {
+  date: string;
+  status: AvailabilityStatus;
+  is_bookable: boolean;
+}
+
+export interface CalendarAvailabilityResponse {
+  year: number;
+  month: number;
+  availability_period: AvailabilityPeriod;
+  dates: CalendarAvailabilityDay[];
 }
 
 export type AppointmentStatus =
@@ -777,6 +868,17 @@ export const authApi = {
     });
   },
 
+  async loginDoctor(input: {
+    email: string;
+    password: string;
+  }): Promise<DoctorAuthResponse> {
+    return apiFetch<DoctorAuthResponse>("/auth/doctor/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
   async branchStaffLogin(email: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/branch-staff/login", {
       method: "POST",
@@ -975,6 +1077,66 @@ export const branchesApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Branch schedule (operating days + branch-wide closures)
+// ---------------------------------------------------------------------------
+
+export interface BranchOperatingDay {
+  weekday: number; // 0=Sun..6=Sat
+  is_open: boolean;
+}
+
+export interface BranchScheduleResponse {
+  branch_id: string;
+  operating_days: BranchOperatingDay[];
+}
+
+export interface BranchClosure {
+  id: string;
+  branch_id?: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: "active" | "cancelled";
+  created_at?: string;
+}
+
+export const branchScheduleApi = {
+  async get(branchId: string): Promise<BranchScheduleResponse> {
+    return apiFetch<BranchScheduleResponse>(`/branches/${branchId}/schedule`);
+  },
+
+  async updateOperatingDays(
+    branchId: string,
+    operatingDays: BranchOperatingDay[]
+  ): Promise<BranchScheduleResponse> {
+    return apiFetch<BranchScheduleResponse>(`/branches/${branchId}/schedule`, {
+      method: "PATCH",
+      body: JSON.stringify({ operating_days: operatingDays }),
+    });
+  },
+
+  async listClosures(branchId: string): Promise<Paginated<BranchClosure>> {
+    return apiFetch<Paginated<BranchClosure>>(`/branches/${branchId}/schedule/closures`);
+  },
+
+  async createClosure(
+    branchId: string,
+    input: { start_date: string; end_date?: string | null; reason?: string | null }
+  ): Promise<BranchClosure> {
+    return apiFetch<BranchClosure>(`/branches/${branchId}/schedule/closures`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async removeClosure(branchId: string, closureId: string): Promise<void> {
+    return apiFetch<void>(`/branches/${branchId}/schedule/closures/${closureId}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Branch staff
 // ---------------------------------------------------------------------------
 
@@ -1055,13 +1217,55 @@ export const doctorInvitesApi = {
 };
 
 export const doctorsApi = {
-  async listByBranch(branchId: string): Promise<Paginated<BranchDoctor>> {
-    return apiFetch<Paginated<BranchDoctor>>(`/branches/${branchId}/doctors`);
+  async listByBranch(branchId: string): Promise<BranchDoctorsResponse> {
+    return apiFetch<BranchDoctorsResponse>(`/branches/${branchId}/doctors`);
   },
 
-  async availability(doctorId: string, date: string): Promise<AvailabilityResponse> {
+  async availability(
+    doctorId: string,
+    date: string,
+    branchId?: string
+  ): Promise<AvailabilityResponse> {
     return apiFetch<AvailabilityResponse>(
-      `/doctors/${doctorId}/availability${query({ date })}`
+      `/doctors/${doctorId}/availability${query({ date, branch_id: branchId })}`
+    );
+  },
+
+  // Range mode: one call for a whole visible window instead of one availability()
+  // call per day.
+  async availabilityRange(
+    doctorId: string,
+    params: { from: string; to: string; branchId: string }
+  ): Promise<AvailabilityRangeResponse> {
+    return apiFetch<AvailabilityRangeResponse>(
+      `/doctors/${doctorId}/availability${query({
+        from: params.from,
+        to: params.to,
+        branch_id: params.branchId,
+      })}`
+    );
+  },
+
+  async availabilityWeek(
+    doctorId: string,
+    branchId: string,
+    date?: string
+  ): Promise<WeekAvailabilityResponse> {
+    return apiFetch<WeekAvailabilityResponse>(
+      `/doctors/${doctorId}/availability/week${query({ branch_id: branchId, date })}`
+    );
+  },
+
+  async availabilityCalendar(
+    doctorId: string,
+    params: { branchId: string; year: number; month: number }
+  ): Promise<CalendarAvailabilityResponse> {
+    return apiFetch<CalendarAvailabilityResponse>(
+      `/doctors/${doctorId}/availability/calendar${query({
+        branch_id: params.branchId,
+        year: params.year,
+        month: params.month,
+      })}`
     );
   },
 
@@ -1073,6 +1277,10 @@ export const doctorsApi = {
 
   async me(): Promise<DoctorProfile> {
     return apiFetch<DoctorProfile>("/doctors/me");
+  },
+
+  async myAssignments(): Promise<Paginated<DoctorAssignmentSummary>> {
+    return apiFetch<Paginated<DoctorAssignmentSummary>>("/doctors/me/assignments");
   },
 
   async updateMe(input: Partial<DoctorProfile>): Promise<DoctorProfile> {
@@ -1150,7 +1358,7 @@ export const doctorsApi = {
 
   async createException(
     assignmentId: string,
-    input: { excluded_date: string; reason?: string | null }
+    input: { excluded_date: string; end_date?: string | null; reason?: string | null }
   ): Promise<DoctorAssignmentException> {
     return apiFetch<DoctorAssignmentException>(
       `/doctor-assignments/${assignmentId}/exceptions`,

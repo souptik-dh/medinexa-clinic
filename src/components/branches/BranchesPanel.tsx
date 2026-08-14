@@ -18,6 +18,7 @@ import { formatDate, formatFullAddress } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
 import {
+  canAccessBranchSettings,
   canCreateBranch,
   canDeleteBranch,
   canUpdateBranch,
@@ -40,6 +41,7 @@ export default function BranchesPanel() {
   const canCreate = isAdmin || canCreateBranch(userPermissions);
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
+  const canSchedule = isAdmin || canAccessBranchSettings(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -243,6 +245,14 @@ export default function BranchesPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
+                          {canSchedule && (
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/schedule`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            >
+                              Schedule
+                            </Link>
+                          )}
                           {canUpdate && (
                             <Link
                               href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
