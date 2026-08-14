@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import {
   formatCurrency,
+  formatDate,
   inviteStatusColor,
   inviteStatusLabel,
 } from "@/lib/utils";
@@ -188,6 +189,19 @@ export default function DoctorsPanel() {
   const formatNextSlot = (iso: string | null): string => {
     if (!iso) return "—";
     return iso.replace("T", " ").slice(0, 16);
+  };
+
+  const nextUnavailable = (doc: BranchDoctor): string => {
+    const upcoming = doc.unavailable_dates
+      .slice()
+      .sort((a, b) => a.start_date.localeCompare(b.start_date));
+    const next = upcoming[0];
+    if (!next) return "—";
+    const range =
+      next.start_date === next.end_date
+        ? formatDate(next.start_date)
+        : `${formatDate(next.start_date)} – ${formatDate(next.end_date)}`;
+    return next.reason ? `${range} (${next.reason})` : range;
   };
 
   const tabClass = (t: Tab) =>
@@ -360,6 +374,9 @@ export default function DoctorsPanel() {
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Next slot
                     </TableCell>
+                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                      Next unavailable
+                    </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
                       Actions
                     </TableCell>
@@ -410,6 +427,9 @@ export default function DoctorsPanel() {
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {formatNextSlot(doc.next_available_slot)}
+                      </TableCell>
+                      <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                        {nextUnavailable(doc)}
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1">

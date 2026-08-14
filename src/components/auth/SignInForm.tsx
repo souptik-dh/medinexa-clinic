@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 
-type Mode = "owner" | "staff";
+type Mode = "owner" | "staff" | "doctor";
 
 export default function SignInForm() {
   const [mode, setMode] = useState<Mode>("owner");
@@ -17,13 +17,15 @@ export default function SignInForm() {
   const [isChecked, setIsChecked] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [doctorEmail, setDoctorEmail] = useState("");
+  const [doctorPassword, setDoctorPassword] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { login, staffLogin, verifyStaffOtp } = useAuth();
+  const { login, doctorLogin, staffLogin, verifyStaffOtp } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get("reason") === "session_expired";
@@ -34,6 +36,20 @@ export default function SignInForm() {
     setSubmitting(true);
     try {
       await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDoctorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await doctorLogin(doctorEmail, doctorPassword);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
@@ -100,7 +116,9 @@ export default function SignInForm() {
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {mode === "owner"
                 ? "Enter your clinic owner email and password to sign in!"
-                : "Sign in as branch staff using a one-time password."}
+                : mode === "doctor"
+                  ? "Enter your doctor account email and password to sign in!"
+                  : "Sign in as branch staff using a one-time password."}
             </p>
           </div>
 
@@ -124,6 +142,13 @@ export default function SignInForm() {
               className={tabClass("staff")}
             >
               Staff
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("doctor")}
+              className={tabClass("doctor")}
+            >
+              Doctor
             </button>
           </div>
 
@@ -192,6 +217,55 @@ export default function SignInForm() {
                 </div>
               </form>
             </div>
+          ) : mode === "doctor" ? (
+            <form onSubmit={handleDoctorSubmit} className="space-y-6">
+              <div>
+                <Label>
+                  Email <span className="text-error-500">*</span>{" "}
+                </Label>
+                <Input
+                  placeholder="doctor@example.com"
+                  type="email"
+                  value={doctorEmail}
+                  onChange={(e) => setDoctorEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label>
+                  Password <span className="text-error-500">*</span>{" "}
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={doctorPassword}
+                    onChange={(e) => setDoctorPassword(e.target.value)}
+                    required
+                  />
+                  <span
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
+                  >
+                    {showPassword ? (
+                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+                    ) : (
+                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+                    )}
+                  </span>
+                </div>
+              </div>
+              {error && (
+                <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                  {error}
+                </div>
+              )}
+              <div>
+                <Button className="w-full" size="sm" disabled={submitting}>
+                  {submitting ? "Signing in..." : "Sign in"}
+                </Button>
+              </div>
+            </form>
           ) : stage === "request" ? (
             <form onSubmit={handleOtpRequest} className="space-y-6">
               <div>

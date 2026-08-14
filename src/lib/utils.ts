@@ -134,7 +134,10 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function today(): string {
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 export function formatFullAddress(details: {

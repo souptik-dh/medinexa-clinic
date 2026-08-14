@@ -1,39 +1,20 @@
 "use client";
-import React, { useCallback, useId, useState } from "react";
+import React, { useEffect, useState } from "react";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import NmcDoctorSearch, {
   NmcDoctorResult,
 } from "@/components/doctors/NmcDoctorSearch";
-import DatePicker from "@/components/form/date-picker";
+import SlotWeekEditor from "@/components/doctors/SlotWeekEditor";
+import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
+  BranchOperatingDay,
   SlotTemplateItem,
   SlotType,
+  branchScheduleApi,
   doctorInvitesApi,
 } from "@/lib/api";
-import { today } from "@/lib/utils";
-
-export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-export const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50";
-
-export function weekdayOf(dateStr: string): number {
-  return new Date(`${dateStr}T00:00:00`).getDay();
-}
-
-export function defaultSlotTemplate(): SlotTemplateItem {
-  const start = today();
-  return {
-    weekday: weekdayOf(start),
-    start_time: "09:00",
-    end_time: "13:00",
-    slot_duration_minutes: 20,
-    start_date: start,
-    end_date: null,
-  };
-}
 
 export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null {
   if (slots.length === 0) return "At least one slot is required.";
@@ -47,7 +28,10 @@ export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null 
     if (!slot.start_date) {
       return "Every slot needs a start date.";
     }
-    if (slot.end_date && slot.end_date < slot.start_date) {
+    if (!slot.end_date) {
+      return "Every slot needs an end date.";
+    }
+    if (slot.end_date < slot.start_date) {
       return "A slot's end date must be on or after its start date.";
     }
   }
@@ -69,10 +53,22 @@ export default function InviteDoctorForm() {
   const [currency, setCurrency] = useState("INR");
   const [certificate, setCertificate] = useState("");
   const [slotType, setSlotType] = useState<SlotType>("fixed");
-  const [slots, setSlots] = useState<SlotTemplateItem[]>([defaultSlotTemplate()]);
+  const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
+  const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[] | null>(null);
   const [verified, setVerified] = useState<NmcDoctorResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!branch) {
+      setOperatingDays(null);
+      return;
+    }
+    branchScheduleApi
+      .get(branch.id)
+      .then((res) => setOperatingDays(res.operating_days))
+      .catch(() => setOperatingDays(null));
+  }, [branch]);
 
   const onNmcSelect = (doc: NmcDoctorResult) => {
     setVerified(doc);
@@ -82,20 +78,6 @@ export default function InviteDoctorForm() {
     if (doc.doctorDegree) {
       setDoctorDegree(doc.doctorDegree);
     }
-  };
-
-  const updateSlot = useCallback((index: number, patch: Partial<SlotTemplateItem>) => {
-    setSlots((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, ...patch } : s))
-    );
-  }, []);
-
-  const addSlot = () => {
-    setSlots((prev) => [...prev, defaultSlotTemplate()]);
-  };
-
-  const removeSlot = (index: number) => {
-    setSlots((prev) => prev.filter((_, i) => i !== index));
   };
 
   const createInvite = async () => {
@@ -235,28 +217,14 @@ export default function InviteDoctorForm() {
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
-              </label>
-              <button
-                onClick={addSlot}
-                className="rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-              >
-                + Add slot
-              </button>
-            </div>
-            <div className="space-y-3">
-              {slots.map((slot, index) => (
-                <SlotTemplateRow
-                  key={index}
-                  slot={slot}
-                  onChange={(patch) => updateSlot(index, patch)}
-                  onRemove={() => removeSlot(index)}
-                  canRemove={slots.length > 1}
-                />
-              ))}
-            </div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
+            </label>
+            <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+              Click a day to add a slot for it.
+              {!branch && " Select a branch above to see its closed days."}
+            </p>
+            <SlotWeekEditor slots={slots} onChange={setSlots} operatingDays={operatingDays} />
           </div>
         </div>
 
@@ -288,139 +256,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </label>
       {children}
     </div>
-  );
-}
-
-export function SlotTemplateRow({
-  slot,
-  onChange,
-  onRemove,
-  canRemove,
-}: {
-  slot: SlotTemplateItem;
-  onChange: (patch: Partial<SlotTemplateItem>) => void;
-  onRemove: () => void;
-  canRemove: boolean;
-}) {
-  const startId = useId();
-  const endId = useId();
-  const startTimeId = useId();
-  const endTimeId = useId();
-  const noEndDate = !slot.end_date;
-
-  return (
-    <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
-      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
-        <div>
-          <DatePicker
-            id={`slot-start-${startId}`}
-            label="Applies from *"
-            placeholder="Select a date"
-            defaultDate={slot.start_date || undefined}
-            onChange={(_, dateStr) => {
-              if (!dateStr) return;
-              onChange({
-                start_date: dateStr,
-                weekday: weekdayOf(dateStr),
-                ...(slot.end_date && slot.end_date < dateStr ? { end_date: dateStr } : {}),
-              });
-            }}
-          />
-          {slot.start_date && (
-            <p className="mt-1.5 text-theme-xs text-gray-500 dark:text-gray-400">
-              Repeats every {WEEKDAYS[weekdayOf(slot.start_date)]}
-            </p>
-          )}
-        </div>
-        <div className={noEndDate ? "pointer-events-none opacity-40" : undefined}>
-          <DatePicker
-            id={`slot-end-${endId}`}
-            label="Applies until"
-            placeholder="No end date"
-            defaultDate={slot.end_date || undefined}
-            onChange={(_, dateStr) => {
-              if (dateStr) onChange({ end_date: dateStr });
-            }}
-          />
-        </div>
-        <label className="flex items-center gap-2 pt-8 text-sm text-gray-600 dark:text-gray-400 sm:pt-9">
-          <input
-            type="checkbox"
-            checked={noEndDate}
-            onChange={(e) =>
-              onChange({ end_date: e.target.checked ? null : slot.start_date })
-            }
-            className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
-          />
-          Repeats indefinitely
-        </label>
-      </div>
-
-      <div className="grid grid-cols-2 items-end gap-3 border-t border-gray-100 pt-3 dark:border-gray-800 sm:grid-cols-4">
-        <DatePicker
-          id={`slot-start-time-${startTimeId}`}
-          mode="time"
-          label="Start time *"
-          placeholder="Select time"
-          defaultDate={slot.start_time || undefined}
-          onChange={(_, timeStr) => {
-            if (timeStr) onChange({ start_time: timeStr });
-          }}
-        />
-        <DatePicker
-          id={`slot-end-time-${endTimeId}`}
-          mode="time"
-          label="End time *"
-          placeholder="Select time"
-          defaultDate={slot.end_time || undefined}
-          onChange={(_, timeStr) => {
-            if (timeStr) onChange({ end_time: timeStr });
-          }}
-        />
-        <Field label="Duration (min)">
-          <input type="number" min="5" max="240" value={slot.slot_duration_minutes} onChange={(e) => onChange({ slot_duration_minutes: Number(e.target.value) })} className={inputClass} />
-        </Field>
-        <button
-          onClick={onRemove}
-          disabled={!canRemove}
-          className="mb-1 rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
-        >
-          Remove
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function SlotTypeOption({
-  label,
-  description,
-  selected,
-  onClick,
-}: {
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 rounded-lg border p-3 text-left transition-colors ${
-        selected
-          ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
-          : "border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
-      }`}
-    >
-      <p
-        className={`text-sm font-medium ${
-          selected ? "text-brand-600 dark:text-brand-400" : "text-gray-800 dark:text-white/90"
-        }`}
-      >
-        {label}
-      </p>
-      <p className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">{description}</p>
-    </button>
   );
 }
