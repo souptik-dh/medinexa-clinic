@@ -1,4 +1,4 @@
-import type { AppointmentStatus, NotificationType } from "@/lib/api";
+import type { AppointmentStatus, NotificationType, PatientRelationship } from "@/lib/api";
 import type { BadgeColor as UiBadgeColor } from "@/components/ui/badge/Badge";
 
 export function formatCurrency(amount: number, currency = "INR"): string {
@@ -71,6 +71,15 @@ export const appointmentStatusLabel = (status: AppointmentStatus): string => {
       return "No show";
     default:
       return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+};
+
+export const relationshipLabel = (relationship: PatientRelationship): string => {
+  switch (relationship) {
+    case "self":
+      return "Self";
+    default:
+      return relationship.charAt(0).toUpperCase() + relationship.slice(1);
   }
 };
 

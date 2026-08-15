@@ -498,9 +498,20 @@ export interface DoctorAssignmentException {
 
 export type SlotType = "fixed" | "sequential";
 
+export interface DoctorSpecialization {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  doctor_count?: number;
+  status?: "active" | "inactive";
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DoctorInviteCreateInput {
   name: string;
-  specialization?: string | null;
+  specialization_ids: string[];
   email: string;
   phone?: string | null;
   reg_no?: string | null;
@@ -521,6 +532,7 @@ export interface DoctorInvite {
   reg_no?: string | null;
   smc_name?: string | null;
   doctor_degree?: string | null;
+  specializations?: { id: string; name: string }[];
   status: "pending" | "accepted" | "expired" | "revoked";
   expires_at: string;
   created_at?: string;
@@ -658,6 +670,21 @@ export type AppointmentStatus =
   | "cancelled"
   | "no_show";
 
+export type PatientRelationship = "self" | "spouse" | "child" | "parent" | "sibling" | "friend" | "other";
+
+// Who the visit is actually for — a patient account can book on behalf of a family
+// member/friend, so this can differ from the booking account (Appointment.patient_id /
+// AppointmentDetail.patient, which is always the account holder). Present on every
+// appointment, list and detail alike; defaults to relationship "self" when the patient
+// app didn't specify one.
+export interface AppointmentPatientDetails {
+  relationship: PatientRelationship;
+  name: string;
+  phone: string | null;
+  age: number | null;
+  gender: string | null;
+}
+
 export interface Appointment {
   id: string;
   patient_id: string;
@@ -675,6 +702,7 @@ export interface Appointment {
   updated_at: string;
   doctor_name?: string;
   branch_name?: string;
+  patient_details?: AppointmentPatientDetails;
 }
 
 export interface AppointmentPatientSummary {
@@ -1213,6 +1241,21 @@ export const doctorInvitesApi = {
 
   async revoke(id: string): Promise<void> {
     return apiFetch<void>(`/doctor-invites/${id}`, { method: "DELETE" });
+  },
+};
+
+export const doctorSpecializationsApi = {
+  async list(q?: string): Promise<{ items: DoctorSpecialization[] }> {
+    return apiFetch<{ items: DoctorSpecialization[] }>(
+      `/doctors/specializations${query({ q })}`
+    );
+  },
+
+  async create(name: string, description?: string): Promise<DoctorSpecialization> {
+    return apiFetch<DoctorSpecialization>(`/doctors/specializations`, {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    });
   },
 };
 

@@ -23,6 +23,7 @@ import {
   appointmentStatusColor,
   appointmentStatusLabel,
   formatCurrency,
+  relationshipLabel,
 } from "@/lib/utils";
 
 type Action = "confirm" | "pay" | "complete" | "cancel";
@@ -234,6 +235,9 @@ export default function AppointmentsPanel() {
                     Scheduled
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                    Patient
+                  </TableCell>
+                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Doctor
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
@@ -260,6 +264,16 @@ export default function AppointmentsPanel() {
                       <span className="text-gray-500 text-theme-xs dark:text-gray-400">
                         {appt.scheduled_time} · {appt.duration_minutes}m
                       </span>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <p className="text-gray-800 text-theme-sm dark:text-white/90">
+                        {appt.patient_details?.name ?? "—"}
+                      </p>
+                      {appt.patient_details && appt.patient_details.relationship !== "self" && (
+                        <Badge size="sm" color="light">
+                          {relationshipLabel(appt.patient_details.relationship)}
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                       {appt.doctor_name ?? shortId(appt.doctor_id)}
@@ -491,8 +505,31 @@ export default function AppointmentsPanel() {
               />
             </dl>
 
+            {detail.patient_details && detail.patient_details.relationship !== "self" && (
+              <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Visiting patient</h6>
+                  <Badge size="sm" color="light">
+                    {relationshipLabel(detail.patient_details.relationship)}
+                  </Badge>
+                </div>
+                <dl className="mt-2 space-y-2">
+                  <DetailRow label="Name" value={detail.patient_details.name} />
+                  <DetailRow label="Phone" value={detail.patient_details.phone ?? "—"} />
+                  {detail.patient_details.age != null && (
+                    <DetailRow label="Age" value={String(detail.patient_details.age)} />
+                  )}
+                  {detail.patient_details.gender && (
+                    <DetailRow label="Gender" value={detail.patient_details.gender} />
+                  )}
+                </dl>
+              </div>
+            )}
+
             <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
-              <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Patient</h6>
+              <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                {detail.patient_details && detail.patient_details.relationship !== "self" ? "Booked by" : "Patient"}
+              </h6>
               <dl className="mt-2 space-y-2">
                 <DetailRow label="Name" value={detail.patient.name} />
                 <DetailRow label="Email" value={detail.patient.email} />
