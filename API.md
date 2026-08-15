@@ -317,7 +317,7 @@ For the email-change flow, `message` is `"Your email address has been updated."`
   "doctor": {
     "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Dr. Smith",
-    "specialization": "Cardiologist",
+    "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
     "phone": "+919900000001",
     "certificate_url": null,
     "bio": null
@@ -365,7 +365,7 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
   "doctor": {
     "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Dr. Smith",
-    "specialization": "Cardiologist",
+    "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
     "reg_no": "MC-123456",
     "smc_name": "Medical Council of India",
     "doctor_degree": "MBBS, MD",
@@ -1029,7 +1029,7 @@ Auth: `clinic_owner`, must own the branch. Removes an image from the gallery.
 
 ## Branch schedule
 
-A **branch-level operating calendar** sits above every doctor's own scheduling (`doctor_slot_templates` + leaves) in the availability rule: a doctor can never be bookable on a weekday the branch itself is marked closed, or a date covered by an active branch-wide closure — regardless of what the doctor's own template/leaves say. This is computed live by every availability endpoint and by `POST /appointments`, never cached or stored per-doctor. Managed in this portal via `branchScheduleApi` in `src/lib/api.ts` and `BranchSchedulePanel.tsx` (`/clinics/:clinicId/branches/:branchId/schedule`).
+A **branch-level operating calendar** sits above every doctor's own scheduling (`doctor_slot_templates` + leaves) in the availability rule: a doctor can never be bookable on a weekday the branch itself is marked closed, or a date covered by an active branch-wide closure — regardless of what the doctor's own template/leaves say. This is computed live by every availability endpoint and by `POST /appointments`, never cached or stored per-doctor.
 
 `operating_days` covers all 7 weekdays (0=Sun..6=Sat) — a weekday with no explicit override defaults to **open**, so an existing branch with zero rows in `branch_operating_days` behaves exactly as before this feature shipped, until a clinic owner customizes it.
 
@@ -1316,7 +1316,7 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 ```json
 {
   "name": "Dr. Smith",
-  "specialization": "Cardiologist",
+  "specialization_ids": ["a1b2c3d4-..."],
   "email": "dr.smith@example.com",
   "phone": "+919900000001",
   "reg_no": "MC-123456",
@@ -1350,7 +1350,7 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | required |
-| `specialization` | string? | max 255 |
+| `specialization_ids` | string[] | required, 1–10 `doctor_specializations.id` values (see `GET /doctors/specializations`; use `POST /doctors/specializations` first if the one you need doesn't exist yet) |
 | `email` | string | required |
 | `phone` | string? | max 32 |
 | `reg_no` | string? | max 64, optional — pre-fill the doctor's registration number; if omitted, the doctor supplies it on accept |
@@ -1385,12 +1385,13 @@ A doctor's booking behavior for a branch is controlled by `slot_type` on the ass
   "reg_no": "MC-123456",
   "smc_name": "Medical Council of India",
   "doctor_degree": "MBBS, MD",
+  "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
   "status": "pending",
   "expires_at": "2026-08-16T10:00:00Z"
 }
 ```
 
-**Errors:** `409 INVITE_ALREADY_PENDING`, `409 DOCTOR_ALREADY_ASSIGNED`.
+**Errors:** `409 INVITE_ALREADY_PENDING`, `409 DOCTOR_ALREADY_ASSIGNED`, `422 SPECIALIZATION_NOT_FOUND`.
 
 ### GET /branches/:id/doctor-invites
 
@@ -1406,6 +1407,7 @@ Auth: `clinic_owner` **or** `branch_staff` with `doctors:manage`.
       "name": "Dr. Smith",
       "email": "dr.smith@example.com",
       "reg_no": "MC-123456",
+      "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
       "smc_name": "Medical Council of India",
       "doctor_degree": "MBBS, MD",
       "status": "pending",
@@ -1440,7 +1442,8 @@ Public. Returns only **accepted** doctors assigned to the branch.
       "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
       "assignment_id": "e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
       "name": "Dr. Smith",
-      "specialization": "Cardiologist",
+      "specialization": "Cardiology",
+      "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
       "smc_name": "Medical Council of India",
       "doctor_degree": "MBBS, MD",
       "phone": "+919900000001",
@@ -1462,7 +1465,104 @@ Public. Returns only **accepted** doctors assigned to the branch.
 }
 ```
 
-`total` is the count of doctors in `items` (this endpoint is not paginated). `id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `start_date`/`end_date` are derived from the assignment's `slot_template` rows (`doctor_slot_templates`, set via `POST /branches/:id/doctor-invites` or `PATCH /doctor-assignments/:id`): `start_date` is the earliest `slot_template[].start_date` across all of the assignment's weekly entries, and `end_date` is the latest `slot_template[].end_date` — but `null` if **any** entry has no `end_date` (i.e. repeats indefinitely), since that makes the assignment's overall end open-ended. Both are `null` if the assignment has no slot template rows. `unavailable_dates` lists the assignment's upcoming active leaves (`doctor_slot_exceptions`, see `GET /doctor-assignments/:id/exceptions`) as `{ start_date, end_date, reason }` — a leave is a genuine inclusive date range now (`start_date` and `end_date` can differ), not always a single day. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker.
+`total` is the count of doctors in `items` (this endpoint is not paginated). `id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `start_date`/`end_date` are derived from the assignment's `slot_template` rows (`doctor_slot_templates`, set via `POST /branches/:id/doctor-invites` or `PATCH /doctor-assignments/:id`): `start_date` is the earliest `slot_template[].start_date` across all of the assignment's weekly entries, and `end_date` is the latest `slot_template[].end_date` — but `null` if **any** entry has no `end_date` (i.e. repeats indefinitely), since that makes the assignment's overall end open-ended. Both are `null` if the assignment has no slot template rows. `unavailable_dates` lists the assignment's upcoming active leaves (`doctor_slot_exceptions`, see `GET /doctor-assignments/:id/exceptions`) as `{ start_date, end_date, reason }` — a leave is a genuine inclusive date range now (`start_date` and `end_date` can differ), not always a single day. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker. `specialization` is a comma-joined display string derived from `specializations` (kept for backward compatibility); `specializations` is the doctor's full, possibly-multiple set of master-list specializations (see `GET /doctors/specializations`).
+
+### GET /doctors
+
+Public. Cursor-paginated. Browses doctors across all clinics/branches with no
+prerequisite search term or known branch — unlike `GET /doctors/search` (auth-required,
+`q` required) or `GET /branches/:id/doctors` (requires a branch id). Drives a
+patient-facing "browse all doctors" view (e.g. a home screen's "Top doctors" section).
+
+**Query:** `?specialization_id=&city=&q=&limit=&cursor=` — `specialization_id` (a
+`doctor_specializations.id`, see `GET /doctors/specializations` for the canonical list)
+and `city` are exact matches (`city` typically comes from the patient's own saved
+profile); `q` is an optional `name` substring match. All filters are optional and
+combine with AND.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+      "assignment_id": "e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
+      "name": "Dr. Smith",
+      "specialization": "Cardiology",
+      "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
+      "smc_name": "Medical Council of India",
+      "doctor_degree": "MBBS, MD",
+      "phone": "+919900000001",
+      "photo_url": null,
+      "fee_amount": 500,
+      "currency": "INR",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+      "clinic_name": "Sunrise Multispeciality",
+      "city": "Mumbai",
+      "slot_type": "fixed",
+      "start_date": "2026-01-15",
+      "end_date": null,
+      "next_available_slot": "2026-08-10T09:20:00"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+One item per active doctor↔branch assignment (a doctor at two branches appears twice,
+each with its own `assignment_id`/fee/availability) — same field semantics as
+`GET /branches/:id/doctors`'s items. `limit` is capped at 50 regardless of the
+`?limit=` value, since `next_available_slot` costs one extra query per row.
+`specialization` is a comma-joined display string derived from `specializations`
+(kept for backward compatibility); `specializations` is the doctor's full,
+possibly-multiple set of master-list specializations.
+
+### GET /doctors/specializations
+
+Public. Not paginated. The platform-level master list of doctor specializations
+(`doctor_specializations` table), most-assigned first — drives category/filter chips
+on a browse screen and the searchable specialization picker on a clinic's doctor-invite
+form. Only `status = 'active'` specializations are returned. Optional `?q=` does a
+substring match on `name`, for the invite form's search-as-you-type box.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    { "id": "a1b2c3d4-...", "name": "Cardiology", "slug": "cardiology", "description": null, "doctor_count": 12 },
+    { "id": "b2c3d4e5-...", "name": "General Physician", "slug": "general-physician", "description": null, "doctor_count": 8 }
+  ]
+}
+```
+
+### POST /doctors/specializations
+
+Auth: `clinic_owner`, `branch_staff`, or `sys_admin`. Lets a clinic add a specialization
+directly from the doctor-invite form when the one they need isn't in the master list
+yet. Dedup is case-insensitive via a slug derived from `name` (lowercased, non-alphanumerics
+collapsed to `-`): if a specialization with the same slug already exists — created by this
+clinic or any other — that existing row is returned (`200`) instead of creating a
+duplicate; otherwise a new row is created (`201`).
+
+**Body:** `{ "name": "Interventional Cardiology", "description": "optional, max 500 chars" }`
+
+**Response `200`/`201`**
+
+```json
+{
+  "id": "c3d4e5f6-...",
+  "name": "Interventional Cardiology",
+  "slug": "interventional-cardiology",
+  "description": null,
+  "status": "active",
+  "created_at": "2026-08-15T10:00:00.000Z",
+  "updated_at": "2026-08-15T10:00:00.000Z"
+}
+```
 
 ### POST /branches/:id/doctors/:doctorId/photo/signature
 
@@ -1544,7 +1644,7 @@ Auth: `clinic_owner` **or** `branch_staff` with `doctors:manage`. Deactivates th
 
 ### GET /doctor-assignments/:id/exceptions
 
-Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Lists the doctor's **leaves** for this assignment — inclusive date ranges within the assignment's slot-template range where the doctor is unavailable, overriding the otherwise-recurring weekly pattern. Both active and cancelled leaves are returned (cancelled ones are kept as an audit record); the clinic portal filters to `status === "active"` when rendering the leave list (`DoctorAssignmentEditPanel.tsx`).
+Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Lists the doctor's **leaves** for this assignment — inclusive date ranges within the assignment's slot-template range where the doctor is unavailable, overriding the otherwise-recurring weekly pattern. Both active and cancelled leaves are returned (cancelled ones are kept as an audit record); filter on `status` client-side if only active leaves are needed.
 
 **Response `200`**
 
@@ -1563,11 +1663,11 @@ Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff`
 }
 ```
 
-`excluded_date` is the leave's (inclusive) start date; `end_date` is the (inclusive) end date — equal to `excluded_date` for a single-day leave. `status` ∈ `active | cancelled`; only `active` leaves block availability/booking.
+`excluded_date` is the leave's (inclusive) start date; `end_date` is the (inclusive) end date — equal to `excluded_date` for a single-day leave. `status` ∈ `active | cancelled`; only `active` leaves block availability/booking (see [§8 Backend availability calculation](#doctors-invites--assignments)).
 
 ### POST /doctor-assignments/:id/exceptions
 
-Auth: same as above. Marks a date range unavailable ("doctor leave") in one call, even if it falls inside an active `slot_template` weekday/date-range. The leave does not need to fall entirely inside the assignment's slot-template range — the effective unavailable window is the **intersection** of the leave and the doctor's availability period, computed live by every availability/booking endpoint rather than stored.
+Auth: same as above. Marks a date range unavailable ("doctor leave"), even if it falls inside an active `slot_template` weekday/date-range. The leave does not need to fall entirely inside the assignment's slot-template range — the effective unavailable window is the **intersection** of the leave and the doctor's availability period, computed live by every availability/booking endpoint rather than stored.
 
 **Request body**
 
@@ -1614,7 +1714,7 @@ Auth: `doctor`.
 {
   "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "name": "Dr. Smith",
-  "specialization": "Cardiologist",
+  "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
   "reg_no": "MC-123456",
   "smc_name": "Medical Council of India",
   "doctor_degree": "MBBS, MD",
@@ -1624,32 +1724,6 @@ Auth: `doctor`.
   "bio": null
 }
 ```
-
-### GET /doctors/me/assignments
-
-Auth: `doctor`. Lets a logged-in doctor discover which branch(es) they're assigned to, and the `assignment_id` each needs for `PATCH /doctor-assignments/:id` and the exceptions/leave endpoints — there was previously no self-service way to find this. Powers the "My Schedule" page (`/doctor-schedule`, `DoctorMySchedulePanel.tsx`) added for the new doctor login (`SignInForm.tsx`'s "Doctor" tab, `AuthContext.doctorLogin`).
-
-**Response `200`**
-
-```json
-{
-  "items": [
-    {
-      "assignment_id": "e4f5a6b7-8c9d-0e1f-2a3b-4c5d6e7f8a9b",
-      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
-      "branch_name": "Sunrise — Andheri",
-      "timezone": "Asia/Kolkata",
-      "fee_amount": 500,
-      "currency": "INR",
-      "slot_type": "fixed",
-      "start_date": "2026-01-15",
-      "end_date": null
-    }
-  ]
-}
-```
-
-`start_date`/`end_date` are the same derived-from-`slot_template` values as `GET /branches/:id/doctors`. From here, the client navigates to the existing `/doctors/:branchId/:doctorId/edit` page (already doctor-self-editable) to manage slot template/leaves for a given branch.
 
 ### PATCH /doctors/me
 
@@ -1715,7 +1789,7 @@ Auth: any authenticated user (`patient`, `clinic_owner`, `branch_staff`, `doctor
 
 **Query:** `?q=<query>&limit=<1..50>` — `q` is required.
 
-Searches `reg_no` (prefix), `name` (contains), and `specialization` (contains). Results ordered by exact `reg_no` match first.
+Searches `reg_no` (prefix), `name` (contains), and each doctor's master-list specialization names (contains). Results ordered by exact `reg_no` match first.
 
 **Response `200`**
 
@@ -1725,7 +1799,8 @@ Searches `reg_no` (prefix), `name` (contains), and `specialization` (contains). 
     {
       "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
       "name": "Dr. Smith",
-      "specialization": "Cardiologist",
+      "specialization": "Cardiology",
+      "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
       "reg_no": "MC-123456",
       "smc_name": "Medical Council of India",
       "doctor_degree": "MBBS, MD",
@@ -1759,7 +1834,7 @@ The availability start/end dates are never stored directly — they're derived a
 
 Two modes, selected by which query params are present:
 
-**Single-date mode** — `?date=2026-08-10` (`YYYY-MM-DD`, required for this mode), `?branch_id=` optional (defaults to the doctor's first active assignment if omitted, for backward compatibility). This is the mode `doctorsApi.availability()` in `src/lib/api.ts` calls from `DoctorProfilePanel.tsx`.
+**Single-date mode** — `?date=2026-08-10` (`YYYY-MM-DD`, required for this mode), `?branch_id=` optional (defaults to the doctor's first active assignment if omitted, for backward compatibility).
 
 **Response `200`**
 
@@ -1780,7 +1855,7 @@ Two modes, selected by which query params are present:
 
 `status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one.
 
-**Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day (`doctorsApi.availabilityRange()`).
+**Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day.
 
 **Response `200`**
 
@@ -1833,7 +1908,7 @@ Two modes, selected by which query params are present:
 
 ### GET /doctors/:id/availability/week
 
-Public. `doctorsApi.availabilityWeek()`. Drives a doctor profile's "Availability this week" cards without the client generating dates or hardcoding a weekly pattern itself.
+Public. Drives a doctor profile's "Availability this week" cards without the client generating dates or hardcoding a weekly pattern itself.
 
 **Query:** `?branch_id=<id>` (required), `?date=2026-08-16` (optional anchor date, `YYYY-MM-DD`, defaults to today) — the response covers exactly the 7 calendar days starting at `date`.
 
@@ -1852,13 +1927,13 @@ Public. `doctorsApi.availabilityWeek()`. Drives a doctor profile's "Availability
 }
 ```
 
-`display_time` is a UI-ready label: the first open slot formatted 12-hour (`"9:00 AM"`) when bookable, `"Doctor on leave"` for `leave`, `"Clinic closed"` for `clinic_closed`, `"Fully booked"` for `fully_booked`, else `"No slots"`.
+`display_time` is a UI-ready label: the first open slot formatted 12-hour (`"9:00 AM"`) when bookable, `"Doctor on leave"` for `leave`, `"Clinic closed"` for `clinic_closed`, `"Fully booked"` for `fully_booked`, else `"No slots"`. Tapping a date should follow up with `GET /doctors/:id/availability?from=<date>&to=<date>&branch_id=<id>` for the actual slot list.
 
 **Errors:** `400 VALIDATION_ERROR` (missing `branch_id`, bad `date`), `404 DOCTOR_NOT_FOUND`.
 
 ### GET /doctors/:id/availability/calendar
 
-Public. `doctorsApi.availabilityCalendar()`. Drives a full-month calendar picker in one call.
+Public. Drives a full-month calendar picker (e.g. the booking flow's date step) in one call.
 
 **Query:** `?branch_id=<id>&year=2026&month=8` (all required; `month` is 1–12).
 
@@ -2200,22 +2275,37 @@ Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `patients:view`. *
   "currency": "INR",
   "payment_method": null,
   "created_at": "2026-08-09T10:05:00Z",
-  "updated_at": "2026-08-09T10:05:00Z"
+  "updated_at": "2026-08-09T10:05:00Z",
+  "patient_details": {
+    "relationship": "self",
+    "name": "Aisha Verma",
+    "phone": "+919876543210",
+    "age": null,
+    "gender": null
+  }
 }
 ```
 
 `status` ∈ `pending | confirmed | paid | completed | cancelled | no_show`
 
+`patient_details` identifies who the visit is actually **for** — a patient account can book on
+behalf of a family member or friend, so this can differ from the booking account
+(`patient_id`, the logged-in user who made the booking). It's always present on every
+appointment (list and detail alike): `relationship` ∈ `self | spouse | child | parent | sibling | friend | other`,
+defaulting to `self` with the account holder's own `name`/`phone` when `patient_details` is
+omitted from `POST /appointments`. `age` and `gender` are optional free-form details the
+booking patient can supply for the visitor and are `null` unless given.
+
 List and detail responses enrich this base object:
 
 - `GET /appointments` items additionally include `doctor_name` and `branch_name`.
-- `GET /appointments/:id` additionally includes `doctor_name`, `branch_name`, and a nested `patient` object: `{ id, name, email, phone, address, photo_url }`.
+- `GET /appointments/:id` additionally includes `doctor_name`, `branch_name`, and a nested `patient` object: `{ id, name, email, phone, address, photo_url }` — this is always the **booking account holder**, not necessarily the visiting patient in `patient_details`.
 
 ### POST /appointments
 
 Auth: `patient`. Header `Idempotency-Key` **required**.
 
-On success, an in-app notification (`new_booking`) is created for every branch staff member **and** the clinic owner, and each of them is emailed the patient's name/email/phone and the doctor's name.
+On success, an in-app notification (`new_booking`) is created for every branch staff member **and** the clinic owner, and each of them is emailed the account holder's name/email/phone, the visiting patient's name/relationship (from `patient_details`) if booked for someone else, and the doctor's name.
 
 Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Slot types](#slot-types)):
 
@@ -2229,7 +2319,14 @@ Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Sl
   "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "date": "2026-08-10",
-  "time": "09:20"
+  "time": "09:20",
+  "patient_details": {
+    "relationship": "child",
+    "name": "Rohan Verma",
+    "phone": "+919876500000",
+    "age": 8,
+    "gender": "male"
+  }
 }
 ```
 
@@ -2239,10 +2336,16 @@ Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Sl
 | `branch_id` | string (UUID) | required |
 | `date` | string | required, `YYYY-MM-DD`, not in the past |
 | `time` | string? | required and must be an aligned slot when the doctor's `slot_type` is `fixed`; omit for `sequential` doctors |
+| `patient_details` | object? | optional — omit to book for yourself (defaults to `relationship: "self"` using your own account name/phone) |
+| `patient_details.relationship` | string? | `self` \| `spouse` \| `child` \| `parent` \| `sibling` \| `friend` \| `other`, defaults to `self` |
+| `patient_details.name` | string | required if `patient_details` is present, 1–255 chars |
+| `patient_details.phone` | string? | max 32 |
+| `patient_details.age` | number? | 0–150 |
+| `patient_details.gender` | string? | one of `male`, `female`, `other`, `prefer_not_to_say` |
 
 **Response `201`** — Appointment object (`status: "pending"`, `scheduled_time` is the server-assigned time for `sequential` bookings).
 
-The server never trusts the client's disabled-calendar rendering — every check re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
+The server never trusts the client's disabled-calendar rendering — every check below re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned, so a direct API call can't book a leave day, a branch-closed day, or a day outside the doctor's schedule. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
 
 **Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
@@ -2697,7 +2800,7 @@ Any other transition returns `409 INVALID_STATUS_TRANSITION`.
 POST /auth/clinic-owner/register
 POST /clinics                       {name, trade_license_number}
 POST /clinics/:clinicId/branches    {name, address, phone, timezone, trade_license_number}
-POST /branches/:id/doctor-invites   {name, specialization, email, fee_amount, currency, slot_type, slot_template}
+POST /branches/:id/doctor-invites   {name, specialization_ids, email, fee_amount, currency, slot_type, slot_template}
   → invite code emailed to the doctor
 POST /auth/doctor/accept-invite     {email, invite_code, password, reg_no}
 GET  /branches/:id/doctors          → doctor now listed

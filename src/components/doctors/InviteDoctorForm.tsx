@@ -5,6 +5,9 @@ import NmcDoctorSearch, {
   NmcDoctorResult,
 } from "@/components/doctors/NmcDoctorSearch";
 import SlotWeekEditor from "@/components/doctors/SlotWeekEditor";
+import SpecializationPicker, {
+  SpecializationValue,
+} from "@/components/doctors/SpecializationPicker";
 import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { useRouter } from "next/navigation";
 import {
@@ -44,7 +47,7 @@ export default function InviteDoctorForm() {
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
-  const [specialization, setSpecialization] = useState("");
+  const [specializations, setSpecializations] = useState<SpecializationValue[]>([]);
   const [phone, setPhone] = useState("");
   const [regNo, setRegNo] = useState("");
   const [smcName, setSmcName] = useState("");
@@ -90,6 +93,10 @@ export default function InviteDoctorForm() {
       setError("Fill in name, email, and a valid fee.");
       return;
     }
+    if (specializations.length === 0) {
+      setError("Select at least one specialization.");
+      return;
+    }
     const slotError = validateSlotTemplates(slots);
     if (slotError) {
       setError(slotError);
@@ -100,7 +107,7 @@ export default function InviteDoctorForm() {
     try {
       await doctorInvitesApi.create(branch.id, {
         name: inviteName,
-        specialization: specialization || null,
+        specialization_ids: specializations.map((s) => s.id),
         email: inviteEmail,
         phone: phone || null,
         reg_no: regNo || null,
@@ -170,9 +177,6 @@ export default function InviteDoctorForm() {
             <Field label="Email *">
               <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className={inputClass} />
             </Field>
-            <Field label="Specialization">
-              <input type="text" value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputClass} />
-            </Field>
             <Field label="Phone">
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
             </Field>
@@ -192,6 +196,10 @@ export default function InviteDoctorForm() {
               <input type="text" value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass} />
             </Field>
           </div>
+          <Field label="Specialization *">
+            <SpecializationPicker value={specializations} onChange={setSpecializations} disabled={busy} />
+          </Field>
+
           <Field label="Certificate URL">
             <input type="text" value={certificate} onChange={(e) => setCertificate(e.target.value)} className={inputClass} />
           </Field>
