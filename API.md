@@ -20,15 +20,16 @@ Live implementation reference for the MediBook API. Every endpoint below documen
 7. [Clinic & branch licenses](#clinic--branch-licenses)
 8. [Branch staff](#branch-staff)
 9. [Doctors, invites & assignments](#doctors-invites--assignments)
-10. [Patients](#patients)
-11. [Appointments](#appointments)
-12. [Payment ledger](#payment-ledger)
-13. [Prescriptions](#prescriptions)
-14. [Medical documents](#medical-documents)
-15. [Notifications](#notifications)
-16. [Files (signed URLs)](#files-signed-urls)
-17. [Error codes](#error-codes)
-18. [Status transition table](#status-transition-table)
+10. [Reviews & ratings](#reviews--ratings)
+11. [Patients](#patients)
+12. [Appointments](#appointments)
+13. [Payment ledger](#payment-ledger)
+14. [Prescriptions](#prescriptions)
+15. [Medical documents](#medical-documents)
+16. [Notifications](#notifications)
+17. [Files (signed URLs)](#files-signed-urls)
+18. [Error codes](#error-codes)
+19. [Status transition table](#status-transition-table)
 
 ---
 
@@ -796,11 +797,14 @@ Public. Same clinic-owner isolation as `GET /clinics/:clinicId`: a `clinic_owner
       "drug_license_url": null,
       "clinical_establishment_reg_number": null,
       "clinical_establishment_reg_url": null,
-      "created_at": "2026-08-02T11:00:00Z"
+      "created_at": "2026-08-02T11:00:00Z",
+      "rating": { "average": 4.5, "count": 12 }
     }
   ]
 }
 ```
+
+`rating` aggregates every review (see [Reviews & ratings](#reviews--ratings)) whose `branch_id` points at this branch — `average` is rounded to one decimal and `null` with `count: 0` when the branch has no reviews yet.
 
 **Errors:** `404 CLINIC_NOT_FOUND`.
 
@@ -1182,6 +1186,7 @@ Permission keys:
 | `staff:manage` | Add/remove staff + read/update permissions |
 | `doctors:manage` | Invite/revoke doctors, update/remove assignments, doctor photos |
 | `patients:view` | `GET /branches/:id/patients` |
+| `reviews:view` | `GET /branches/:id/reviews` |
 | `branch:settings` | `PATCH /branches/:id/schedule`, `POST`/`DELETE` on `/branches/:id/schedule/closures` |
 
 New staff default to `["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]`. The `clinic_owner` is always allowed and is unaffected. A `branch_staff` calling a gated action without the required permission gets `403 PERMISSION_DENIED`.
@@ -1459,13 +1464,14 @@ Public. Returns only **accepted** doctors assigned to the branch.
       "unavailable_dates": [
         { "start_date": "2026-08-20", "end_date": "2026-08-20", "reason": "Holiday" },
         { "start_date": "2026-09-01", "end_date": "2026-09-07", "reason": "Annual leave" }
-      ]
+      ],
+      "rating": { "average": 4.5, "count": 12 }
     }
   ]
 }
 ```
 
-`total` is the count of doctors in `items` (this endpoint is not paginated). `id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `start_date`/`end_date` are derived from the assignment's `slot_template` rows (`doctor_slot_templates`, set via `POST /branches/:id/doctor-invites` or `PATCH /doctor-assignments/:id`): `start_date` is the earliest `slot_template[].start_date` across all of the assignment's weekly entries, and `end_date` is the latest `slot_template[].end_date` — but `null` if **any** entry has no `end_date` (i.e. repeats indefinitely), since that makes the assignment's overall end open-ended. Both are `null` if the assignment has no slot template rows. `unavailable_dates` lists the assignment's upcoming active leaves (`doctor_slot_exceptions`, see `GET /doctor-assignments/:id/exceptions`) as `{ start_date, end_date, reason }` — a leave is a genuine inclusive date range now (`start_date` and `end_date` can differ), not always a single day. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker. `specialization` is a comma-joined display string derived from `specializations` (kept for backward compatibility); `specializations` is the doctor's full, possibly-multiple set of master-list specializations (see `GET /doctors/specializations`).
+`total` is the count of doctors in `items` (this endpoint is not paginated). `id` is the doctor's own id. `assignment_id` is the id of this doctor's assignment to the branch — use it for `PATCH /doctor-assignments/:id` and `DELETE /doctor-assignments/:id`, not `id`. `start_date`/`end_date` are derived from the assignment's `slot_template` rows (`doctor_slot_templates`, set via `POST /branches/:id/doctor-invites` or `PATCH /doctor-assignments/:id`): `start_date` is the earliest `slot_template[].start_date` across all of the assignment's weekly entries, and `end_date` is the latest `slot_template[].end_date` — but `null` if **any** entry has no `end_date` (i.e. repeats indefinitely), since that makes the assignment's overall end open-ended. Both are `null` if the assignment has no slot template rows. `unavailable_dates` lists the assignment's upcoming active leaves (`doctor_slot_exceptions`, see `GET /doctor-assignments/:id/exceptions`) as `{ start_date, end_date, reason }` — a leave is a genuine inclusive date range now (`start_date` and `end_date` can differ), not always a single day. `next_available_slot` is a localized `YYYY-MM-DDTHH:MM:00` string or `null`. `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types); when `sequential`, the client should offer a "book next available" action instead of a time picker. `specialization` is a comma-joined display string derived from `specializations` (kept for backward compatibility); `specializations` is the doctor's full, possibly-multiple set of master-list specializations (see `GET /doctors/specializations`). `rating` is this doctor's aggregate across **all** their reviews platform-wide (not scoped to this branch — see [Reviews & ratings](#reviews--ratings)); `average` is rounded to one decimal and `null` with `count: 0` when the doctor has no reviews yet.
 
 ### GET /doctors
 
@@ -1505,7 +1511,8 @@ combine with AND.
       "slot_type": "fixed",
       "start_date": "2026-01-15",
       "end_date": null,
-      "next_available_slot": "2026-08-10T09:20:00"
+      "next_available_slot": "2026-08-10T09:20:00",
+      "rating": { "average": 4.5, "count": 12 }
     }
   ],
   "next_cursor": null
@@ -1518,7 +1525,8 @@ each with its own `assignment_id`/fee/availability) — same field semantics as
 `?limit=` value, since `next_available_slot` costs one extra query per row.
 `specialization` is a comma-joined display string derived from `specializations`
 (kept for backward compatibility); `specializations` is the doctor's full,
-possibly-multiple set of master-list specializations.
+possibly-multiple set of master-list specializations. `rating` is the same
+platform-wide aggregate described under `GET /branches/:id/doctors`.
 
 ### GET /doctors/specializations
 
@@ -1805,11 +1813,14 @@ Searches `reg_no` (prefix), `name` (contains), and each doctor's master-list spe
       "smc_name": "Medical Council of India",
       "doctor_degree": "MBBS, MD",
       "phone": "+919900000001",
-      "clinic_count": 1
+      "clinic_count": 1,
+      "rating": { "average": 4.5, "count": 12 }
     }
   ]
 }
 ```
+
+`rating` is the same platform-wide aggregate described under `GET /branches/:id/doctors`.
 
 **Errors:** `400 VALIDATION_ERROR` (missing `q`), `401 UNAUTHORIZED`.
 
@@ -1956,6 +1967,99 @@ Public. Drives a full-month calendar picker (e.g. the booking flow's date step) 
 Every day of the month is included (not just the availability period) so the client can render the full grid and grey out non-bookable days without extra logic — dates with open slots should be visually highlighted; all others (outside the doctor's schedule, the clinic closed, fully booked, on leave, or in the past) rendered disabled.
 
 **Errors:** `400 VALIDATION_ERROR` (missing/invalid `branch_id`, `year`, or `month`), `404 DOCTOR_NOT_FOUND`.
+
+---
+
+## Reviews & ratings
+
+A patient may rate a doctor 1–5 stars (plus an optional comment) once they've had a **completed** appointment with them. The `reviews` table has one row per `(patient_id, doctor_id)` — not per appointment — so rating the same doctor again after a later visit updates the existing review in place (rating, comment, and which `branch_id`/`appointment_id` it's attached to) rather than creating a second row. This is also why a doctor's rating (`GET /doctors`, `GET /branches/:id/doctors`, `GET /doctors/search`) is always platform-wide, never scoped to one branch — a patient only ever contributes one rating per doctor, however many branches they've seen them at.
+
+A branch's aggregate rating (`GET /clinics/:clinicId/branches`, `GET /branches/:id/reviews`) is the average across every review whose `branch_id` currently points at that branch — i.e. wherever each patient's *most recent* review of a doctor happened to take place, not a durable per-branch history for doctors who move between branches.
+
+### POST /appointments/:id/review
+
+Auth: `patient`, must own the appointment. Requires the appointment's `status` to be `completed`.
+
+**Body:** `{ "rating": 5, "comment": "Very thorough, explained everything clearly." }`
+
+| Field | Type | Notes |
+|---|---|---|
+| `rating` | number | required, integer 1–5 |
+| `comment` | string? | optional, max 1000 |
+
+**Response `201`** (first review of this doctor) or **`200`** (updated an existing one)
+
+```json
+{
+  "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+  "patient_id": "b7c8d9e0-1f2a-3b4c-5d6e-7f8a9b0c1d2e",
+  "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+  "appointment_id": "7c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+  "rating": 5,
+  "comment": "Very thorough, explained everything clearly.",
+  "created_at": "2026-08-15T10:00:00.000Z",
+  "updated_at": "2026-08-15T10:00:00.000Z"
+}
+```
+
+**Errors:** `404 APPOINTMENT_NOT_FOUND`, `409 APPOINTMENT_NOT_COMPLETED`, `400 VALIDATION_ERROR`.
+
+### GET /doctors/:id/reviews
+
+Public. Not cursor-paginated — uses `limit`/`offset` like `GET /branches/:id/patients`. Drives a doctor profile's rating summary and patient feedback list.
+
+**Query:** `?limit=&offset=`
+
+**Response `200`**
+
+```json
+{
+  "rating": { "average": 4.5, "count": 12 },
+  "items": [
+    {
+      "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+      "patient_name": "Priya S.",
+      "rating": 5,
+      "comment": "Very thorough, explained everything clearly.",
+      "created_at": "2026-08-15T10:00:00.000Z"
+    }
+  ],
+  "has_more": false
+}
+```
+
+`rating.average` is rounded to one decimal and `null` with `count: 0` when the doctor has no reviews yet. `patient_name` is masked to first name + last-initial (e.g. `"Priya Sharma"` → `"Priya S."`) since this endpoint is public — see `GET /branches/:id/reviews` for the clinic-side view with full names.
+
+### GET /branches/:id/reviews
+
+Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `reviews:view`. Not cursor-paginated — uses `limit`/`offset`. Lets clinic staff see the patient feedback behind their branch's rating, across every doctor there (or one doctor with `?doctor_id=`).
+
+**Query:** `?doctor_id=&limit=&offset=`
+
+**Response `200`**
+
+```json
+{
+  "rating": { "average": 4.5, "count": 12 },
+  "items": [
+    {
+      "id": "d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a",
+      "doctor_id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+      "doctor_name": "Dr. Smith",
+      "patient_name": "Priya Sharma",
+      "rating": 5,
+      "comment": "Very thorough, explained everything clearly.",
+      "created_at": "2026-08-15T10:00:00.000Z"
+    }
+  ],
+  "has_more": false
+}
+```
+
+Unlike the public `GET /doctors/:id/reviews`, `patient_name` here is the patient's full name — matching `GET /branches/:id/patients`, already visible to clinic staff for accountability.
+
+**Errors:** `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`.
 
 ---
 
@@ -2771,6 +2875,7 @@ Public, but requires a valid signature. `key` is the encoded file name; query pa
 | `DOCTOR_HAS_ACTIVE_APPOINTMENTS` | 409 | Cannot remove doctor with live appointments |
 | `CLINIC_HAS_ACTIVE_APPOINTMENTS` | 409 | Clinic/branch has non-terminal appointments |
 | `APPOINTMENT_NOT_YET_PAID` | 409 | Prescription scan before payment |
+| `APPOINTMENT_NOT_COMPLETED` | 409 | Tried to rate a doctor before the appointment was completed |
 | `OUTSIDE_DOCTOR_AVAILABILITY` / `DATE_IN_PAST` | 422 | Booking rules violated |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 

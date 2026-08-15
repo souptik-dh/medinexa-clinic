@@ -14,6 +14,8 @@ import { ApiError, Branch, Clinic, branchesApi, clinicsApi } from "@/lib/api";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
 import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
+import BranchReviewsPanel from "@/components/branches/BranchReviewsPanel";
+import RatingStars from "@/components/common/RatingStars";
 import { formatDate, formatFullAddress } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
@@ -212,6 +214,9 @@ export default function BranchesPanel() {
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Phone
                     </TableCell>
+                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                      Rating
+                    </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
                       Actions
                     </TableCell>
@@ -242,6 +247,9 @@ export default function BranchesPanel() {
                       </TableCell> */}
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {b.phone}
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <RatingStars average={b.rating?.average ?? null} count={b.rating?.count ?? 0} size="sm" />
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
@@ -296,6 +304,7 @@ export default function BranchesPanel() {
             branchId={selectedBranch.id}
             branchName={selectedBranch.name}
           />
+          <BranchReviewsPanel branchId={selectedBranch.id} />
         </div>
       )}
     </div>

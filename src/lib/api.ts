@@ -393,6 +393,11 @@ export interface ClinicCreateInput {
   clinical_establishment_reg_number?: string | null;
 }
 
+export interface RatingSummary {
+  average: number | null;
+  count: number;
+}
+
 export interface Branch {
   id: string;
   clinic_id: string;
@@ -416,6 +421,7 @@ export interface Branch {
   clinical_establishment_reg_number?: string | null;
   clinical_establishment_reg_url?: string | null;
   created_at: string;
+  rating?: RatingSummary;
 }
 
 export interface BranchGalleryImage {
@@ -560,6 +566,7 @@ export interface BranchDoctor {
   end_date: string | null;
   next_available_slot: string | null;
   unavailable_dates: UnavailableDateRange[];
+  rating?: RatingSummary;
 }
 
 export interface BranchDoctorsResponse {
@@ -595,6 +602,7 @@ export interface DoctorSearchResult {
   reg_no: string | null;
   phone: string | null;
   clinic_count: number;
+  rating?: RatingSummary;
 }
 
 export type AvailabilityStatus =
@@ -1413,6 +1421,60 @@ export const doctorsApi = {
     return apiFetch<void>(
       `/doctor-assignments/${assignmentId}/exceptions/${exceptionId}`,
       { method: "DELETE" }
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Reviews & ratings
+// ---------------------------------------------------------------------------
+
+// Public — patient_name is masked to first name + last initial (see API.md).
+export interface DoctorReview {
+  id: string;
+  patient_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+// Clinic-side — full patient_name, plus which doctor it's for.
+export interface BranchReview {
+  id: string;
+  doctor_id: string;
+  doctor_name: string;
+  patient_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ReviewsResponse<T> {
+  rating: RatingSummary;
+  items: T[];
+  has_more: boolean;
+}
+
+export const reviewsApi = {
+  async forDoctor(
+    doctorId: string,
+    params: { limit?: number; offset?: number } = {}
+  ): Promise<ReviewsResponse<DoctorReview>> {
+    return apiFetch<ReviewsResponse<DoctorReview>>(
+      `/doctors/${doctorId}/reviews${query({ limit: params.limit, offset: params.offset })}`
+    );
+  },
+
+  async forBranch(
+    branchId: string,
+    params: { doctorId?: string; limit?: number; offset?: number } = {}
+  ): Promise<ReviewsResponse<BranchReview>> {
+    return apiFetch<ReviewsResponse<BranchReview>>(
+      `/branches/${branchId}/reviews${query({
+        doctor_id: params.doctorId,
+        limit: params.limit,
+        offset: params.offset,
+      })}`
     );
   },
 };
