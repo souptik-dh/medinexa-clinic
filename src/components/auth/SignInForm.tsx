@@ -143,13 +143,13 @@ export default function SignInForm() {
             >
               Staff
             </button>
-            <button
+            {/* <button
               type="button"
               onClick={() => switchMode("doctor")}
               className={tabClass("doctor")}
             >
               Doctor
-            </button>
+            </button> */}
           </div>
 
           {mode === "owner" ? (

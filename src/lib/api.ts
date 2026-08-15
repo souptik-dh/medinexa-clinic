@@ -348,6 +348,8 @@ export interface Paginated<T> {
   next_cursor: string | null;
 }
 
+export type TradeLicenseValidationStatus = "PENDING" | "VALID" | "INVALID";
+
 export interface Clinic {
   id: string;
   name: string;
@@ -362,6 +364,9 @@ export interface Clinic {
   owner_id?: string;
   trade_license_number?: string | null;
   trade_license_url?: string | null;
+  trade_license_validated?: boolean;
+  trade_license_validation_status?: TradeLicenseValidationStatus;
+  trade_license_validated_at?: string | null;
   drug_license_number?: string | null;
   drug_license_url?: string | null;
   clinical_establishment_reg_number?: string | null;
@@ -389,8 +394,19 @@ export interface ClinicCreateInput {
   state?: string | null;
   post_office?: string | null;
   trade_license_number: string;
+  // Only meaningful when set to the `status` a just-prior clinicsApi.validateTradeLicense()
+  // call returned for this exact trade_license_number — see ClinicForm.
+  trade_license_validation_status?: TradeLicenseValidationStatus;
   drug_license_number?: string | null;
   clinical_establishment_reg_number?: string | null;
+}
+
+export interface TradeLicenseValidationResult {
+  success: boolean;
+  validated: boolean;
+  status: TradeLicenseValidationStatus;
+  trade_license_number?: string;
+  message: string;
 }
 
 export interface RatingSummary {
@@ -982,6 +998,13 @@ export const clinicsApi = {
     return apiFetch<Clinic>(`/clinics/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
+    });
+  },
+
+  async validateTradeLicense(tradeLicenseNumber: string): Promise<TradeLicenseValidationResult> {
+    return apiFetch<TradeLicenseValidationResult>("/clinics/validate-trade-license", {
+      method: "POST",
+      body: JSON.stringify({ trade_license_number: tradeLicenseNumber }),
     });
   },
 

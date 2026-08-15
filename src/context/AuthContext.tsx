@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import {
   ApiError,
   BranchStaffMe,
@@ -96,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStaffBranch(null);
       window.localStorage.removeItem("medinexa.staffClinic");
       window.localStorage.removeItem("medinexa.staffBranch");
+      toast.error("Session expired. Please log in again.");
       router.push("/signin?reason=session_expired");
     });
     return () => setSessionExpiredHandler(null);
@@ -176,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await authApi.loginClinicOwner({ email, password });
         setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
         persist(res.user, res.clinic);
+        toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
           throw new Error(err.message);
@@ -245,6 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.removeItem("medinexa.staffClinic");
         window.localStorage.removeItem("medinexa.staffBranch");
         persist(nextUser);
+        toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
           throw new Error(err.message);
@@ -299,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       window.localStorage.removeItem("medinexa.staffBranch");
     }
+    toast.success("Signed in successfully.");
   }, []);
 
   const can = useCallback(
@@ -331,6 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setClinic(null);
     setStaffClinic(null);
     setStaffBranch(null);
+    toast.success("Signed out.");
     router.push("/signin");
   }, [router]);
 
