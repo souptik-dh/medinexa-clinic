@@ -10,8 +10,11 @@ export interface SpecializationValue {
 interface SpecializationPickerProps {
   value: SpecializationValue[];
   onChange: (value: SpecializationValue[]) => void;
+  onBlur?: () => void;
   disabled?: boolean;
   max?: number;
+  error?: boolean;
+  hint?: string;
 }
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -19,15 +22,18 @@ const SEARCH_DEBOUNCE_MS = 250;
 export default function SpecializationPicker({
   value,
   onChange,
+  onBlur,
   disabled,
   max = 10,
+  error: hasRequiredError = false,
+  hint,
 }: SpecializationPickerProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<DoctorSpecialization[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const atMax = value.length >= max;
@@ -36,10 +42,12 @@ export default function SpecializationPicker({
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
+        onBlur?.();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -85,12 +93,12 @@ export default function SpecializationPicker({
   const createAndAdd = async () => {
     if (!trimmedQuery || creating) return;
     setCreating(true);
-    setError(null);
+    setApiError(null);
     try {
       const spec = await doctorSpecializationsApi.create(trimmedQuery);
       addExisting(spec);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not add specialization");
+      setApiError(err instanceof ApiError ? err.message : "Could not add specialization");
     } finally {
       setCreating(false);
     }
@@ -112,9 +120,11 @@ export default function SpecializationPicker({
   return (
     <div ref={containerRef} className="relative">
       <div
-        className={`flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-lg border border-gray-300 bg-transparent px-2 py-1.5 text-sm focus-within:border-brand-300 focus-within:ring-3 focus-within:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 ${
-          disabled ? "opacity-50" : ""
-        }`}
+        className={`flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-lg border bg-transparent px-2 py-1.5 text-sm dark:bg-gray-900 ${
+          hasRequiredError
+            ? "border-error-500 dark:border-error-500"
+            : "border-gray-300 focus-within:border-brand-300 focus-within:ring-3 focus-within:ring-brand-500/10 dark:border-gray-700"
+        } ${disabled ? "opacity-50" : ""}`}
       >
         {value.map((v) => (
           <span
@@ -158,7 +168,14 @@ export default function SpecializationPicker({
           Up to {max} specializations.
         </p>
       )}
-      {error && <p className="mt-1 text-theme-xs text-error-600 dark:text-error-400">{error}</p>}
+      {apiError && (
+        <p className="mt-1 text-theme-xs text-error-600 dark:text-error-400">{apiError}</p>
+      )}
+      {!apiError && hint && (
+        <p className={`mt-1.5 text-xs ${hasRequiredError ? "text-error-500" : "text-gray-500"}`}>
+          {hint}
+        </p>
+      )}
 
       {open && !atMax && !disabled && (
         <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">

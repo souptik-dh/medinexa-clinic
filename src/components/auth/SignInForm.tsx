@@ -8,8 +8,16 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 
 type Mode = "owner" | "staff" | "doctor";
+type RequiredField =
+  | "email"
+  | "password"
+  | "doctorEmail"
+  | "doctorPassword"
+  | "staffEmail"
+  | "otp";
 
 export default function SignInForm() {
   const [mode, setMode] = useState<Mode>("owner");
@@ -29,10 +37,16 @@ export default function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get("reason") === "session_expired";
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!email.trim() || !password.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await login(email, password);
@@ -47,6 +61,11 @@ export default function SignInForm() {
   const handleDoctorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!doctorEmail.trim() || !doctorPassword.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await doctorLogin(doctorEmail, doctorPassword);
@@ -62,6 +81,11 @@ export default function SignInForm() {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setSubmitted(true);
+    if (!staffEmail.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await staffLogin(staffEmail);
@@ -77,6 +101,11 @@ export default function SignInForm() {
   const handleOtpVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!otp.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await verifyStaffOtp(staffEmail, otp);
@@ -94,6 +123,7 @@ export default function SignInForm() {
     setError(null);
     setMessage(null);
     setOtp("");
+    setSubmitted(false);
   };
 
   const tabClass = (m: Mode) =>
@@ -164,6 +194,9 @@ export default function SignInForm() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => touch("email")}
+                    error={showError("email", !email.trim())}
+                    hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
                     required
                   />
                 </div>
@@ -177,6 +210,8 @@ export default function SignInForm() {
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onBlur={() => touch("password")}
+                      error={showError("password", !password.trim())}
                       required
                     />
                     <span
@@ -190,6 +225,9 @@ export default function SignInForm() {
                       )}
                     </span>
                   </div>
+                  {showError("password", !password.trim()) && (
+                    <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -228,6 +266,13 @@ export default function SignInForm() {
                   type="email"
                   value={doctorEmail}
                   onChange={(e) => setDoctorEmail(e.target.value)}
+                  onBlur={() => touch("doctorEmail")}
+                  error={showError("doctorEmail", !doctorEmail.trim())}
+                  hint={
+                    showError("doctorEmail", !doctorEmail.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>
@@ -241,6 +286,8 @@ export default function SignInForm() {
                     placeholder="Enter your password"
                     value={doctorPassword}
                     onChange={(e) => setDoctorPassword(e.target.value)}
+                    onBlur={() => touch("doctorPassword")}
+                    error={showError("doctorPassword", !doctorPassword.trim())}
                     required
                   />
                   <span
@@ -254,6 +301,9 @@ export default function SignInForm() {
                     )}
                   </span>
                 </div>
+                {showError("doctorPassword", !doctorPassword.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -277,6 +327,13 @@ export default function SignInForm() {
                   type="email"
                   value={staffEmail}
                   onChange={(e) => setStaffEmail(e.target.value)}
+                  onBlur={() => touch("staffEmail")}
+                  error={showError("staffEmail", !staffEmail.trim())}
+                  hint={
+                    showError("staffEmail", !staffEmail.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>
@@ -300,11 +357,17 @@ export default function SignInForm() {
                   type="text"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
+                  onBlur={() => touch("otp")}
+                  error={showError("otp", !otp.trim())}
                   required
                 />
-                <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                  Enter the code sent to {staffEmail}.
-                </p>
+                {showError("otp", !otp.trim()) ? (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                ) : (
+                  <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                    Enter the code sent to {staffEmail}.
+                  </p>
+                )}
               </div>
               {message && (
                 <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">

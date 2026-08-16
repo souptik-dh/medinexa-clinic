@@ -4,13 +4,24 @@ import { useParams, useRouter } from "next/navigation";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
 import { ApiError, branchesApi, clinicsApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass, inputClass } from "@/components/form/fieldStyles";
 
 interface BranchFormProps {
   mode: "create" | "edit";
 }
 
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+type RequiredField =
+  | "name"
+  | "address"
+  | "phone"
+  | "city"
+  | "district"
+  | "state"
+  | "postOffice"
+  | "pinCode"
+  | "tradeLicenseNumber";
 
 export default function BranchForm({ mode }: BranchFormProps) {
   const router = useRouter();
@@ -39,6 +50,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
   const [loading, setLoading] = useState(isEdit);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   useEffect(() => {
     if (!clinicId) {
@@ -106,16 +118,19 @@ export default function BranchForm({ mode }: BranchFormProps) {
   };
 
   const submit = async () => {
-    if (!name || !address || !phone || !timezone) {
-      setError("Name, address, phone and timezone are required.");
-      return;
-    }
-    if (!city || !district || !stateField || !postOffice || !pinCode) {
-      setError("City, district, state, post office and pincode are required.");
-      return;
-    }
-    if (!tradeLicenseNumber) {
-      setError("Trade license number is required.");
+    setSubmitted(true);
+    if (
+      !name.trim() ||
+      !address.trim() ||
+      !phone.trim() ||
+      !city.trim() ||
+      !district.trim() ||
+      !stateField.trim() ||
+      !postOffice.trim() ||
+      !pinCode.trim() ||
+      !tradeLicenseNumber.trim()
+    ) {
+      setError("Please fill in all required fields.");
       return;
     }
     setBusy(true);
@@ -186,16 +201,20 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("name")}
+                  className={getInputClass(showError("name", !name.trim()))}
                 />
+                {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
               <Field label="Phone *">
                 <input
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("phone")}
+                  className={getInputClass(showError("phone", !phone.trim()))}
                 />
+                {showError("phone", !phone.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
             </div>
             <Field label="Address *">
@@ -203,15 +222,22 @@ export default function BranchForm({ mode }: BranchFormProps) {
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                className={inputClass}
+                onBlur={() => touch("address")}
+                className={getInputClass(showError("address", !address.trim()))}
               />
+              {showError("address", !address.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Pincode *">
               <PincodeField
                 value={pinCode}
                 onChange={setPinCode}
                 onSelect={onSelectPostOffice}
+                onBlur={() => touch("pinCode")}
                 autoValidate={!isEdit}
+                error={showError("pinCode", !pinCode.trim())}
+                hint={showError("pinCode", !pinCode.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -228,16 +254,22 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("city")}
+                  className={getInputClass(showError("city", !city.trim()))}
                 />
+                {showError("city", !city.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
               <Field label="District *">
                 <input
                   type="text"
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("district")}
+                  className={getInputClass(showError("district", !district.trim()))}
                 />
+                {showError("district", !district.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -246,16 +278,24 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   type="text"
                   value={stateField}
                   onChange={(e) => setStateField(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("state")}
+                  className={getInputClass(showError("state", !stateField.trim()))}
                 />
+                {showError("state", !stateField.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
               <Field label="Post office *">
                 <input
                   type="text"
                   value={postOffice}
                   onChange={(e) => setPostOffice(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("postOffice")}
+                  className={getInputClass(showError("postOffice", !postOffice.trim()))}
                 />
+                {showError("postOffice", !postOffice.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <Field label="Timezone *">
@@ -273,8 +313,14 @@ export default function BranchForm({ mode }: BranchFormProps) {
                   type="text"
                   value={tradeLicenseNumber}
                   onChange={(e) => setTradeLicenseNumber(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("tradeLicenseNumber")}
+                  className={getInputClass(
+                    showError("tradeLicenseNumber", !tradeLicenseNumber.trim())
+                  )}
                 />
+                {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
               <Field label="Drug license number">
                 <input
@@ -305,19 +351,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
           </button>
           <button
             onClick={submit}
-            disabled={
-              busy ||
-              loading ||
-              !name ||
-              !address ||
-              !phone ||
-              !city ||
-              !district ||
-              !stateField ||
-              !postOffice ||
-              !pinCode ||
-              !tradeLicenseNumber
-            }
+            disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create branch"}

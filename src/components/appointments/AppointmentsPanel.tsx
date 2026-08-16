@@ -24,6 +24,7 @@ import {
   appointmentStatusLabel,
   formatCurrency,
   relationshipLabel,
+  today,
 } from "@/lib/utils";
 
 type Action = "confirm" | "pay" | "complete" | "cancel";
@@ -165,8 +166,10 @@ export default function AppointmentsPanel() {
   };
 
   const canConfirm = (a: Appointment) => a.status === "pending";
-  const canPay = (a: Appointment) => a.status === "confirmed";
-  const canComplete = (a: Appointment) => a.status === "paid";
+  // Paid/completed only makes sense once the appointment has actually happened —
+  // not while it's still scheduled for a future date.
+  const canPay = (a: Appointment) => a.status === "confirmed" && a.scheduled_date <= today();
+  const canComplete = (a: Appointment) => a.status === "paid" && a.scheduled_date <= today();
   const canCancel = (a: Appointment) =>
     a.status === "pending" || a.status === "confirmed" || a.status === "paid";
 

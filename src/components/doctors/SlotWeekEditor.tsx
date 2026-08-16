@@ -38,10 +38,12 @@ export default function SlotWeekEditor({
   slots,
   onChange,
   operatingDays,
+  error = false,
 }: {
   slots: SlotTemplateItem[];
   onChange: (next: SlotTemplateItem[]) => void;
   operatingDays: BranchOperatingDay[] | null;
+  error?: boolean;
 }) {
   const isOpen = (weekday: number): boolean => {
     if (!operatingDays) return true;
@@ -78,7 +80,11 @@ export default function SlotWeekEditor({
   })).filter((g) => g.entries.length > 0);
 
   return (
-    <div>
+    <div
+      className={
+        error ? "rounded-lg border border-error-500 p-3" : undefined
+      }
+    >
       <div className="flex gap-2">
         {DAY_SHORT.map((name, weekday) => {
           const open = isOpen(weekday);

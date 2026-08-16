@@ -18,6 +18,18 @@ import {
   branchScheduleApi,
   doctorInvitesApi,
 } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass } from "@/components/form/fieldStyles";
+
+type RequiredField =
+  | "branch"
+  | "inviteName"
+  | "inviteEmail"
+  | "feeAmount"
+  | "currency"
+  | "specializations"
+  | "slots";
 
 export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null {
   if (slots.length === 0) return "At least one slot is required.";
@@ -61,6 +73,7 @@ export default function InviteDoctorForm() {
   const [verified, setVerified] = useState<NmcDoctorResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   useEffect(() => {
     if (!branch) {
@@ -84,17 +97,19 @@ export default function InviteDoctorForm() {
   };
 
   const createInvite = async () => {
-    if (!branch) {
-      setError("Select a branch for this invite.");
-      return;
-    }
+    setSubmitted(true);
     const amount = Number(feeAmount);
-    if (!inviteName || !inviteEmail || !amount || amount <= 0) {
-      setError("Fill in name, email, and a valid fee.");
-      return;
-    }
-    if (specializations.length === 0) {
-      setError("Select at least one specialization.");
+    if (
+      !branch ||
+      !inviteName.trim() ||
+      !inviteEmail.trim() ||
+      !feeAmount.trim() ||
+      !amount ||
+      amount <= 0 ||
+      !currency.trim() ||
+      specializations.length === 0
+    ) {
+      setError("Please fill in all required fields.");
       return;
     }
     const slotError = validateSlotTemplates(slots);
@@ -136,7 +151,13 @@ export default function InviteDoctorForm() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           A single-use invite code is emailed to the doctor. The code is never shown here.
         </p>
-        <BranchSelect value={branch?.id ?? ""} onChange={setBranch} />
+        <BranchSelect
+          value={branch?.id ?? ""}
+          onChange={setBranch}
+          onBlur={() => touch("branch")}
+          error={showError("branch", !branch)}
+          hint={showError("branch", !branch) ? REQUIRED_FIELD_MESSAGE : undefined}
+        />
       </div>
 
       {error && (
@@ -172,10 +193,22 @@ export default function InviteDoctorForm() {
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Name *">
-              <input type="text" value={inviteName} onChange={(e) => setInviteName(e.target.value)} className={inputClass} />
+              <input type="text" value={inviteName} disabled className={inputClass} />
+              {showError("inviteName", !inviteName.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Email *">
-              <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className={inputClass} />
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onBlur={() => touch("inviteEmail")}
+                className={getInputClass(showError("inviteEmail", !inviteEmail.trim()))}
+              />
+              {showError("inviteEmail", !inviteEmail.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Phone">
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
@@ -190,14 +223,46 @@ export default function InviteDoctorForm() {
               <input type="text" value={doctorDegree} disabled className={inputClass} />
             </Field>
             <Field label="Fee amount *">
-              <input type="number" min="0" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={inputClass} />
+              <input
+                type="number"
+                min="0"
+                value={feeAmount}
+                onChange={(e) => setFeeAmount(e.target.value)}
+                onBlur={() => touch("feeAmount")}
+                className={getInputClass(
+                  showError("feeAmount", !feeAmount.trim() || Number(feeAmount) <= 0)
+                )}
+              />
+              {showError("feeAmount", !feeAmount.trim() || Number(feeAmount) <= 0) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Currency *">
-              <input type="text" value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass} />
+              <input
+                type="text"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                onBlur={() => touch("currency")}
+                className={getInputClass(showError("currency", !currency.trim()))}
+              />
+              {showError("currency", !currency.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
           </div>
           <Field label="Specialization *">
-            <SpecializationPicker value={specializations} onChange={setSpecializations} disabled={busy} />
+            <SpecializationPicker
+              value={specializations}
+              onChange={setSpecializations}
+              onBlur={() => touch("specializations")}
+              disabled={busy}
+              error={showError("specializations", specializations.length === 0)}
+              hint={
+                showError("specializations", specializations.length === 0)
+                  ? REQUIRED_FIELD_MESSAGE
+                  : undefined
+              }
+            />
           </Field>
 
           <Field label="Certificate URL">
@@ -232,7 +297,18 @@ export default function InviteDoctorForm() {
               Click a day to add a slot for it.
               {!branch && " Select a branch above to see its closed days."}
             </p>
-            <SlotWeekEditor slots={slots} onChange={setSlots} operatingDays={operatingDays} />
+            <SlotWeekEditor
+              slots={slots}
+              onChange={(next) => {
+                setSlots(next);
+                touch("slots");
+              }}
+              operatingDays={operatingDays}
+              error={showError("slots", slots.length === 0)}
+            />
+            {showError("slots", slots.length === 0) && (
+              <FieldError message={REQUIRED_FIELD_MESSAGE} />
+            )}
           </div>
         </div>
 

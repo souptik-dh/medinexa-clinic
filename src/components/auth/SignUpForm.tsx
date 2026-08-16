@@ -7,6 +7,9 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+
+type RequiredField = "firstName" | "lastName" | "email" | "password";
 
 export default function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
@@ -22,13 +25,15 @@ export default function SignUpForm() {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const { register } = useAuth();
   const router = useRouter();
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
     const name = `${firstName} ${lastName}`.trim();
-    if (!name) {
-      setError("Please enter your name");
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
+      setError("Please fill in all required fields.");
       return;
     }
     setSubmitting(true);
@@ -93,6 +98,13 @@ export default function SignUpForm() {
                     placeholder="Enter your first name"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
+                    onBlur={() => touch("firstName")}
+                    error={showError("firstName", !firstName.trim())}
+                    hint={
+                      showError("firstName", !firstName.trim())
+                        ? REQUIRED_FIELD_MESSAGE
+                        : undefined
+                    }
                     required
                   />
                 </div>
@@ -107,6 +119,13 @@ export default function SignUpForm() {
                     placeholder="Enter your last name"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
+                    onBlur={() => touch("lastName")}
+                    error={showError("lastName", !lastName.trim())}
+                    hint={
+                      showError("lastName", !lastName.trim())
+                        ? REQUIRED_FIELD_MESSAGE
+                        : undefined
+                    }
                     required
                   />
                 </div>
@@ -122,6 +141,9 @@ export default function SignUpForm() {
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => touch("email")}
+                  error={showError("email", !email.trim())}
+                  hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
                   required
                 />
               </div>
@@ -157,6 +179,8 @@ export default function SignUpForm() {
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => touch("password")}
+                    error={showError("password", !password.trim())}
                     required
                     min="8"
                   />
@@ -171,6 +195,9 @@ export default function SignUpForm() {
                     )}
                   </span>
                 </div>
+                {showError("password", !password.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <Checkbox

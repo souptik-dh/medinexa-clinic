@@ -4,16 +4,22 @@ import { useParams, useRouter } from "next/navigation";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
 import { ApiError, TradeLicenseValidationStatus, clinicsApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
 
 interface ClinicFormProps {
   mode: "create" | "edit";
 }
 
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
-
-const textareaClass =
-  "w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+type RequiredField =
+  | "name"
+  | "city"
+  | "district"
+  | "state"
+  | "postOffice"
+  | "pinCode"
+  | "tradeLicenseNumber";
 
 export default function ClinicForm({ mode }: ClinicFormProps) {
   const router = useRouter();
@@ -40,6 +46,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   const [loading, setLoading] = useState(isEdit);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   useEffect(() => {
     if (!isEdit || !clinicId) {
@@ -120,16 +127,17 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   };
 
   const submit = async () => {
-    if (!name) {
-      setError("Clinic name is required.");
-      return;
-    }
-    if (!city || !district || !stateField || !postOffice || !pinCode) {
-      setError("City, district, state, post office and pincode are required.");
-      return;
-    }
-    if (!tradeLicenseNumber) {
-      setError("Trade license number is required.");
+    setSubmitted(true);
+    if (
+      !name.trim() ||
+      !city.trim() ||
+      !district.trim() ||
+      !stateField.trim() ||
+      !postOffice.trim() ||
+      !pinCode.trim() ||
+      !tradeLicenseNumber.trim()
+    ) {
+      setError("Please fill in all required fields.");
       return;
     }
     if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
@@ -195,8 +203,10 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={inputClass}
+                onBlur={() => touch("name")}
+                className={getInputClass(showError("name", !name.trim()))}
               />
+              {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
             </Field>
             <Field label="Description">
               <textarea
@@ -211,7 +221,10 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                 value={pinCode}
                 onChange={setPinCode}
                 onSelect={onSelectPostOffice}
+                onBlur={() => touch("pinCode")}
                 autoValidate={!isEdit}
+                error={showError("pinCode", !pinCode.trim())}
+                hint={showError("pinCode", !pinCode.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -228,16 +241,22 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("city")}
+                  className={getInputClass(showError("city", !city.trim()))}
                 />
+                {showError("city", !city.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
               <Field label="District *">
                 <input
                   type="text"
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("district")}
+                  className={getInputClass(showError("district", !district.trim()))}
                 />
+                {showError("district", !district.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -246,16 +265,24 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   type="text"
                   value={stateField}
                   onChange={(e) => setStateField(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("state")}
+                  className={getInputClass(showError("state", !stateField.trim()))}
                 />
+                {showError("state", !stateField.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
               <Field label="Post office *">
                 <input
                   type="text"
                   value={postOffice}
                   onChange={(e) => setPostOffice(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("postOffice")}
+                  className={getInputClass(showError("postOffice", !postOffice.trim()))}
                 />
+                {showError("postOffice", !postOffice.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -265,7 +292,11 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                     type="text"
                     value={tradeLicenseNumber}
                     onChange={(e) => onTradeLicenseNumberChange(e.target.value)}
-                    className={inputClass}
+                    onBlur={() => touch("tradeLicenseNumber")}
+                    className={getInputClass(
+                      showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ||
+                        tradeLicenseValidationStatus === "INVALID"
+                    )}
                   />
                   <button
                     type="button"
@@ -284,7 +315,9 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                         : "Validate"}
                   </button>
                 </div>
-                {tradeLicenseValidationStatus === "VALID" ? (
+                {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ? (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                ) : tradeLicenseValidationStatus === "VALID" ? (
                   <p className="mt-1.5 text-theme-xs text-success-600 dark:text-success-500">
                     ✓ {tradeLicenseMessage ?? "Trade License Number validated successfully."}
                   </p>
@@ -329,18 +362,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
           </button>
           <button
             onClick={submit}
-            disabled={
-              busy ||
-              loading ||
-              !name ||
-              !city ||
-              !district ||
-              !stateField ||
-              !postOffice ||
-              !pinCode ||
-              !tradeLicenseNumber ||
-              (!isEdit && tradeLicenseValidationStatus !== "VALID")
-            }
+            disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create clinic"}

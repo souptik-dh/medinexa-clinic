@@ -1,9 +1,11 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { ApiError, DoctorProfile, doctorsApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass, inputClass } from "@/components/form/fieldStyles";
 
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+type RequiredField = "name";
 
 export default function DoctorProfileForm() {
   const [name, setName] = useState("");
@@ -14,6 +16,7 @@ export default function DoctorProfileForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,8 +39,9 @@ export default function DoctorProfileForm() {
   }, [load]);
 
   const submit = async () => {
+    setSubmitted(true);
     if (!name.trim()) {
-      setError("Name is required.");
+      setError("Please fill in all required fields.");
       return;
     }
     setSaving(true);
@@ -85,8 +89,10 @@ export default function DoctorProfileForm() {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputClass}
+              onBlur={() => touch("name")}
+              className={getInputClass(showError("name", !name.trim()))}
             />
+            {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Registration no.">
@@ -120,7 +126,7 @@ export default function DoctorProfileForm() {
       <div className="mt-6 flex justify-end">
         <button
           onClick={submit}
-          disabled={saving || loading || !name.trim()}
+          disabled={saving || loading}
           className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
           {saving ? "Saving…" : "Save changes"}
