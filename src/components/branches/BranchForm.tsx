@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
-import { ApiError, branchesApi, clinicsApi } from "@/lib/api";
+import { ApiError, TradeLicenseValidationStatus, branchesApi, clinicsApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass } from "@/components/form/fieldStyles";
@@ -43,6 +43,10 @@ export default function BranchForm({ mode }: BranchFormProps) {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [tradeLicenseNumber, setTradeLicenseNumber] = useState("");
+  const [tradeLicenseValidationStatus, setTradeLicenseValidationStatus] =
+    useState<TradeLicenseValidationStatus>("PENDING");
+  const [tradeLicenseMessage, setTradeLicenseMessage] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
   const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
   const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
     useState("");
@@ -88,6 +92,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
           setLat(b.lat !== null && b.lat !== undefined ? String(b.lat) : "");
           setLng(b.lng !== null && b.lng !== undefined ? String(b.lng) : "");
           setTradeLicenseNumber(b.trade_license_number ?? "");
+          setTradeLicenseValidationStatus(b.trade_license_validation_status ?? "PENDING");
           setDrugLicenseNumber(b.drug_license_number ?? "");
           setClinicalEstablishmentRegNumber(b.clinical_establishment_reg_number ?? "");
         })
@@ -117,6 +122,40 @@ export default function BranchForm({ mode }: BranchFormProps) {
     if (!address) setAddress(po.Name);
   };
 
+  const onTradeLicenseNumberChange = (value: string) => {
+    setTradeLicenseNumber(value);
+    // Re-validation is required whenever the number changes — a validated/rejected
+    // status only ever applies to the exact number it was checked against.
+    if (tradeLicenseValidationStatus !== "PENDING") {
+      setTradeLicenseValidationStatus("PENDING");
+      setTradeLicenseMessage(null);
+    }
+  };
+
+  const validateTradeLicense = async () => {
+    const number = tradeLicenseNumber.trim();
+    if (!number) {
+      setError("Enter a trade license number first.");
+      return;
+    }
+    setValidating(true);
+    setError(null);
+    try {
+      const res = await clinicsApi.validateTradeLicense(number);
+      setTradeLicenseValidationStatus(res.status);
+      setTradeLicenseMessage(res.message);
+    } catch (err) {
+      setTradeLicenseValidationStatus("PENDING");
+      setTradeLicenseMessage(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to validate Trade License Number at this time. Please try again."
+      );
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const submit = async () => {
     setSubmitted(true);
     if (
@@ -131,6 +170,10 @@ export default function BranchForm({ mode }: BranchFormProps) {
       !tradeLicenseNumber.trim()
     ) {
       setError("Please fill in all required fields.");
+      return;
+    }
+    if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
+      setError("Validate the Trade License Number before creating the branch.");
       return;
     }
     setBusy(true);
@@ -150,6 +193,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
         lat: lat === "" ? null : Number(lat),
         lng: lng === "" ? null : Number(lng),
         trade_license_number: tradeLicenseNumber,
+        trade_license_validation_status: tradeLicenseValidationStatus,
         drug_license_number: drugLicenseNumber || null,
         clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
@@ -158,7 +202,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
       } else {
         await branchesApi.create(clinicId, input);
       }
-      router.push("/clinics");
+      router.push("/branches");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -309,17 +353,50 @@ export default function BranchForm({ mode }: BranchFormProps) {
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Trade license number *">
-                <input
-                  type="text"
-                  value={tradeLicenseNumber}
-                  onChange={(e) => setTradeLicenseNumber(e.target.value)}
-                  onBlur={() => touch("tradeLicenseNumber")}
-                  className={getInputClass(
-                    showError("tradeLicenseNumber", !tradeLicenseNumber.trim())
-                  )}
-                />
-                {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tradeLicenseNumber}
+                    onChange={(e) => onTradeLicenseNumberChange(e.target.value)}
+                    onBlur={() => touch("tradeLicenseNumber")}
+                    className={getInputClass(
+                      showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ||
+                        tradeLicenseValidationStatus === "INVALID"
+                    )}
+                  />
+                  <button
+                    type="button"
+                    onClick={validateTradeLicense}
+                    disabled={validating || !tradeLicenseNumber.trim()}
+                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:opacity-50 ${
+                      tradeLicenseValidationStatus === "VALID"
+                        ? "bg-success-50 text-success-700 hover:bg-success-100 dark:bg-success-500/10 dark:text-success-500"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    {validating
+                      ? "Validating…"
+                      : tradeLicenseValidationStatus === "VALID"
+                        ? "✓ Validated"
+                        : "Validate"}
+                  </button>
+                </div>
+                {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ? (
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                ) : tradeLicenseValidationStatus === "VALID" ? (
+                  <p className="mt-1.5 text-theme-xs text-success-600 dark:text-success-500">
+                    ✓ {tradeLicenseMessage ?? "Trade License Number validated successfully."}
+                  </p>
+                ) : tradeLicenseValidationStatus === "INVALID" ? (
+                  <p className="mt-1.5 text-theme-xs text-error-600 dark:text-error-400">
+                    ✕ {tradeLicenseMessage ?? "Trade License Number could not be validated."}
+                    {!isEdit && " This branch can't be created until it validates."}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-theme-xs text-warning-600 dark:text-orange-400">
+                    ⚠ Trade License Number validation pending
+                    {!isEdit && " — required before this branch can be created"}
+                  </p>
                 )}
               </Field>
               <Field label="Drug license number">
@@ -344,7 +421,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={() => router.push("/clinics")}
+            onClick={() => router.push("/branches")}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             Cancel

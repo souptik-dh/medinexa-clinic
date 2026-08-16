@@ -433,6 +433,9 @@ export interface Branch {
   photo_url: string | null;
   trade_license_number?: string | null;
   trade_license_url?: string | null;
+  trade_license_validated?: boolean;
+  trade_license_validation_status?: TradeLicenseValidationStatus;
+  trade_license_validated_at?: string | null;
   drug_license_number?: string | null;
   drug_license_url?: string | null;
   clinical_establishment_reg_number?: string | null;
@@ -474,6 +477,9 @@ export interface BranchCreateInput {
   lng?: number | null;
   timezone: string;
   trade_license_number: string;
+  // Only meaningful when set to the `status` a just-prior clinicsApi.validateTradeLicense()
+  // call returned for this exact trade_license_number — see BranchForm.
+  trade_license_validation_status?: TradeLicenseValidationStatus;
   drug_license_number?: string | null;
   clinical_establishment_reg_number?: string | null;
 }

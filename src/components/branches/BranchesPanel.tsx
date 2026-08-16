@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
@@ -86,6 +87,12 @@ export default function BranchesPanel() {
     // clear selected branch when clinic selection changes
     setSelectedBranch(null);
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (selectedBranch && !selectedBranch.trade_license_url) {
+      toast("Trade license: No document uploaded.", { icon: "⚠️" });
+    }
+  }, [selectedBranch]);
 
   const handlePhotoUpdated = (photoUrl: string) => {
     setSelectedBranch((prev) => (prev ? { ...prev, photo_url: photoUrl } : prev));
@@ -299,6 +306,16 @@ export default function BranchesPanel() {
             onPhotoUpdated={handlePhotoUpdated}
           />
           <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+          {!selectedBranch.trade_license_url && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+              <p className="font-medium text-gray-800 dark:text-white/90">
+                Trade license <span className="text-error-500">*</span>
+              </p>
+              <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
+                ⚠ No document uploaded.
+              </p>
+            </div>
+          )}
           <BranchLicensesPanel
             clinicId={selected.id}
             branchId={selectedBranch.id}
