@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
 import { ApiError, TradeLicenseValidationStatus, clinicsApi } from "@/lib/api";
@@ -36,6 +37,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   const [stateField, setStateField] = useState("");
   const [postOffice, setPostOffice] = useState("");
   const [tradeLicenseNumber, setTradeLicenseNumber] = useState("");
+  const [tradeLicenseUrl, setTradeLicenseUrl] = useState<string | null>(null);
   const [tradeLicenseValidationStatus, setTradeLicenseValidationStatus] =
     useState<TradeLicenseValidationStatus>("PENDING");
   const [tradeLicenseMessage, setTradeLicenseMessage] = useState<string | null>(null);
@@ -67,9 +69,13 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         setStateField(c.state ?? "");
         setPostOffice(c.post_office ?? "");
         setTradeLicenseNumber(c.trade_license_number ?? "");
+        setTradeLicenseUrl(c.trade_license_url ?? null);
         setTradeLicenseValidationStatus(c.trade_license_validation_status ?? "PENDING");
         setDrugLicenseNumber(c.drug_license_number ?? "");
         setClinicalEstablishmentRegNumber(c.clinical_establishment_reg_number ?? "");
+        if (!c.trade_license_url) {
+          toast("Trade license: No document uploaded.", { icon: "⚠️" });
+        }
       })
       .catch((err) => {
         if (active)
