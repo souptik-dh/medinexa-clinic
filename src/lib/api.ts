@@ -316,7 +316,7 @@ export interface PhotoUploadGrant {
 export async function uploadFileToCloudinary(
   grant: PhotoUploadGrant,
   file: File
-): Promise<void> {
+): Promise<{ secure_url: string }> {
   const form = new FormData();
   form.append("file", file);
   form.append("public_id", grant.public_id);
@@ -337,6 +337,7 @@ export async function uploadFileToCloudinary(
     }
     throw new Error(message);
   }
+  return (await res.json()) as { secure_url: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,6 +1274,22 @@ export const doctorInvitesApi = {
   async revoke(id: string): Promise<void> {
     return apiFetch<void>(`/doctor-invites/${id}`, { method: "DELETE" });
   },
+
+  // No invite exists yet at this point (it's created in one shot by `create`
+  // above), so this is a signed direct-to-Cloudinary upload rather than the
+  // "upload against an existing id" pattern used elsewhere — the resulting
+  // URL is just carried as a plain string into DoctorInviteCreateInput.certificate.
+  async getCertificateUploadGrant(): Promise<PhotoUploadGrant> {
+    return apiFetch<PhotoUploadGrant>("/doctor-invites/certificate/signature", {
+      method: "POST",
+    });
+  },
+
+  async uploadCertificate(file: File): Promise<{ certificate_url: string }> {
+    const grant = await doctorInvitesApi.getCertificateUploadGrant();
+    const { secure_url } = await uploadFileToCloudinary(grant, file);
+    return { certificate_url: secure_url };
+  },
 };
 
 export const doctorSpecializationsApi = {
@@ -1418,6 +1435,21 @@ export const doctorsApi = {
       method: "PATCH",
       body: JSON.stringify(input),
     });
+  },
+
+  async uploadAssignmentCertificate(
+    assignmentId: string,
+    file: File
+  ): Promise<{ certificate_url: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ certificate_url: string }>(
+      `/doctor-assignments/${assignmentId}/certificate`,
+      {
+        method: "POST",
+        body: form,
+      }
+    );
   },
 
   async removeAssignment(id: string): Promise<void> {

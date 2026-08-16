@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ApiError,
@@ -55,11 +55,13 @@ export default function DoctorAssignmentEditPanel() {
 
   const [fee, setFee] = useState("");
   const [certificate, setCertificate] = useState("");
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
   const [slotType, setSlotType] = useState<SlotType>("fixed");
   const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
   const [slotsDirty, setSlotsDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const certificateFileRef = useRef<HTMLInputElement | null>(null);
 
   const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[] | null>(null);
 
@@ -181,6 +183,22 @@ export default function DoctorAssignmentEditPanel() {
     setSlots(next);
   };
 
+  const handleCertificateSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !doctor) return;
+    setUploadingCertificate(true);
+    setError(null);
+    try {
+      const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
+      setCertificate(res.certificate_url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Certificate upload failed");
+    } finally {
+      setUploadingCertificate(false);
+      if (certificateFileRef.current) certificateFileRef.current.value = "";
+    }
+  };
+
   const save = async () => {
     if (!doctor) return;
     const amount = Number(fee);
@@ -272,14 +290,43 @@ export default function DoctorAssignmentEditPanel() {
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Certificate URL
+            Certificate
           </label>
-          <input
-            type="text"
-            value={certificate}
-            onChange={(e) => setCertificate(e.target.value)}
-            className={inputClass}
-          />
+          <div className="flex items-center gap-3">
+            <input
+              ref={certificateFileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={handleCertificateSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => certificateFileRef.current?.click()}
+              disabled={uploadingCertificate}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            >
+              {uploadingCertificate
+                ? "Uploading…"
+                : certificate
+                  ? "Replace certificate"
+                  : "Upload certificate"}
+            </button>
+            {certificate ? (
+              <a
+                href={certificate}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-brand-500 hover:underline"
+              >
+                View certificate
+              </a>
+            ) : (
+              <span className="text-sm text-warning-600 dark:text-orange-400">
+                ⚠ Pending — no certificate uploaded
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.02]">
