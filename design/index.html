@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jido Healthcare — Better Care, Better Life</title>
+  
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <!-- Swiper.js CSS for 3D Coverflow -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+
+  <style>
+    :root {
+      --primary-purple: #8A62F0;
+      --primary-cyan: #00C1CB;
+      --accent-blue: #AAB4F7;
+      --text-dark: #1E1F24;
+      --text-muted: #64748b;
+      --white: #FFFFFF;
+      --gradient-primary: linear-gradient(135deg, #8A62F0 0%, #00C1CB 100%);
+      --ambient-bg: linear-gradient(180deg, #dbeafe 0%, #edf2fe 45%, #c7d2fe 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--ambient-bg);
+      color: var(--text-dark);
+      overflow-x: hidden;
+    }
+
+    /* Glassmorphism Utility */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      border-radius: 24px;
+      box-shadow: 0 12px 30px rgba(138, 98, 240, 0.08);
+    }
+
+    .btn-gradient {
+      background: var(--gradient-primary);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 30px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: none;
+      box-shadow: 0 8px 22px rgba(138, 98, 240, 0.28);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .btn-gradient:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(138, 98, 240, 0.4);
+    }
+
+    /* Sticky Navigation */
+    header {
+      position: sticky;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    }
+
+    nav {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--primary-purple);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo span { color: var(--primary-cyan); }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+      align-items: center;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text-dark);
+      font-weight: 500;
+      font-size: 14px;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--primary-purple); }
+
+    /* Hero Section */
+    .hero-section {
+      max-width: 1360px;
+      margin: 20px auto 60px;
+      padding: 40px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 40px;
+      min-height: 85vh;
+    }
+
+    .hero-content {
+      flex: 1;
+      max-width: 540px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(138, 98, 240, 0.12);
+      color: var(--primary-purple);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    .hero-content h1 {
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1.22;
+      margin-bottom: 20px;
+      color: var(--text-dark);
+    }
+
+    .hero-content h1 span {
+      background: var(--gradient-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-content p {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      margin-bottom: 34px;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: var(--text-dark);
+      padding: 14px 26px;
+      border-radius: 30px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: #f8fafc;
+      transform: translateY(-2px);
+    }
+
+    /* Hero Visuals: Laptop + Phone on Right */
+    .hero-visuals {
+      flex: 1.5;
+      position: relative;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding-right: 20px;
+    }
+
+    .laptop-container {
+      position: relative;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .laptop-frame {
+      background: #0f172a;
+      border: 10px solid #1e293b;
+      border-bottom: none;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+      aspect-ratio: 16 / 10;
+    }
+
+    .laptop-frame img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: top left;
+    }
+
+    .laptop-base-bar {
+      width: 110%;
+      height: 16px;
+      background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+      border-radius: 0 0 14px 14px;
+      position: relative;
+      left: -5%;
+      box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .laptop-base-bar::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 5px;
+      background: #334155;
+      border-radius: 0 0 6px 6px;
+    }
+
+    .floating-phone-wrap {
+      position: absolute;
+      bottom: -20px;
+      right: -10px;
+      width: 210px;
+      height: 420px;
+      background: #0f172a;
+      border: 7px solid #0f172a;
+      border-radius: 36px;
+      box-shadow: 0 25px 50px rgba(138, 98, 240, 0.38);
+      overflow: hidden;
+      z-index: 10;
+      animation: floatSlow 4s ease-in-out infinite alternate;
+    }
+
+    .floating-phone-wrap img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      border-radius: 28px;
+    }
+
+    @keyframes floatSlow {
+      0% { transform: translateY(0px); }
+      100% { transform: translateY(-14px); }
+    }
+
+    /* Section Headings */
+    .section-head {
+      text-align: center;
+      max-width: 680px;
+      margin: 90px auto 40px;
+      padding: 0 20px;
+    }
+
+    .section-head h2 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .section-head p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* Feature Grid */
+    .features-grid {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      padding: 0 24px;
+    }
+
+    .feature-card {
+      padding: 32px 24px;
+      text-align: center;
+      transition: transform 0.3s;
+    }
+
+    .feature-card:hover { transform: translateY(-6px); }
+
+    .feature-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 16px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: #fff;
+    }
+
+    .icon-1 { background: linear-gradient(135deg, #8A62F0, #AAB4F7); }
+    .icon-2 { background: linear-gradient(135deg, #00C1CB, #38BDF8); }
+    .icon-3 { background: linear-gradient(135deg, #F59E0B, #FBBF24); }
+    .icon-4 { background: linear-gradient(135deg, #10B981, #34D399); }
+
+    .feature-card h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ========================================================
+       CONTAINED 3D COVERFLOW SCREENSHOT SLIDER SECTION
+       ======================================================== */
+    .screenshot-slider-area {
+      position: relative;
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto 60px;
+      padding: 20px 0 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .swiper-container-coverflow {
+      width: 100%;
+      padding-top: 20px;
+      padding-bottom: 50px;
+      position: relative;
+      overflow: visible !important;
+    }
+
+    .swiper-slide {
+      background-position: center;
+      background-size: cover;
+      width: 260px !important;
+      height: 520px !important;
+      border-radius: 36px;
+      overflow: hidden;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .swiper-slide .slider-image {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 34px;
+      background: #ffffff;
+      display: flex;
+    }
+
+    .swiper-slide .slider-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      display: block;
+      border-radius: 34px;
+    }
+
+    /* Fixed Centered Phone Frame Overlay */
+    .screenshot-frame {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 278px;
+      height: 538px;
+      border: 9px solid #00C1CB;
+      border-radius: 46px;
+      pointer-events: none;
+      z-index: 30;
+      box-shadow: 0 0 25px rgba(0, 193, 203, 0.35);
+      box-sizing: border-box;
+    }
+
+    .screenshot-frame::before {
+      content: '';
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 14px;
+      background: #00C1CB;
+      border-radius: 0 0 10px 10px;
+    }
+
+    .screenshot-frame::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 36px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 4px;
+    }
+
+    .swiper-pagination-bullets {
+      bottom: 0px !important;
+    }
+
+    .swiper-pagination-bullet {
+      width: 10px;
+      height: 10px;
+      background: #94a3b8;
+      opacity: 0.45;
+      transition: all 0.3s ease;
+    }
+
+    .swiper-pagination-bullet-active {
+      width: 24px;
+      border-radius: 12px;
+      background: var(--primary-purple);
+      opacity: 1;
+    }
+
+    /* ========================================================
+       3-STEPS PROCESS SECTION
+       ======================================================== */
+    .steps-section {
+      max-width: 1240px;
+      margin: 80px auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 60px;
+    }
+
+    .steps-phone {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+    }
+
+    .steps-phone-frame {
+      width: 290px;
+      height: 580px;
+      background: #0f172a;
+      border: 8px solid #0f172a;
+      border-radius: 40px;
+      box-shadow: 0 20px 45px rgba(138, 98, 240, 0.25);
+      overflow: hidden;
+    }
+
+    .steps-phone-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .steps-content {
+      flex: 1.2;
+    }
+
+    .steps-content h2 {
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin-bottom: 14px;
+    }
+
+    .steps-content .sub-desc {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    .step-item-card {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 20px;
+      border-radius: 18px;
+      transition: transform 0.2s;
+    }
+
+    .step-item-card:hover {
+      transform: translateX(6px);
+    }
+
+    .step-number-box {
+      width: 50px;
+      height: 50px;
+      border-radius: 16px;
+      background: var(--gradient-primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      font-weight: 800;
+      flex-shrink: 0;
+      box-shadow: 0 6px 16px rgba(138, 98, 240, 0.3);
+    }
+
+    .step-text h4 {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: var(--text-dark);
+    }
+
+    .step-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* ========================================================
+       FAQ ACCORDION SECTION
+       ======================================================== */
+    .faq-section {
+      max-width: 900px;
+      margin: 80px auto;
+      padding: 0 24px;
+    }
+
+    .faq-accordion {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .faq-item {
+      padding: 18px 24px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .faq-question {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-dark);
+    }
+
+    .faq-question i {
+      color: var(--primary-purple);
+      transition: transform 0.3s;
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease-out;
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .faq-item.active {
+      border: 1px solid var(--primary-purple);
+    }
+
+    .faq-item.active .faq-question i {
+      transform: rotate(180deg);
+    }
+
+    .faq-item.active .faq-answer {
+      max-height: 200px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    /* Download CTA */
+    .download-card {
+      max-width: 1040px;
+      margin: 90px auto;
+      padding: 50px 30px;
+      text-align: center;
+    }
+
+    .store-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 26px;
+      flex-wrap: wrap;
+    }
+
+    .store-btn {
+      background: #0f172a;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .store-btn i { font-size: 24px; }
+    .store-btn strong { display: block; font-size: 15px; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.7);
+      padding: 50px 24px 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.5fr;
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+
+    .footer-col h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .footer-col ul { list-style: none; }
+    .footer-col ul li { margin-bottom: 10px; }
+    .footer-col ul a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .footer-col ul a:hover { color: var(--primary-purple); }
+
+    .footer-bottom {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding-top: 20px;
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+
+    @media (max-width: 992px) {
+      .hero-section { flex-direction: column; text-align: center; }
+      .hero-content { max-width: 100%; }
+      .hero-actions { justify-content: center; }
+      .hero-visuals { width: 100%; justify-content: center; margin-top: 30px; padding-right: 0; }
+      .floating-phone-wrap { right: 10px; width: 170px; height: 340px; }
+      .steps-section { flex-direction: column-reverse; text-align: center; }
+      .step-item-card { text-align: left; }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 576px) {
+      .swiper-slide {
+        width: 220px !important;
+        height: 440px !important;
+        border-radius: 30px;
+      }
+      .swiper-slide .slider-image,
+      .swiper-slide .slider-image img {
+        border-radius: 28px;
+      }
+      .screenshot-frame {
+        width: 236px;
+        height: 456px;
+        border-radius: 38px;
+        border-width: 8px;
+        top: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Top Header -->
+  <header>
+    <nav>
+      <a href="#" class="logo">
+        <i class="fa-solid fa-heart-pulse"></i> Jido <span>Care</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#screenshots">Screenshots</a></li>
+        <li><a href="#steps">How It Works</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="https://healthcare.jido.co.in" target="_blank" class="btn-gradient">Clinic Portal</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <i class="fa-solid fa-sparkles"></i> Healthcare Simplified
+      </div>
+      <h1>Launch Your Healthcare Journey with <span>Confidence</span>.</h1>
+      <p>Connect patients with top verified doctors and clinics, while empowering medical facilities with unified branch controls, sequential queue bookings, and doctor schedule management.</p>
+      
+      <div class="hero-actions">
+        <a href="#download" class="btn-gradient">
+          <i class="fa-solid fa-calendar-check"></i> Book Appointment
+        </a>
+        <a href="https://healthcare.jido.co.in" target="_blank" class="btn-secondary">
+          <i class="fa-solid fa-laptop-medical"></i> Clinic Portal Login
+        </a>
+      </div>
+    </div>
+
+    <!-- Right Side: Laptop Screen with Mobile Mockup Overlapping on Right Side -->
+    <div class="hero-visuals" id="portal">
+      <div class="laptop-container">
+        <div class="laptop-frame">
+          <img src="Screenshot_5.png" alt="Jido Clinic Portal Dashboard" />
+        </div>
+        <div class="laptop-base-bar"></div>
+      </div>
+
+      <div class="floating-phone-wrap">
+        <img src="mobile_ss.jpg" alt="Jido Care Mobile App" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Key Features Grid -->
+  <section class="section-head" id="features">
+    <h2>Why You Should Choose Jido Care</h2>
+    <p>Modern tools designed to deliver smooth consultation and clinic management.</p>
+  </section>
+
+  <div class="features-grid">
+    <div class="feature-card glass-card">
+      <div class="feature-icon icon-1"><i class="fa-solid fa-user-doctor"></i></div>
+      <h3>Verified Doctors</h3>
+      <p>Search qualified specialists by qualification, council registration, and fee structure.</p>
+    </div>
+
+    <div class="feature-card glass-card">
+      <div class="feature-icon icon-2"><i class="fa-solid fa-calendar-days"></i></div>
+      <h3>Real-time 30-Day Slots</h3>
+      <p>Dynamic availability calendar with instant leave tracking and sequential queue booking.</p>
+    </div>
+
+    <div class="feature-card glass-card">
+      <div class="feature-icon icon-3"><i class="fa-solid fa-shield-halved"></i></div>
+      <h3>Fast & Secure Pay</h3>
+      <p>UPI, credit/debit card, and pay-at-clinic flexibility with instant receipt generation.</p>
+    </div>
+
+    <div class="feature-card glass-card">
+      <div class="feature-icon icon-4"><i class="fa-solid fa-hospital-user"></i></div>
+      <h3>Multi-Branch Portal</h3>
+      <p>Comprehensive admin controls to manage branch doctors, patient invites, and clinic details.</p>
+    </div>
+  </div>
+
+  <!-- App Screenshots Section -->
+  <section class="section-head" id="screenshots">
+    <h2>App Screenshots</h2>
+    <p>Explore the intuitive screens crafted for iOS, Android, and mobile web.</p>
+  </section>
+
+  <div class="screenshot-slider-area">
+    <!-- Fixed Centered Smartphone Frame Overlay -->
+    <div class="screenshot-frame"></div>
+
+    <!-- Swiper 3D Coverflow Container -->
+    <div class="swiper-container swiper-container-coverflow">
+      <div class="swiper-wrapper">
+        <div class="swiper-slide">
+          <div class="slider-image">
+            <img src="mobile_ss.jpg" alt="Doctor Profile" />
+          </div>
+        </div>
+        <div class="swiper-slide">
+          <div class="slider-image">
+            <img src="mobile_ss.jpg" alt="Doctor Search" />
+          </div>
+        </div>
+        <div class="swiper-slide">
+          <div class="slider-image">
+            <img src="mobile_ss.jpg" alt="Appointment Schedule" />
+          </div>
+        </div>
+        <div class="swiper-slide">
+          <div class="slider-image">
+            <img src="mobile_ss.jpg" alt="Payment Checkout" />
+          </div>
+        </div>
+        <div class="swiper-slide">
+          <div class="slider-image">
+            <img src="mobile_ss.jpg" alt="Clinic Details" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Pagination Bullets -->
+      <div class="swiper-pagination"></div>
+    </div>
+  </div>
+
+  <!-- 3-Steps Process Section -->
+  <section class="steps-section" id="steps">
+    <div class="steps-phone">
+      <div class="steps-phone-frame">
+        <img src="mobile_ss.jpg" alt="Mobile App Step Preview" />
+      </div>
+    </div>
+
+    <div class="steps-content">
+      <h2>Very Easy To Use Just Following 3 Steps</h2>
+      <p class="sub-desc">Lorem ipsum dolor samet consenter discing elitr, serewd diam nonumy eirmod tempor invidunt.</p>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">01</div>
+        <div class="step-text">
+          <h4>Install This App</h4>
+          <p>Lorem ipsum dolor samet consenter discing elitr, serewd diam nonumy eirmod tempor invidunt.</p>
+        </div>
+      </div>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">02</div>
+        <div class="step-text">
+          <h4>Login Or Signup</h4>
+          <p>Lorem ipsum dolor samet consenter discing elitr, serewd diam nonumy eirmod tempor invidunt.</p>
+        </div>
+      </div>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">03</div>
+        <div class="step-text">
+          <h4>Search Your Doctor & Book</h4>
+          <p>Lorem ipsum dolor samet consenter discing elitr, serewd diam nonumy eirmod tempor invidunt.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq-section" id="faq">
+    <div class="section-head">
+      <h2>Frequently Asked Questions</h2>
+      <p>Have questions? We've got answers to help you navigate Jido Care effortlessly.</p>
+    </div>
+
+    <div class="faq-accordion">
+      <div class="faq-item glass-card active">
+        <div class="faq-question">
+          <span>How do I book an appointment with a doctor?</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div class="faq-answer">
+          Simply search for your preferred doctor or specialty, choose an available green slot from the 30-day calendar, fill in patient details, and confirm via online payment or pay at the clinic.
+        </div>
+      </div>
+
+      <div class="faq-item glass-card">
+        <div class="faq-question">
+          <span>What do the green and red calendar dates mean?</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div class="faq-answer">
+          Green dates represent days when the doctor is available for appointments. Red dates indicate doctor leave or unavailability, and gray dates represent regular clinic off-days.
+        </div>
+      </div>
+
+      <div class="faq-item glass-card">
+        <div class="faq-question">
+          <span>Can clinics manage multiple branches and doctors?</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div class="faq-answer">
+          Yes! The Jido Clinic Portal allows clinics to switch between branches, configure fixed or sequential booking queues, invite doctors, and update schedules in real time.
+        </div>
+      </div>
+
+      <div class="faq-item glass-card">
+        <div class="faq-question">
+          <span>Is online payment mandatory?</span>
+          <i class="fa-solid fa-chevron-down"></i>
+        </div>
+        <div class="faq-answer">
+          No. You can pay securely online using UPI or cards, or select the "Pay at Clinic" option to pay during your visit at the reception desk.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download App Call-to-Action -->
+  <section class="download-card glass-card" id="download">
+    <h2>Download and Start Booking Today</h2>
+    <p style="color: var(--text-muted); max-width: 580px; margin: 12px auto 24px;">Experience fast, hassle-free healthcare appointments right at your fingertips.</p>
+    
+    <div class="store-buttons">
+      <a href="#" class="store-btn">
+        <i class="fa-brands fa-apple"></i>
+        <span>Download on the<br><strong>App Store</strong></span>
+      </a>
+      <a href="#" class="store-btn">
+        <i class="fa-brands fa-google-play"></i>
+        <span>Get it on<br><strong>Google Play</strong></span>
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col">
+        <a href="#" class="logo" style="margin-bottom: 12px; display: inline-flex;">
+          <i class="fa-solid fa-heart-pulse"></i> Jido <span>Care</span>
+        </a>
+        <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6;">Unified healthcare appointment and clinic management ecosystem.</p>
+      </div>
+
+      <div class="footer-col">
+        <h4>Navigation</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#screenshots">Screenshots</a></li>
+          <li><a href="#steps">How It Works</a></li>
+          <li><a href="https://healthcare.jido.co.in" target="_blank">Clinic Portal</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="terms.html">Terms & Conditions</a></li>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>Contact</h4>
+        <ul>
+          <li><a href="mailto:support@jidohealthcare.com"><i class="fa-regular fa-envelope"></i> support@jidohealthcare.com</a></li>
+          <li><a href="https://healthcare.jido.co.in"><i class="fa-solid fa-globe"></i> healthcare.jido.co.in</a></li>
+          <li><a href="#"><i class="fa-solid fa-location-dot"></i> Belari, West Bengal, India</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      &copy; 2026 Jido Healthcare. All rights reserved. Better Care, Better Life.
+    </div>
+  </footer>
+
+  <!-- Swiper.js JavaScript for 3D Coverflow -->
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+
+  <script>
+    // Initialize 3D Coverflow Swiper matching Appland template
+    const swiper = new Swiper('.swiper-container-coverflow', {
+      effect: 'coverflow',
+      grabCursor: true,
+      centeredSlides: true,
+      slidesPerView: 'auto',
+      loop: true,
+      autoplay: {
+        delay: 3200,
+        disableOnInteraction: false,
+      },
+      coverflowEffect: {
+        rotate: 0,
+        stretch: 70,
+        depth: 180,
+        modifier: 1,
+        slideShadows: false,
+      },
+      pagination: {
+        el: '.swiper-pagination',
+        clickable: true,
+      },
+    });
+
+    // FAQ Accordion Toggle Interaction
+    document.querySelectorAll('.faq-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const isActive = item.classList.contains('active');
+        document.querySelectorAll('.faq-item').forEach(el => el.classList.remove('active'));
+        if (!isActive) {
+          item.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
