@@ -74,6 +74,9 @@
   text-decoration: none;
   font-weight: 600;
   font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
   transition: all 0.2s;
@@ -693,6 +696,8 @@
   color: var(--text-muted);
   text-decoration: none;
   font-size: 13px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .footerCol ul a:hover {
