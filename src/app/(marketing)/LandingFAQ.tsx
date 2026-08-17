@@ -17,7 +17,7 @@ const faqData = [
   {
     question: "Can clinics manage multiple branches and doctors?",
     answer:
-      "Yes! The Medinexa Clinic Portal allows clinics to switch between branches, configure fixed or sequential booking queues, invite doctors, and update schedules in real time.",
+      "Yes! The Jido Healthcare Clinic Portal allows clinics to switch between branches, configure fixed or sequential booking queues, invite doctors, and update schedules in real time.",
   },
   {
     question: "Is online payment mandatory?",

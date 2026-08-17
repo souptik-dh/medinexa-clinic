@@ -6,7 +6,7 @@ import { LandingFAQ } from "./LandingFAQ";
 import { LandingSwiper } from "./LandingSwiper";
 
 export const metadata: Metadata = {
-  title: "Medinexa - Better Care, Better Life",
+  title: "Jido Healthcare - Better Care, Better Life",
   description:
     "Connect patients with top verified doctors and clinics, while empowering medical facilities with unified branch controls, sequential queue bookings, and doctor schedule management.",
 };
@@ -19,10 +19,11 @@ export default function LandingPage() {
         <div className={styles.navContainer}>
           <Link href="/" className={styles.logo}>
             <img
-              src="/_next/image?url=%2Fimages%2Flogo%2Flogo-dark.png&w=640&q=75"
-              alt="Medinexa"
-              width={40}
-              height={40}
+              src="/_next/image?url=%2Fimages%2Flogo%2Flogo.png&w=640&q=75"
+              alt="Jido Healthcare"
+              width={160}
+              height={78}
+              className={styles.logoImage}
             />
           </Link>
           <nav className={styles.navLinks}>
@@ -78,7 +79,7 @@ export default function LandingPage() {
             <div className={styles.laptopFrame}>
               <img
                 src="/images/landing/Screenshot_1.png"
-                alt="Medinexa Clinic Portal Dashboard"
+                alt="Jido Healthcare Clinic Portal Dashboard"
               />
             </div>
             <div className={styles.laptopBaseBar}></div>
@@ -87,7 +88,7 @@ export default function LandingPage() {
           <div className={styles.floatingPhoneWrap}>
             <img
               src="/images/landing/mobile_ss1.jpg"
-              alt="Medinexa Care Mobile App"
+              alt="Jido Healthcare Mobile App"
             />
           </div>
         </div>
@@ -95,7 +96,7 @@ export default function LandingPage() {
 
       {/* Key Features Grid */}
       <section className={styles.sectionHead} id="features">
-        <h2>Why You Should Choose Medinexa Care</h2>
+        <h2>Why You Should Choose Jido Healthcare</h2>
         <p>Modern tools designed to deliver smooth consultation and clinic management.</p>
       </section>
 
@@ -163,7 +164,7 @@ export default function LandingPage() {
         <div className={styles.stepsContent}>
           <h2>Very Easy To Use Just Following 3 Steps</h2>
           <p className={styles.subDesc}>
-            Get started with Medinexa Care in three simple steps. Our intuitive
+            Get started with Jido Healthcare in three simple steps. Our intuitive
             platform makes healthcare accessible to everyone.
           </p>
 
@@ -171,7 +172,7 @@ export default function LandingPage() {
             <div className={styles.stepNumberBox}>01</div>
             <div className={styles.stepText}>
               <h4>Install This App</h4>
-              <p>Download Medinexa Care from the App Store or Google Play and create your account in seconds.</p>
+              <p>Download Jido Healthcare from the App Store or Google Play and create your account in seconds.</p>
             </div>
           </div>
 
@@ -197,7 +198,7 @@ export default function LandingPage() {
       <section className={styles.faqSection} id="faq">
         <div className={styles.sectionHead}>
           <h2>Frequently Asked Questions</h2>
-          <p>Have questions? We&apos;ve got answers to help you navigate Medinexa Care effortlessly.</p>
+          <p>Have questions? We&apos;ve got answers to help you navigate Jido Healthcare effortlessly.</p>
         </div>
 
         <LandingFAQ />
@@ -236,10 +237,11 @@ export default function LandingPage() {
           <div className={styles.footerCol}>
             <Link href="/" className={styles.logo} style={{ marginBottom: 12, display: "inline-flex" }}>
               <img
-                src="/_next/image?url=%2Fimages%2Flogo%2Flogo-dark.png&w=640&q=75"
-                alt="Medinexa"
-                width={40}
-                height={40}
+                src="/_next/image?url=%2Fimages%2Flogo%2Flogo.png&w=640&q=75"
+                alt="Jido Healthcare"
+                width={160}
+                height={78}
+                className={styles.logoImage}
               />
             </Link>
             <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
@@ -269,11 +271,11 @@ export default function LandingPage() {
             <h4>Contact</h4>
             <ul>
               <li>
-                <a href="mailto:support@medinexa.com">
+                <a href="mailto:support@jidohealthcare.com">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 6 }}>
                     <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
                   </svg>
-                  support@medinexa.com
+                  support@jidohealthcare.com
                 </a>
               </li>
               <li>
@@ -281,7 +283,7 @@ export default function LandingPage() {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 6 }}>
                     <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/>
                   </svg>
-                  healthcare.medinexa.com
+                  healthcare.jidohealthcare.com
                 </a>
               </li>
               <li>
@@ -297,7 +299,7 @@ export default function LandingPage() {
         </div>
 
         <div className={styles.footerBottom}>
-          &copy; 2026 Medinexa. All rights reserved. Better Care, Better Life.
+          &copy; 2026 Jido Healthcare. All rights reserved. Better Care, Better Life.
         </div>
       </footer>
     </div>
