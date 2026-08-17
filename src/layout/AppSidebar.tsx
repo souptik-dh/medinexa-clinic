@@ -80,6 +80,11 @@ const navItems: NavItem[] = [
     path: "/ledger",
   },
   {
+    icon: <CalenderIcon />,
+    name: "My Schedule",
+    path: "/doctor-schedule",
+  },
+  {
     icon: <DocsIcon />,
     name: "Prescriptions",
     path: "/prescriptions",
@@ -147,6 +152,7 @@ const AppSidebar: React.FC = () => {
         case "Doctors": return isOwner || can("doctors:manage");
         case "Patients": return isOwner || canViewPatients(user?.permissions);
         case "Payment Ledger": return isOwner;
+        case "My Schedule": return user?.role === "doctor";
         case "Appointments": return isOwner || canAccessAppointments(user?.permissions);
         case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
         case "Notifications": return !isStaff;
@@ -366,14 +372,14 @@ const AppSidebar: React.FC = () => {
             <>
               <Image
                 className="dark:hidden"
-                src="/images/logo/logo.svg"
+                src="/images/logo/logo.png"
                 alt="Logo"
                 width={150}
                 height={40}
               />
               <Image
                 className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
+                src="/images/logo/logo-dark.png"
                 alt="Logo"
                 width={150}
                 height={40}

@@ -8,8 +8,16 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 
-type Mode = "owner" | "staff";
+type Mode = "owner" | "staff" | "doctor";
+type RequiredField =
+  | "email"
+  | "password"
+  | "doctorEmail"
+  | "doctorPassword"
+  | "staffEmail"
+  | "otp";
 
 export default function SignInForm() {
   const [mode, setMode] = useState<Mode>("owner");
@@ -17,23 +25,50 @@ export default function SignInForm() {
   const [isChecked, setIsChecked] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [doctorEmail, setDoctorEmail] = useState("");
+  const [doctorPassword, setDoctorPassword] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { login, staffLogin, verifyStaffOtp } = useAuth();
+  const { login, doctorLogin, staffLogin, verifyStaffOtp } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get("reason") === "session_expired";
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!email.trim() || !password.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await login(email, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDoctorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitted(true);
+    if (!doctorEmail.trim() || !doctorPassword.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await doctorLogin(doctorEmail, doctorPassword);
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign in");
@@ -46,6 +81,11 @@ export default function SignInForm() {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    setSubmitted(true);
+    if (!staffEmail.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await staffLogin(staffEmail);
@@ -61,6 +101,11 @@ export default function SignInForm() {
   const handleOtpVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!otp.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       await verifyStaffOtp(staffEmail, otp);
@@ -78,6 +123,7 @@ export default function SignInForm() {
     setError(null);
     setMessage(null);
     setOtp("");
+    setSubmitted(false);
   };
 
   const tabClass = (m: Mode) =>
@@ -100,7 +146,9 @@ export default function SignInForm() {
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {mode === "owner"
                 ? "Enter your clinic owner email and password to sign in!"
-                : "Sign in as branch staff using a one-time password."}
+                : mode === "doctor"
+                  ? "Enter your doctor account email and password to sign in!"
+                  : "Sign in as branch staff using a one-time password."}
             </p>
           </div>
 
@@ -125,6 +173,13 @@ export default function SignInForm() {
             >
               Staff
             </button>
+            {/* <button
+              type="button"
+              onClick={() => switchMode("doctor")}
+              className={tabClass("doctor")}
+            >
+              Doctor
+            </button> */}
           </div>
 
           {mode === "owner" ? (
@@ -139,6 +194,9 @@ export default function SignInForm() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => touch("email")}
+                    error={showError("email", !email.trim())}
+                    hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
                     required
                   />
                 </div>
@@ -152,6 +210,8 @@ export default function SignInForm() {
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      onBlur={() => touch("password")}
+                      error={showError("password", !password.trim())}
                       required
                     />
                     <span
@@ -165,6 +225,9 @@ export default function SignInForm() {
                       )}
                     </span>
                   </div>
+                  {showError("password", !password.trim()) && (
+                    <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -192,6 +255,67 @@ export default function SignInForm() {
                 </div>
               </form>
             </div>
+          ) : mode === "doctor" ? (
+            <form onSubmit={handleDoctorSubmit} className="space-y-6">
+              <div>
+                <Label>
+                  Email <span className="text-error-500">*</span>{" "}
+                </Label>
+                <Input
+                  placeholder="doctor@example.com"
+                  type="email"
+                  value={doctorEmail}
+                  onChange={(e) => setDoctorEmail(e.target.value)}
+                  onBlur={() => touch("doctorEmail")}
+                  error={showError("doctorEmail", !doctorEmail.trim())}
+                  hint={
+                    showError("doctorEmail", !doctorEmail.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
+                  required
+                />
+              </div>
+              <div>
+                <Label>
+                  Password <span className="text-error-500">*</span>{" "}
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={doctorPassword}
+                    onChange={(e) => setDoctorPassword(e.target.value)}
+                    onBlur={() => touch("doctorPassword")}
+                    error={showError("doctorPassword", !doctorPassword.trim())}
+                    required
+                  />
+                  <span
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
+                  >
+                    {showPassword ? (
+                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+                    ) : (
+                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+                    )}
+                  </span>
+                </div>
+                {showError("doctorPassword", !doctorPassword.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
+              </div>
+              {error && (
+                <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                  {error}
+                </div>
+              )}
+              <div>
+                <Button className="w-full" size="sm" disabled={submitting}>
+                  {submitting ? "Signing in..." : "Sign in"}
+                </Button>
+              </div>
+            </form>
           ) : stage === "request" ? (
             <form onSubmit={handleOtpRequest} className="space-y-6">
               <div>
@@ -203,6 +327,13 @@ export default function SignInForm() {
                   type="email"
                   value={staffEmail}
                   onChange={(e) => setStaffEmail(e.target.value)}
+                  onBlur={() => touch("staffEmail")}
+                  error={showError("staffEmail", !staffEmail.trim())}
+                  hint={
+                    showError("staffEmail", !staffEmail.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>
@@ -226,11 +357,17 @@ export default function SignInForm() {
                   type="text"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
+                  onBlur={() => touch("otp")}
+                  error={showError("otp", !otp.trim())}
                   required
                 />
-                <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                  Enter the code sent to {staffEmail}.
-                </p>
+                {showError("otp", !otp.trim()) ? (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                ) : (
+                  <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                    Enter the code sent to {staffEmail}.
+                  </p>
+                )}
               </div>
               {message && (
                 <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">

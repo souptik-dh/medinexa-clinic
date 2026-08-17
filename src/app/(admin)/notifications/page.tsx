@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Notifications | Medinexa",
+  title: "Notifications | Jido Healthcare",
   description: "View and manage your notifications",
 };
 

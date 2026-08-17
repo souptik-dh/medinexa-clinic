@@ -7,6 +7,9 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+
+type RequiredField = "inviteCode" | "password" | "confirmPassword";
 
 export default function AcceptDoctorInviteForm() {
   const searchParams = useSearchParams();
@@ -22,10 +25,16 @@ export default function AcceptDoctorInviteForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!inviteCode.trim() || !password.trim() || !confirmPassword.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -56,14 +65,14 @@ export default function AcceptDoctorInviteForm() {
               Accept your invitation
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Set a password to activate your Medinexa doctor account.
+              Set a password to activate your Jido Healthcare doctor account.
             </p>
           </div>
 
           {done ? (
             <div className="space-y-5">
               <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
-                Your account is now active. You can sign in from the Medinexa doctor app.
+                Your account is now active. You can sign in from the Jido Healthcare doctor app.
               </div>
               {regNo && (
                 <div>
@@ -100,6 +109,13 @@ export default function AcceptDoctorInviteForm() {
                   placeholder="Code from your invitation email"
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
+                  onBlur={() => touch("inviteCode")}
+                  error={showError("inviteCode", !inviteCode.trim())}
+                  hint={
+                    showError("inviteCode", !inviteCode.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>
@@ -122,6 +138,8 @@ export default function AcceptDoctorInviteForm() {
                     placeholder="Min. 8 characters"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => touch("password")}
+                    error={showError("password", !password.trim())}
                     required
                   />
                   <span
@@ -135,6 +153,9 @@ export default function AcceptDoctorInviteForm() {
                     )}
                   </span>
                 </div>
+                {showError("password", !password.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
               </div>
               <div>
                 <Label>
@@ -145,6 +166,13 @@ export default function AcceptDoctorInviteForm() {
                   placeholder="Re-enter your password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={() => touch("confirmPassword")}
+                  error={showError("confirmPassword", !confirmPassword.trim())}
+                  hint={
+                    showError("confirmPassword", !confirmPassword.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>

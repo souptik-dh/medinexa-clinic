@@ -1,19 +1,26 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
-import { ApiError, clinicsApi } from "@/lib/api";
+import { ApiError, TradeLicenseValidationStatus, clinicsApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
 
 interface ClinicFormProps {
   mode: "create" | "edit";
 }
 
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
-
-const textareaClass =
-  "w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+type RequiredField =
+  | "name"
+  | "city"
+  | "district"
+  | "state"
+  | "postOffice"
+  | "pinCode"
+  | "tradeLicenseNumber";
 
 export default function ClinicForm({ mode }: ClinicFormProps) {
   const router = useRouter();
@@ -30,12 +37,18 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   const [stateField, setStateField] = useState("");
   const [postOffice, setPostOffice] = useState("");
   const [tradeLicenseNumber, setTradeLicenseNumber] = useState("");
+  const [tradeLicenseUrl, setTradeLicenseUrl] = useState<string | null>(null);
+  const [tradeLicenseValidationStatus, setTradeLicenseValidationStatus] =
+    useState<TradeLicenseValidationStatus>("PENDING");
+  const [tradeLicenseMessage, setTradeLicenseMessage] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
   const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
   const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
     useState("");
   const [loading, setLoading] = useState(isEdit);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   useEffect(() => {
     if (!isEdit || !clinicId) {
@@ -56,8 +69,13 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         setStateField(c.state ?? "");
         setPostOffice(c.post_office ?? "");
         setTradeLicenseNumber(c.trade_license_number ?? "");
+        setTradeLicenseUrl(c.trade_license_url ?? null);
+        setTradeLicenseValidationStatus(c.trade_license_validation_status ?? "PENDING");
         setDrugLicenseNumber(c.drug_license_number ?? "");
         setClinicalEstablishmentRegNumber(c.clinical_establishment_reg_number ?? "");
+        if (!c.trade_license_url) {
+          toast("Trade license: No document uploaded.", { icon: "⚠️" });
+        }
       })
       .catch((err) => {
         if (active)
@@ -73,6 +91,40 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
     };
   }, [isEdit, clinicId]);
 
+  const onTradeLicenseNumberChange = (value: string) => {
+    setTradeLicenseNumber(value);
+    // Re-validation is required whenever the number changes — a validated/rejected
+    // status only ever applies to the exact number it was checked against.
+    if (tradeLicenseValidationStatus !== "PENDING") {
+      setTradeLicenseValidationStatus("PENDING");
+      setTradeLicenseMessage(null);
+    }
+  };
+
+  const validateTradeLicense = async () => {
+    const number = tradeLicenseNumber.trim();
+    if (!number) {
+      setError("Enter a trade license number first.");
+      return;
+    }
+    setValidating(true);
+    setError(null);
+    try {
+      const res = await clinicsApi.validateTradeLicense(number);
+      setTradeLicenseValidationStatus(res.status);
+      setTradeLicenseMessage(res.message);
+    } catch (err) {
+      setTradeLicenseValidationStatus("PENDING");
+      setTradeLicenseMessage(
+        err instanceof ApiError
+          ? err.message
+          : "Unable to validate Trade License Number at this time. Please try again."
+      );
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const onSelectPostOffice = (po: PostOffice) => {
     setPinCode(po.Pincode);
     setDistrict(po.District);
@@ -81,16 +133,21 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   };
 
   const submit = async () => {
-    if (!name) {
-      setError("Clinic name is required.");
+    setSubmitted(true);
+    if (
+      !name.trim() ||
+      !city.trim() ||
+      !district.trim() ||
+      !stateField.trim() ||
+      !postOffice.trim() ||
+      !pinCode.trim() ||
+      !tradeLicenseNumber.trim()
+    ) {
+      setError("Please fill in all required fields.");
       return;
     }
-    if (!city || !district || !stateField || !postOffice || !pinCode) {
-      setError("City, district, state, post office and pincode are required.");
-      return;
-    }
-    if (!tradeLicenseNumber) {
-      setError("Trade license number is required.");
+    if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
+      setError("Validate the Trade License Number before creating the clinic.");
       return;
     }
     setBusy(true);
@@ -106,6 +163,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         state: stateField,
         post_office: postOffice,
         trade_license_number: tradeLicenseNumber,
+        trade_license_validation_status: tradeLicenseValidationStatus,
         drug_license_number: drugLicenseNumber || null,
         clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
@@ -151,8 +209,10 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={inputClass}
+                onBlur={() => touch("name")}
+                className={getInputClass(showError("name", !name.trim()))}
               />
+              {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
             </Field>
             <Field label="Description">
               <textarea
@@ -167,7 +227,10 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                 value={pinCode}
                 onChange={setPinCode}
                 onSelect={onSelectPostOffice}
+                onBlur={() => touch("pinCode")}
                 autoValidate={!isEdit}
+                error={showError("pinCode", !pinCode.trim())}
+                hint={showError("pinCode", !pinCode.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -184,16 +247,22 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("city")}
+                  className={getInputClass(showError("city", !city.trim()))}
                 />
+                {showError("city", !city.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
               <Field label="District *">
                 <input
                   type="text"
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("district")}
+                  className={getInputClass(showError("district", !district.trim()))}
                 />
+                {showError("district", !district.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -202,26 +271,73 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
                   type="text"
                   value={stateField}
                   onChange={(e) => setStateField(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("state")}
+                  className={getInputClass(showError("state", !stateField.trim()))}
                 />
+                {showError("state", !stateField.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
               <Field label="Post office *">
                 <input
                   type="text"
                   value={postOffice}
                   onChange={(e) => setPostOffice(e.target.value)}
-                  className={inputClass}
+                  onBlur={() => touch("postOffice")}
+                  className={getInputClass(showError("postOffice", !postOffice.trim()))}
                 />
+                {showError("postOffice", !postOffice.trim()) && (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                )}
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Trade license number *">
-                <input
-                  type="text"
-                  value={tradeLicenseNumber}
-                  onChange={(e) => setTradeLicenseNumber(e.target.value)}
-                  className={inputClass}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={tradeLicenseNumber}
+                    onChange={(e) => onTradeLicenseNumberChange(e.target.value)}
+                    onBlur={() => touch("tradeLicenseNumber")}
+                    className={getInputClass(
+                      showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ||
+                        tradeLicenseValidationStatus === "INVALID"
+                    )}
+                  />
+                  <button
+                    type="button"
+                    onClick={validateTradeLicense}
+                    disabled={validating || !tradeLicenseNumber.trim()}
+                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:opacity-50 ${
+                      tradeLicenseValidationStatus === "VALID"
+                        ? "bg-success-50 text-success-700 hover:bg-success-100 dark:bg-success-500/10 dark:text-success-500"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    {validating
+                      ? "Validating…"
+                      : tradeLicenseValidationStatus === "VALID"
+                        ? "✓ Validated"
+                        : "Validate"}
+                  </button>
+                </div>
+                {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ? (
+                  <FieldError message={REQUIRED_FIELD_MESSAGE} />
+                ) : tradeLicenseValidationStatus === "VALID" ? (
+                  <p className="mt-1.5 text-theme-xs text-success-600 dark:text-success-500">
+                    ✓ {tradeLicenseMessage ?? "Trade License Number validated successfully."}
+                  </p>
+                ) : tradeLicenseValidationStatus === "INVALID" ? (
+                  <p className="mt-1.5 text-theme-xs text-error-600 dark:text-error-400">
+                    ✕ {tradeLicenseMessage ?? "Trade License Number could not be validated."}
+                    {!isEdit && " This clinic can't be created until it validates."}
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-theme-xs text-warning-600 dark:text-orange-400">
+                    ⚠ Trade License Number validation pending
+                    {!isEdit && " — required before this clinic can be created"}
+                  </p>
+                )}
               </Field>
               <Field label="Drug license number">
                 <input
@@ -252,17 +368,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
           </button>
           <button
             onClick={submit}
-            disabled={
-              busy ||
-              loading ||
-              !name ||
-              !city ||
-              !district ||
-              !stateField ||
-              !postOffice ||
-              !pinCode ||
-              !tradeLicenseNumber
-            }
+            disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create clinic"}

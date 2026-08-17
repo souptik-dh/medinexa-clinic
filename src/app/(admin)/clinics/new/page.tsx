@@ -4,7 +4,7 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "New Clinic | Medinexa",
+  title: "New Clinic | Jido Healthcare",
   description: "Create a new clinic",
 };
 

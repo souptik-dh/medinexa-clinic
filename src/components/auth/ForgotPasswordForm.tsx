@@ -5,16 +5,25 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { ApiError, authApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+
+type RequiredField = "email";
 
 export default function ForgotPasswordForm() {
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
+    if (!email.trim()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await authApi.forgotPassword(email);
@@ -62,6 +71,9 @@ export default function ForgotPasswordForm() {
                   placeholder="owner@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => touch("email")}
+                  error={showError("email", !email.trim())}
+                  hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
                   required
                 />
               </div>

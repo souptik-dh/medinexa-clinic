@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import {
   ApiError,
   BranchStaffMe,
@@ -62,6 +63,7 @@ interface AuthContextValue {
   staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
   login: (email: string, password: string) => Promise<void>;
+  doctorLogin: (email: string, password: string) => Promise<void>;
   register: (input: {
     name: string;
     email: string;
@@ -95,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStaffBranch(null);
       window.localStorage.removeItem("medinexa.staffClinic");
       window.localStorage.removeItem("medinexa.staffBranch");
+      toast.error("Session expired. Please log in again.");
       router.push("/signin?reason=session_expired");
     });
     return () => setSessionExpiredHandler(null);
@@ -175,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await authApi.loginClinicOwner({ email, password });
         setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
         persist(res.user, res.clinic);
+        toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
           throw new Error(err.message);
@@ -213,6 +217,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             res.message ??
             "Registration successful. Check your email to verify your account before logging in.",
         };
+      } catch (err) {
+        if (err instanceof ApiError) {
+          throw new Error(err.message);
+        }
+        throw err;
+      }
+    },
+    [persist]
+  );
+
+  const doctorLogin = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const res = await authApi.loginDoctor({ email, password });
+        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+        // POST /auth/doctor/login doesn't echo back the email used to sign in, so it's
+        // filled in from the input here to satisfy User.email (used only for display).
+        const nextUser: User = {
+          id: res.doctor.id,
+          name: res.doctor.name,
+          email,
+          phone: res.doctor.phone,
+          role: "doctor",
+        };
+        setClinic(null);
+        setStaffClinic(null);
+        setStaffBranch(null);
+        window.localStorage.removeItem("medinexa.clinic");
+        window.localStorage.removeItem("medinexa.staffClinic");
+        window.localStorage.removeItem("medinexa.staffBranch");
+        persist(nextUser);
+        toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
           throw new Error(err.message);
@@ -267,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       window.localStorage.removeItem("medinexa.staffBranch");
     }
+    toast.success("Signed in successfully.");
   }, []);
 
   const can = useCallback(
@@ -299,6 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setClinic(null);
     setStaffClinic(null);
     setStaffBranch(null);
+    toast.success("Signed out.");
     router.push("/signin");
   }, [router]);
 
@@ -311,6 +349,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         staffBranch,
         can,
         login,
+        doctorLogin,
         register,
         staffLogin,
         verifyStaffOtp,

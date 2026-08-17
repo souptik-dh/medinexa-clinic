@@ -114,6 +114,10 @@
   line-height: 0;
 }
 
+.logoImage {
+  object-fit: contain;
+}
+
 .logoAccent {
   display: none;
 }

@@ -6,19 +6,28 @@ interface PincodeFieldProps {
   value: string;
   onChange: (value: string) => void;
   onSelect: (po: PostOffice) => void;
+  onBlur?: () => void;
   disabled?: boolean;
   autoValidate?: boolean;
+  error?: boolean;
+  hint?: string;
 }
 
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
+const inputErrorClass =
+  "h-11 w-full rounded-lg border border-error-500 bg-transparent px-4 text-sm text-gray-800 focus:border-error-500 focus:outline-hidden focus:ring-3 focus:ring-error-500/10 dark:border-error-500 dark:bg-gray-900 dark:text-error-400";
+
 export default function PincodeField({
   value,
   onChange,
   onSelect,
+  onBlur,
   disabled,
   autoValidate = true,
+  error: hasError = false,
+  hint,
 }: PincodeFieldProps) {
   const { results, loading, error, lookup, clear } = usePincodeLookup();
 
@@ -38,8 +47,9 @@ export default function PincodeField({
             onChange(e.target.value);
             clear();
           }}
+          onBlur={onBlur}
           disabled={disabled}
-          className={inputClass}
+          className={hasError ? inputErrorClass : inputClass}
         />
         <button
           onClick={() => lookup(value)}
@@ -51,6 +61,9 @@ export default function PincodeField({
       </div>
       {error && (
         <p className="mt-2 text-xs text-error-600">{error}</p>
+      )}
+      {!error && hint && (
+        <p className={`mt-1.5 text-xs ${hasError ? "text-error-500" : "text-gray-500"}`}>{hint}</p>
       )}
       {results.length > 0 && (
         <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">

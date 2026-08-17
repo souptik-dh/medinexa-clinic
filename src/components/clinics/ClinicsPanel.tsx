@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
 import { ApiError, Clinic, clinicsApi } from "@/lib/api";
@@ -40,6 +41,12 @@ export default function ClinicsPanel() {
   useEffect(() => {
     if (isAdmin) load();
   }, [isAdmin, load]);
+
+  useEffect(() => {
+    if (selected && !selected.trade_license_url) {
+      toast("Trade license: No document uploaded.", { icon: "⚠️" });
+    }
+  }, [selected]);
 
   if (!isAdmin) {
     return (
@@ -174,6 +181,17 @@ export default function ClinicsPanel() {
           )}
         </div>
       </div>
+
+      {selected && !selected.trade_license_url && (
+        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+          <p className="font-medium text-gray-800 dark:text-white/90">
+            Trade license <span className="text-error-500">*</span>
+          </p>
+          <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
+            ⚠ No document uploaded.
+          </p>
+        </div>
+      )}
 
       {/* Clinic licenses */}
       {selected && (

@@ -15,6 +15,7 @@ import {
   appointmentStatusLabel,
   formatCurrency,
   formatDateTime,
+  relationshipLabel,
 } from "@/lib/utils";
 
 interface CalendarEvent extends EventInput {
@@ -128,6 +129,18 @@ const Calendar: React.FC = () => {
               {formatDateTime(selected.created_at)}
             </p>
             <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Detail
+                label="Patient"
+                value={
+                  selected.patient_details
+                    ? `${selected.patient_details.name}${
+                        selected.patient_details.relationship !== "self"
+                          ? ` (${relationshipLabel(selected.patient_details.relationship)})`
+                          : ""
+                      }`
+                    : "—"
+                }
+              />
               <Detail label="Date" value={selected.scheduled_date} />
               <Detail label="Time" value={`${selected.scheduled_time} · ${selected.duration_minutes} min`} />
               <Detail label="Doctor" value={selected.doctor_name ?? selected.doctor_id} />

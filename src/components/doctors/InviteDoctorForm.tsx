@@ -1,20 +1,57 @@
 "use client";
-import React, { useCallback, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import NmcDoctorSearch, {
   NmcDoctorResult,
 } from "@/components/doctors/NmcDoctorSearch";
+import SlotWeekEditor from "@/components/doctors/SlotWeekEditor";
+import SpecializationPicker, {
+  SpecializationValue,
+} from "@/components/doctors/SpecializationPicker";
+import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { useRouter } from "next/navigation";
 import {
   ApiError,
+  BranchOperatingDay,
   SlotTemplateItem,
+  SlotType,
+  branchScheduleApi,
   doctorInvitesApi,
 } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import FieldError from "@/components/form/FieldError";
+import { getInputClass } from "@/components/form/fieldStyles";
 
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+type RequiredField =
+  | "branch"
+  | "inviteName"
+  | "inviteEmail"
+  | "feeAmount"
+  | "currency"
+  | "specializations"
+  | "slots";
 
-const inputClass =
-  "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null {
+  if (slots.length === 0) return "At least one slot is required.";
+  for (const slot of slots) {
+    if (slot.end_time <= slot.start_time) {
+      return `Slot end time must be after start time (${slot.start_time}).`;
+    }
+    if (slot.slot_duration_minutes < 5 || slot.slot_duration_minutes > 240) {
+      return "Slot duration must be between 5 and 240 minutes.";
+    }
+    if (!slot.start_date) {
+      return "Every slot needs a start date.";
+    }
+    if (!slot.end_date) {
+      return "Every slot needs an end date.";
+    }
+    if (slot.end_date < slot.start_date) {
+      return "A slot's end date must be on or after its start date.";
+    }
+  }
+  return null;
+}
 
 export default function InviteDoctorForm() {
   const router = useRouter();
@@ -22,7 +59,7 @@ export default function InviteDoctorForm() {
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
-  const [specialization, setSpecialization] = useState("");
+  const [specializations, setSpecializations] = useState<SpecializationValue[]>([]);
   const [phone, setPhone] = useState("");
   const [regNo, setRegNo] = useState("");
   const [smcName, setSmcName] = useState("");
@@ -30,12 +67,42 @@ export default function InviteDoctorForm() {
   const [feeAmount, setFeeAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [certificate, setCertificate] = useState("");
-  const [slots, setSlots] = useState<SlotTemplateItem[]>([
-    { weekday: 1, start_time: "09:00", end_time: "13:00", slot_duration_minutes: 20 },
-  ]);
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const certificateFileRef = useRef<HTMLInputElement | null>(null);
+  const [slotType, setSlotType] = useState<SlotType>("fixed");
+  const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
+  const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[] | null>(null);
   const [verified, setVerified] = useState<NmcDoctorResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    if (!branch) {
+      setOperatingDays(null);
+      return;
+    }
+    branchScheduleApi
+      .get(branch.id)
+      .then((res) => setOperatingDays(res.operating_days))
+      .catch(() => setOperatingDays(null));
+  }, [branch]);
+
+  const handleCertificateSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCertificate(true);
+    setError(null);
+    try {
+      const res = await doctorInvitesApi.uploadCertificate(file);
+      setCertificate(res.certificate_url);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Certificate upload failed");
+    } finally {
+      setUploadingCertificate(false);
+      if (certificateFileRef.current) certificateFileRef.current.value = "";
+    }
+  };
 
   const onNmcSelect = (doc: NmcDoctorResult) => {
     setVerified(doc);
@@ -47,49 +114,33 @@ export default function InviteDoctorForm() {
     }
   };
 
-  const updateSlot = useCallback((index: number, patch: Partial<SlotTemplateItem>) => {
-    setSlots((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, ...patch } : s))
-    );
-  }, []);
-
-  const addSlot = () => {
-    setSlots((prev) => [
-      ...prev,
-      { weekday: 1, start_time: "09:00", end_time: "13:00", slot_duration_minutes: 20 },
-    ]);
-  };
-
-  const removeSlot = (index: number) => {
-    setSlots((prev) => prev.filter((_, i) => i !== index));
-  };
-
   const createInvite = async () => {
-    if (!branch) {
-      setError("Select a branch for this invite.");
-      return;
-    }
+    setSubmitted(true);
     const amount = Number(feeAmount);
-    if (!inviteName || !inviteEmail || !amount || amount <= 0 || slots.length === 0) {
-      setError("Fill in name, email, a valid fee, and at least one slot.");
+    if (
+      !branch ||
+      !inviteName.trim() ||
+      !inviteEmail.trim() ||
+      !feeAmount.trim() ||
+      !amount ||
+      amount <= 0 ||
+      !currency.trim() ||
+      specializations.length === 0
+    ) {
+      setError("Please fill in all required fields.");
       return;
     }
-    for (const slot of slots) {
-      if (slot.end_time <= slot.start_time) {
-        setError(`Slot end time must be after start time (${slot.start_time}).`);
-        return;
-      }
-      if (slot.slot_duration_minutes < 5 || slot.slot_duration_minutes > 240) {
-        setError("Slot duration must be between 5 and 240 minutes.");
-        return;
-      }
+    const slotError = validateSlotTemplates(slots);
+    if (slotError) {
+      setError(slotError);
+      return;
     }
     setBusy(true);
     setError(null);
     try {
       await doctorInvitesApi.create(branch.id, {
         name: inviteName,
-        specialization: specialization || null,
+        specialization_ids: specializations.map((s) => s.id),
         email: inviteEmail,
         phone: phone || null,
         reg_no: regNo || null,
@@ -98,6 +149,7 @@ export default function InviteDoctorForm() {
         fee_amount: amount,
         currency,
         certificate: certificate || null,
+        slot_type: slotType,
         slot_template: slots,
       });
       router.push("/doctors");
@@ -117,7 +169,13 @@ export default function InviteDoctorForm() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           A single-use invite code is emailed to the doctor. The code is never shown here.
         </p>
-        <BranchSelect value={branch?.id ?? ""} onChange={setBranch} />
+        <BranchSelect
+          value={branch?.id ?? ""}
+          onChange={setBranch}
+          onBlur={() => touch("branch")}
+          error={showError("branch", !branch)}
+          hint={showError("branch", !branch) ? REQUIRED_FIELD_MESSAGE : undefined}
+        />
       </div>
 
       {error && (
@@ -153,13 +211,22 @@ export default function InviteDoctorForm() {
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Name *">
-              <input type="text" value={inviteName} onChange={(e) => setInviteName(e.target.value)} className={inputClass} />
+              <input type="text" value={inviteName} disabled className={inputClass} />
+              {showError("inviteName", !inviteName.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Email *">
-              <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className={inputClass} />
-            </Field>
-            <Field label="Specialization">
-              <input type="text" value={specialization} onChange={(e) => setSpecialization(e.target.value)} className={inputClass} />
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onBlur={() => touch("inviteEmail")}
+                className={getInputClass(showError("inviteEmail", !inviteEmail.trim()))}
+              />
+              {showError("inviteEmail", !inviteEmail.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Phone">
               <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
@@ -174,63 +241,126 @@ export default function InviteDoctorForm() {
               <input type="text" value={doctorDegree} disabled className={inputClass} />
             </Field>
             <Field label="Fee amount *">
-              <input type="number" min="0" value={feeAmount} onChange={(e) => setFeeAmount(e.target.value)} className={inputClass} />
+              <input
+                type="number"
+                min="0"
+                value={feeAmount}
+                onChange={(e) => setFeeAmount(e.target.value)}
+                onBlur={() => touch("feeAmount")}
+                className={getInputClass(
+                  showError("feeAmount", !feeAmount.trim() || Number(feeAmount) <= 0)
+                )}
+              />
+              {showError("feeAmount", !feeAmount.trim() || Number(feeAmount) <= 0) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
             <Field label="Currency *">
-              <input type="text" value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass} />
+              <input
+                type="text"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                onBlur={() => touch("currency")}
+                className={getInputClass(showError("currency", !currency.trim()))}
+              />
+              {showError("currency", !currency.trim()) && (
+                <FieldError message={REQUIRED_FIELD_MESSAGE} />
+              )}
             </Field>
           </div>
-          <Field label="Certificate URL">
-            <input type="text" value={certificate} onChange={(e) => setCertificate(e.target.value)} className={inputClass} />
+          <Field label="Specialization *">
+            <SpecializationPicker
+              value={specializations}
+              onChange={setSpecializations}
+              onBlur={() => touch("specializations")}
+              disabled={busy}
+              error={showError("specializations", specializations.length === 0)}
+              hint={
+                showError("specializations", specializations.length === 0)
+                  ? REQUIRED_FIELD_MESSAGE
+                  : undefined
+              }
+            />
+          </Field>
+
+          <Field label="Certificate">
+            <div className="flex items-center gap-3">
+              <input
+                ref={certificateFileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                onChange={handleCertificateSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => certificateFileRef.current?.click()}
+                disabled={uploadingCertificate}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                {uploadingCertificate
+                  ? "Uploading…"
+                  : certificate
+                    ? "Replace certificate"
+                    : "Upload certificate"}
+              </button>
+              {certificate ? (
+                <a
+                  href={certificate}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-brand-500 hover:underline"
+                >
+                  View certificate
+                </a>
+              ) : (
+                <span className="text-sm text-gray-400 dark:text-gray-500">
+                  No certificate uploaded
+                </span>
+              )}
+            </div>
           </Field>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-400">
-                Slot template *
-              </label>
-              <button
-                onClick={addSlot}
-                className="rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-              >
-                + Add slot
-              </button>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              Booking type *
+            </label>
+            <div className="flex gap-3">
+              <SlotTypeOption
+                label="Fixed"
+                description="Patients pick a specific time slot."
+                selected={slotType === "fixed"}
+                onClick={() => setSlotType("fixed")}
+              />
+              <SlotTypeOption
+                label="Sequential"
+                description="As per bookings — patients get the next free slot in the range, no time picker."
+                selected={slotType === "sequential"}
+                onClick={() => setSlotType("sequential")}
+              />
             </div>
-            <div className="space-y-3">
-              {slots.map((slot, index) => (
-                <div key={index} className="grid grid-cols-2 items-end gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-800 sm:grid-cols-5">
-                  <Field label="Day">
-                    <select
-                      value={slot.weekday}
-                      onChange={(e) => updateSlot(index, { weekday: Number(e.target.value) })}
-                      className={inputClass}
-                    >
-                      {WEEKDAYS.map((day, d) => (
-                        <option key={d} value={d}>
-                          {day}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Start">
-                    <input type="time" value={slot.start_time} onChange={(e) => updateSlot(index, { start_time: e.target.value })} className={inputClass} />
-                  </Field>
-                  <Field label="End">
-                    <input type="time" value={slot.end_time} onChange={(e) => updateSlot(index, { end_time: e.target.value })} className={inputClass} />
-                  </Field>
-                  <Field label="Duration (min)">
-                    <input type="number" min="5" max="240" value={slot.slot_duration_minutes} onChange={(e) => updateSlot(index, { slot_duration_minutes: Number(e.target.value) })} className={inputClass} />
-                  </Field>
-                  <button
-                    onClick={() => removeSlot(index)}
-                    disabled={slots.length === 1}
-                    className="mb-1 rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
+            </label>
+            <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
+              Click a day to add a slot for it.
+              {!branch && " Select a branch above to see its closed days."}
+            </p>
+            <SlotWeekEditor
+              slots={slots}
+              onChange={(next) => {
+                setSlots(next);
+                touch("slots");
+              }}
+              operatingDays={operatingDays}
+              error={showError("slots", slots.length === 0)}
+            />
+            {showError("slots", slots.length === 0) && (
+              <FieldError message={REQUIRED_FIELD_MESSAGE} />
+            )}
           </div>
         </div>
 

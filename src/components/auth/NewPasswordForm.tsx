@@ -7,6 +7,9 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
+import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+
+type RequiredField = "newPassword" | "confirmPassword";
 
 export default function NewPasswordForm() {
   const searchParams = useSearchParams();
@@ -18,12 +21,18 @@ export default function NewPasswordForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitted(true);
     if (!token) {
       setError("This reset link is missing its token.");
+      return;
+    }
+    if (!newPassword.trim() || !confirmPassword.trim()) {
+      setError("Please fill in all required fields.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -94,6 +103,8 @@ export default function NewPasswordForm() {
                     placeholder="Min. 8 characters"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    onBlur={() => touch("newPassword")}
+                    error={showError("newPassword", !newPassword.trim())}
                     required
                   />
                   <span
@@ -107,6 +118,9 @@ export default function NewPasswordForm() {
                     )}
                   </span>
                 </div>
+                {showError("newPassword", !newPassword.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
               </div>
               <div>
                 <Label>
@@ -117,6 +131,13 @@ export default function NewPasswordForm() {
                   placeholder="Re-enter your new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={() => touch("confirmPassword")}
+                  error={showError("confirmPassword", !confirmPassword.trim())}
+                  hint={
+                    showError("confirmPassword", !confirmPassword.trim())
+                      ? REQUIRED_FIELD_MESSAGE
+                      : undefined
+                  }
                   required
                 />
               </div>

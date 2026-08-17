@@ -6,6 +6,7 @@ export const BRANCH_STAFF_PERMISSIONS = [
   "staff:manage",
   "doctors:manage",
   "patients:view",
+  "reviews:view",
   "clinics:manage",
   "clinic:create",
   "clinic:delete",
@@ -76,6 +77,12 @@ export const BRANCH_STAFF_PERMISSION_META: {
     module: "patients",
     label: "View patients",
     description: "View the branch patient list",
+  },
+  {
+    permission: "reviews:view",
+    module: "patients",
+    label: "View reviews",
+    description: "View patient ratings and reviews for the branch's doctors",
   },
   {
     permission: "clinics:manage",
@@ -182,6 +189,12 @@ export function canViewPatients(
   permissions: readonly BranchStaffPermission[] | undefined
 ): boolean {
   return hasPermission(permissions, "patients:view");
+}
+
+export function canViewReviews(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "reviews:view");
 }
 
 export function canManageClinics(

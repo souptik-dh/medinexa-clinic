@@ -11,16 +11,25 @@ export interface BranchSelectValue {
 interface BranchSelectProps {
   value: string;
   onChange: (branch: BranchSelectValue | null) => void;
+  onBlur?: () => void;
   disabled?: boolean;
+  error?: boolean;
+  hint?: string;
 }
 
 const selectClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50";
 
+const selectErrorClass =
+  "h-11 w-full rounded-lg border border-error-500 bg-transparent px-3 text-sm text-gray-800 focus:border-error-500 focus:outline-hidden focus:ring-3 focus:ring-error-500/10 dark:border-error-500 dark:bg-gray-900 dark:text-error-400 disabled:opacity-50";
+
 export default function BranchSelect({
   value,
   onChange,
+  onBlur,
   disabled,
+  error,
+  hint,
 }: BranchSelectProps) {
   const { user, staffClinic, staffBranch } = useAuth();
 
@@ -35,7 +44,14 @@ export default function BranchSelect({
   }
 
   return (
-    <OwnerBranchPicker value={value} onChange={onChange} disabled={disabled} />
+    <OwnerBranchPicker
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      disabled={disabled}
+      error={error}
+      hint={hint}
+    />
   );
 }
 
@@ -95,14 +111,17 @@ function StaffBranchLock({
 function OwnerBranchPicker({
   value,
   onChange,
+  onBlur,
   disabled,
+  error: hasRequiredError,
+  hint,
 }: BranchSelectProps) {
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [clinicId, setClinicId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
   const [loadingBranches, setLoadingBranches] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -118,7 +137,7 @@ function OwnerBranchPicker({
       })
       .catch((err) => {
         if (active)
-          setError(err instanceof ApiError ? err.message : "Failed to load clinics");
+          setLoadError(err instanceof ApiError ? err.message : "Failed to load clinics");
       })
       .finally(() => {
         if (active) setLoadingClinics(false);
@@ -143,7 +162,7 @@ function OwnerBranchPicker({
       .catch(() => {
         if (active) {
           setBranches([]);
-          setError("Failed to load branches");
+          setLoadError("Failed to load branches");
         }
       })
       .finally(() => {
@@ -164,8 +183,8 @@ function OwnerBranchPicker({
 
   return (
     <div>
-      {error && (
-        <p className="mb-3 text-sm text-error-600 dark:text-error-400">{error}</p>
+      {loadError && (
+        <p className="mb-3 text-sm text-error-600 dark:text-error-400">{loadError}</p>
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="sm:w-56">
@@ -198,8 +217,9 @@ function OwnerBranchPicker({
               const branch = branches.find((b) => b.id === e.target.value) ?? null;
               onChange(branch);
             }}
+            onBlur={onBlur}
             disabled={disabled || !clinicId}
-            className={selectClass}
+            className={hasRequiredError ? selectErrorClass : selectClass}
           >
             <option value="">
               {!clinicId
@@ -214,6 +234,15 @@ function OwnerBranchPicker({
               </option>
             ))}
           </select>
+          {hint && (
+            <p
+              className={`mt-1.5 text-xs ${
+                hasRequiredError ? "text-error-500" : "text-gray-500"
+              }`}
+            >
+              {hint}
+            </p>
+          )}
         </div>
       </div>
     </div>

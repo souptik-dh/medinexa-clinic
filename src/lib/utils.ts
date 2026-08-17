@@ -1,4 +1,4 @@
-import type { AppointmentStatus, NotificationType } from "@/lib/api";
+import type { AppointmentStatus, NotificationType, PatientRelationship } from "@/lib/api";
 import type { BadgeColor as UiBadgeColor } from "@/components/ui/badge/Badge";
 
 export function formatCurrency(amount: number, currency = "INR"): string {
@@ -74,6 +74,15 @@ export const appointmentStatusLabel = (status: AppointmentStatus): string => {
   }
 };
 
+export const relationshipLabel = (relationship: PatientRelationship): string => {
+  switch (relationship) {
+    case "self":
+      return "Self";
+    default:
+      return relationship.charAt(0).toUpperCase() + relationship.slice(1);
+  }
+};
+
 export const notificationTypeLabel = (type: string): string => {
   return type
     .split("_")
@@ -134,7 +143,10 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function today(): string {
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 export function formatFullAddress(details: {

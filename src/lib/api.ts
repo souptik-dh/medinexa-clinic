@@ -49,6 +49,21 @@ export interface DoctorInviteAcceptResponse extends AuthTokens {
   };
 }
 
+// POST /auth/doctor/login returns the same doctor shape as accept-invite.
+export type DoctorAuthResponse = DoctorInviteAcceptResponse;
+
+export interface DoctorAssignmentSummary {
+  assignment_id: string;
+  branch_id: string;
+  branch_name: string;
+  timezone: string;
+  fee_amount: number;
+  currency: string;
+  slot_type: SlotType;
+  start_date: string | null;
+  end_date: string | null;
+}
+
 // POST /auth/clinic-owner/register leaves the account `pending` until the
 // emailed verification link is followed, so unlike login it returns null
 // tokens and a message instead of a usable session.
@@ -301,7 +316,7 @@ export interface PhotoUploadGrant {
 export async function uploadFileToCloudinary(
   grant: PhotoUploadGrant,
   file: File
-): Promise<void> {
+): Promise<{ secure_url: string }> {
   const form = new FormData();
   form.append("file", file);
   form.append("public_id", grant.public_id);
@@ -322,6 +337,7 @@ export async function uploadFileToCloudinary(
     }
     throw new Error(message);
   }
+  return (await res.json()) as { secure_url: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +348,8 @@ export interface Paginated<T> {
   items: T[];
   next_cursor: string | null;
 }
+
+export type TradeLicenseValidationStatus = "PENDING" | "VALID" | "INVALID";
 
 export interface Clinic {
   id: string;
@@ -347,6 +365,9 @@ export interface Clinic {
   owner_id?: string;
   trade_license_number?: string | null;
   trade_license_url?: string | null;
+  trade_license_validated?: boolean;
+  trade_license_validation_status?: TradeLicenseValidationStatus;
+  trade_license_validated_at?: string | null;
   drug_license_number?: string | null;
   drug_license_url?: string | null;
   clinical_establishment_reg_number?: string | null;
@@ -374,8 +395,24 @@ export interface ClinicCreateInput {
   state?: string | null;
   post_office?: string | null;
   trade_license_number: string;
+  // Only meaningful when set to the `status` a just-prior clinicsApi.validateTradeLicense()
+  // call returned for this exact trade_license_number — see ClinicForm.
+  trade_license_validation_status?: TradeLicenseValidationStatus;
   drug_license_number?: string | null;
   clinical_establishment_reg_number?: string | null;
+}
+
+export interface TradeLicenseValidationResult {
+  success: boolean;
+  validated: boolean;
+  status: TradeLicenseValidationStatus;
+  trade_license_number?: string;
+  message: string;
+}
+
+export interface RatingSummary {
+  average: number | null;
+  count: number;
 }
 
 export interface Branch {
@@ -396,11 +433,15 @@ export interface Branch {
   photo_url: string | null;
   trade_license_number?: string | null;
   trade_license_url?: string | null;
+  trade_license_validated?: boolean;
+  trade_license_validation_status?: TradeLicenseValidationStatus;
+  trade_license_validated_at?: string | null;
   drug_license_number?: string | null;
   drug_license_url?: string | null;
   clinical_establishment_reg_number?: string | null;
   clinical_establishment_reg_url?: string | null;
   created_at: string;
+  rating?: RatingSummary;
 }
 
 export interface BranchGalleryImage {
@@ -436,6 +477,9 @@ export interface BranchCreateInput {
   lng?: number | null;
   timezone: string;
   trade_license_number: string;
+  // Only meaningful when set to the `status` a just-prior clinicsApi.validateTradeLicense()
+  // call returned for this exact trade_license_number — see BranchForm.
+  trade_license_validation_status?: TradeLicenseValidationStatus;
   drug_license_number?: string | null;
   clinical_establishment_reg_number?: string | null;
 }
@@ -467,11 +511,36 @@ export interface SlotTemplateItem {
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+  start_date: string;
+  end_date?: string | null;
+}
+
+export interface DoctorAssignmentException {
+  id: string;
+  doctor_branch_assignment_id?: string;
+  excluded_date: string;
+  end_date: string;
+  reason: string | null;
+  status: "active" | "cancelled";
+  created_at?: string;
+}
+
+export type SlotType = "fixed" | "sequential";
+
+export interface DoctorSpecialization {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  doctor_count?: number;
+  status?: "active" | "inactive";
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface DoctorInviteCreateInput {
   name: string;
-  specialization?: string | null;
+  specialization_ids: string[];
   email: string;
   phone?: string | null;
   reg_no?: string | null;
@@ -480,6 +549,7 @@ export interface DoctorInviteCreateInput {
   fee_amount: number;
   currency: string;
   certificate?: string | null;
+  slot_type?: SlotType;
   slot_template: SlotTemplateItem[];
 }
 
@@ -491,9 +561,16 @@ export interface DoctorInvite {
   reg_no?: string | null;
   smc_name?: string | null;
   doctor_degree?: string | null;
+  specializations?: { id: string; name: string }[];
   status: "pending" | "accepted" | "expired" | "revoked";
   expires_at: string;
   created_at?: string;
+}
+
+export interface UnavailableDateRange {
+  start_date: string;
+  end_date: string;
+  reason: string | null;
 }
 
 export interface BranchDoctor {
@@ -507,7 +584,17 @@ export interface BranchDoctor {
   fee_amount: number;
   currency: string;
   branch_id: string;
+  slot_type: SlotType;
+  start_date: string | null;
+  end_date: string | null;
   next_available_slot: string | null;
+  unavailable_dates: UnavailableDateRange[];
+  rating?: RatingSummary;
+}
+
+export interface BranchDoctorsResponse {
+  total: number;
+  items: BranchDoctor[];
 }
 
 export interface DoctorAssignment {
@@ -517,6 +604,7 @@ export interface DoctorAssignment {
   fee_amount: number;
   currency: string;
   certificate_url: string | null;
+  slot_type: SlotType;
 }
 
 export interface DoctorProfile {
@@ -537,11 +625,72 @@ export interface DoctorSearchResult {
   reg_no: string | null;
   phone: string | null;
   clinic_count: number;
+  rating?: RatingSummary;
+}
+
+export type AvailabilityStatus =
+  | "available"
+  | "leave"
+  | "unavailable"
+  | "fully_booked"
+  | "outside_schedule"
+  | "past";
+
+export interface AvailabilityLeave {
+  start_date: string;
+  end_date: string;
+  reason: string | null;
 }
 
 export interface AvailabilityResponse {
   date: string;
-  slots: { time: string; available: boolean }[];
+  status?: AvailabilityStatus;
+  is_bookable?: boolean;
+  leave?: AvailabilityLeave | null;
+  slots: { time: string; available: boolean; slot_type: SlotType }[];
+}
+
+export interface AvailabilityPeriod {
+  start_date: string | null;
+  end_date: string | null;
+}
+
+// GET /doctors/:id/availability?from=&to=&branch_id= — range mode.
+export interface AvailabilityRangeResponse {
+  doctor_id: string;
+  branch_id: string;
+  availability_period: AvailabilityPeriod;
+  leaves: AvailabilityLeave[];
+  dates: AvailabilityResponse[];
+}
+
+// GET /doctors/:id/availability/week
+export interface WeekAvailabilityDay {
+  date: string;
+  day: string;
+  status: AvailabilityStatus;
+  is_bookable: boolean;
+  display_time: string;
+}
+
+export interface WeekAvailabilityResponse {
+  week_start: string;
+  week_end: string;
+  dates: WeekAvailabilityDay[];
+}
+
+// GET /doctors/:id/availability/calendar
+export interface CalendarAvailabilityDay {
+  date: string;
+  status: AvailabilityStatus;
+  is_bookable: boolean;
+}
+
+export interface CalendarAvailabilityResponse {
+  year: number;
+  month: number;
+  availability_period: AvailabilityPeriod;
+  dates: CalendarAvailabilityDay[];
 }
 
 export type AppointmentStatus =
@@ -551,6 +700,21 @@ export type AppointmentStatus =
   | "completed"
   | "cancelled"
   | "no_show";
+
+export type PatientRelationship = "self" | "spouse" | "child" | "parent" | "sibling" | "friend" | "other";
+
+// Who the visit is actually for — a patient account can book on behalf of a family
+// member/friend, so this can differ from the booking account (Appointment.patient_id /
+// AppointmentDetail.patient, which is always the account holder). Present on every
+// appointment, list and detail alike; defaults to relationship "self" when the patient
+// app didn't specify one.
+export interface AppointmentPatientDetails {
+  relationship: PatientRelationship;
+  name: string;
+  phone: string | null;
+  age: number | null;
+  gender: string | null;
+}
 
 export interface Appointment {
   id: string;
@@ -569,6 +733,7 @@ export interface Appointment {
   updated_at: string;
   doctor_name?: string;
   branch_name?: string;
+  patient_details?: AppointmentPatientDetails;
 }
 
 export interface AppointmentPatientSummary {
@@ -762,6 +927,17 @@ export const authApi = {
     });
   },
 
+  async loginDoctor(input: {
+    email: string;
+    password: string;
+  }): Promise<DoctorAuthResponse> {
+    return apiFetch<DoctorAuthResponse>("/auth/doctor/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
   async branchStaffLogin(email: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/branch-staff/login", {
       method: "POST",
@@ -829,6 +1005,13 @@ export const clinicsApi = {
     return apiFetch<Clinic>(`/clinics/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
+    });
+  },
+
+  async validateTradeLicense(tradeLicenseNumber: string): Promise<TradeLicenseValidationResult> {
+    return apiFetch<TradeLicenseValidationResult>("/clinics/validate-trade-license", {
+      method: "POST",
+      body: JSON.stringify({ trade_license_number: tradeLicenseNumber }),
     });
   },
 
@@ -960,6 +1143,66 @@ export const branchesApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Branch schedule (operating days + branch-wide closures)
+// ---------------------------------------------------------------------------
+
+export interface BranchOperatingDay {
+  weekday: number; // 0=Sun..6=Sat
+  is_open: boolean;
+}
+
+export interface BranchScheduleResponse {
+  branch_id: string;
+  operating_days: BranchOperatingDay[];
+}
+
+export interface BranchClosure {
+  id: string;
+  branch_id?: string;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: "active" | "cancelled";
+  created_at?: string;
+}
+
+export const branchScheduleApi = {
+  async get(branchId: string): Promise<BranchScheduleResponse> {
+    return apiFetch<BranchScheduleResponse>(`/branches/${branchId}/schedule`);
+  },
+
+  async updateOperatingDays(
+    branchId: string,
+    operatingDays: BranchOperatingDay[]
+  ): Promise<BranchScheduleResponse> {
+    return apiFetch<BranchScheduleResponse>(`/branches/${branchId}/schedule`, {
+      method: "PATCH",
+      body: JSON.stringify({ operating_days: operatingDays }),
+    });
+  },
+
+  async listClosures(branchId: string): Promise<Paginated<BranchClosure>> {
+    return apiFetch<Paginated<BranchClosure>>(`/branches/${branchId}/schedule/closures`);
+  },
+
+  async createClosure(
+    branchId: string,
+    input: { start_date: string; end_date?: string | null; reason?: string | null }
+  ): Promise<BranchClosure> {
+    return apiFetch<BranchClosure>(`/branches/${branchId}/schedule/closures`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async removeClosure(branchId: string, closureId: string): Promise<void> {
+    return apiFetch<void>(`/branches/${branchId}/schedule/closures/${closureId}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Branch staff
 // ---------------------------------------------------------------------------
 
@@ -1037,16 +1280,89 @@ export const doctorInvitesApi = {
   async revoke(id: string): Promise<void> {
     return apiFetch<void>(`/doctor-invites/${id}`, { method: "DELETE" });
   },
+
+  // No invite exists yet at this point (it's created in one shot by `create`
+  // above), so this is a signed direct-to-Cloudinary upload rather than the
+  // "upload against an existing id" pattern used elsewhere — the resulting
+  // URL is just carried as a plain string into DoctorInviteCreateInput.certificate.
+  async getCertificateUploadGrant(): Promise<PhotoUploadGrant> {
+    return apiFetch<PhotoUploadGrant>("/doctor-invites/certificate/signature", {
+      method: "POST",
+    });
+  },
+
+  async uploadCertificate(file: File): Promise<{ certificate_url: string }> {
+    const grant = await doctorInvitesApi.getCertificateUploadGrant();
+    const { secure_url } = await uploadFileToCloudinary(grant, file);
+    return { certificate_url: secure_url };
+  },
+};
+
+export const doctorSpecializationsApi = {
+  async list(q?: string): Promise<{ items: DoctorSpecialization[] }> {
+    return apiFetch<{ items: DoctorSpecialization[] }>(
+      `/doctors/specializations${query({ q })}`
+    );
+  },
+
+  async create(name: string, description?: string): Promise<DoctorSpecialization> {
+    return apiFetch<DoctorSpecialization>(`/doctors/specializations`, {
+      method: "POST",
+      body: JSON.stringify({ name, description }),
+    });
+  },
 };
 
 export const doctorsApi = {
-  async listByBranch(branchId: string): Promise<Paginated<BranchDoctor>> {
-    return apiFetch<Paginated<BranchDoctor>>(`/branches/${branchId}/doctors`);
+  async listByBranch(branchId: string): Promise<BranchDoctorsResponse> {
+    return apiFetch<BranchDoctorsResponse>(`/branches/${branchId}/doctors`);
   },
 
-  async availability(doctorId: string, date: string): Promise<AvailabilityResponse> {
+  async availability(
+    doctorId: string,
+    date: string,
+    branchId?: string
+  ): Promise<AvailabilityResponse> {
     return apiFetch<AvailabilityResponse>(
-      `/doctors/${doctorId}/availability${query({ date })}`
+      `/doctors/${doctorId}/availability${query({ date, branch_id: branchId })}`
+    );
+  },
+
+  // Range mode: one call for a whole visible window instead of one availability()
+  // call per day.
+  async availabilityRange(
+    doctorId: string,
+    params: { from: string; to: string; branchId: string }
+  ): Promise<AvailabilityRangeResponse> {
+    return apiFetch<AvailabilityRangeResponse>(
+      `/doctors/${doctorId}/availability${query({
+        from: params.from,
+        to: params.to,
+        branch_id: params.branchId,
+      })}`
+    );
+  },
+
+  async availabilityWeek(
+    doctorId: string,
+    branchId: string,
+    date?: string
+  ): Promise<WeekAvailabilityResponse> {
+    return apiFetch<WeekAvailabilityResponse>(
+      `/doctors/${doctorId}/availability/week${query({ branch_id: branchId, date })}`
+    );
+  },
+
+  async availabilityCalendar(
+    doctorId: string,
+    params: { branchId: string; year: number; month: number }
+  ): Promise<CalendarAvailabilityResponse> {
+    return apiFetch<CalendarAvailabilityResponse>(
+      `/doctors/${doctorId}/availability/calendar${query({
+        branch_id: params.branchId,
+        year: params.year,
+        month: params.month,
+      })}`
     );
   },
 
@@ -1058,6 +1374,10 @@ export const doctorsApi = {
 
   async me(): Promise<DoctorProfile> {
     return apiFetch<DoctorProfile>("/doctors/me");
+  },
+
+  async myAssignments(): Promise<Paginated<DoctorAssignmentSummary>> {
+    return apiFetch<Paginated<DoctorAssignmentSummary>>("/doctors/me/assignments");
   },
 
   async updateMe(input: Partial<DoctorProfile>): Promise<DoctorProfile> {
@@ -1110,7 +1430,12 @@ export const doctorsApi = {
 
   async updateAssignment(
     id: string,
-    input: Partial<{ fee_amount: number; slot_template: SlotTemplateItem[]; certificate: string }>
+    input: Partial<{
+      fee_amount: number;
+      slot_type: SlotType;
+      slot_template: SlotTemplateItem[];
+      certificate: string;
+    }>
   ): Promise<DoctorAssignment> {
     return apiFetch<DoctorAssignment>(`/doctor-assignments/${id}`, {
       method: "PATCH",
@@ -1118,8 +1443,100 @@ export const doctorsApi = {
     });
   },
 
+  async uploadAssignmentCertificate(
+    assignmentId: string,
+    file: File
+  ): Promise<{ certificate_url: string }> {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<{ certificate_url: string }>(
+      `/doctor-assignments/${assignmentId}/certificate`,
+      {
+        method: "POST",
+        body: form,
+      }
+    );
+  },
+
   async removeAssignment(id: string): Promise<void> {
     return apiFetch<void>(`/doctor-assignments/${id}`, { method: "DELETE" });
+  },
+
+  async listExceptions(assignmentId: string): Promise<Paginated<DoctorAssignmentException>> {
+    return apiFetch<Paginated<DoctorAssignmentException>>(
+      `/doctor-assignments/${assignmentId}/exceptions`
+    );
+  },
+
+  async createException(
+    assignmentId: string,
+    input: { excluded_date: string; end_date?: string | null; reason?: string | null }
+  ): Promise<DoctorAssignmentException> {
+    return apiFetch<DoctorAssignmentException>(
+      `/doctor-assignments/${assignmentId}/exceptions`,
+      { method: "POST", body: JSON.stringify(input) }
+    );
+  },
+
+  async removeException(assignmentId: string, exceptionId: string): Promise<void> {
+    return apiFetch<void>(
+      `/doctor-assignments/${assignmentId}/exceptions/${exceptionId}`,
+      { method: "DELETE" }
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Reviews & ratings
+// ---------------------------------------------------------------------------
+
+// Public — patient_name is masked to first name + last initial (see API.md).
+export interface DoctorReview {
+  id: string;
+  patient_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+// Clinic-side — full patient_name, plus which doctor it's for.
+export interface BranchReview {
+  id: string;
+  doctor_id: string;
+  doctor_name: string;
+  patient_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface ReviewsResponse<T> {
+  rating: RatingSummary;
+  items: T[];
+  has_more: boolean;
+}
+
+export const reviewsApi = {
+  async forDoctor(
+    doctorId: string,
+    params: { limit?: number; offset?: number } = {}
+  ): Promise<ReviewsResponse<DoctorReview>> {
+    return apiFetch<ReviewsResponse<DoctorReview>>(
+      `/doctors/${doctorId}/reviews${query({ limit: params.limit, offset: params.offset })}`
+    );
+  },
+
+  async forBranch(
+    branchId: string,
+    params: { doctorId?: string; limit?: number; offset?: number } = {}
+  ): Promise<ReviewsResponse<BranchReview>> {
+    return apiFetch<ReviewsResponse<BranchReview>>(
+      `/branches/${branchId}/reviews${query({
+        doctor_id: params.doctorId,
+        limit: params.limit,
+        offset: params.offset,
+      })}`
+    );
   },
 };
 
