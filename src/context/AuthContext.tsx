@@ -113,7 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const scheduleNextCheck = () => {
       const expiryMs = getAccessTokenExpiryMs();
-      const delay = expiryMs !== null ? Math.max(expiryMs - Date.now(), 0) : 0;
+      const delay = expiryMs !== null
+        ? Math.max(expiryMs - Date.now(), 0)
+        : 5 * 60 * 1000; // Default 5 min when token has no exp claim
       timer = setTimeout(async () => {
         if (cancelled) return;
         const active = await ensureActiveSession();

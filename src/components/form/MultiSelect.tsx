@@ -41,18 +41,21 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
   };
 
   const handleSelect = (optionValue: string) => {
-    const newSelectedOptions = selectedOptions.includes(optionValue)
-      ? selectedOptions.filter((value) => value !== optionValue)
-      : [...selectedOptions, optionValue];
-
-    setSelectedOptions(newSelectedOptions);
-    if (onChange) onChange(newSelectedOptions);
+    setSelectedOptions((prev) => {
+      const next = prev.includes(optionValue)
+        ? prev.filter((value) => value !== optionValue)
+        : [...prev, optionValue];
+      if (onChange) onChange(next);
+      return next;
+    });
   };
 
-  const removeOption = (index: number, value: string) => {
-    const newSelectedOptions = selectedOptions.filter((opt) => opt !== value);
-    setSelectedOptions(newSelectedOptions);
-    if (onChange) onChange(newSelectedOptions);
+  const removeOption = (value: string) => {
+    setSelectedOptions((prev) => {
+      const next = prev.filter((opt) => opt !== value);
+      if (onChange) onChange(next);
+      return next;
+    });
   };
 
   const selectedValuesText = selectedOptions.map(
@@ -86,7 +89,7 @@ const MultiSelect: React.FC<MultiSelectProps> = ({
                       <div className="flex flex-row-reverse flex-auto">
                         <div
                           onClick={() =>
-                            removeOption(index, selectedOptions[index])
+                            removeOption(selectedOptions[index])
                           }
                           className="pl-2 text-gray-500 cursor-pointer group-hover:text-gray-400 dark:text-gray-400"
                         >

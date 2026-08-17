@@ -38,7 +38,7 @@ export default function RatingStars({
 }: RatingStarsProps) {
   const textClass = size === "sm" ? "text-theme-xs" : "text-sm";
 
-  if (average === null || count === 0) {
+  if (average === null || count <= 0) {
     return (
       <span className={`inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 ${textClass} ${className}`}>
         No ratings yet
@@ -46,7 +46,8 @@ export default function RatingStars({
     );
   }
 
-  const stars = Array.from({ length: 5 }, (_, i) => Math.max(0, Math.min(1, average - i)));
+  const clampedAverage = Math.max(0, Math.min(5, average));
+  const stars = Array.from({ length: 5 }, (_, i) => Math.max(0, Math.min(1, clampedAverage - i)));
 
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
@@ -56,7 +57,7 @@ export default function RatingStars({
         ))}
       </span>
       <span className={`font-medium text-gray-700 dark:text-gray-300 ${textClass}`}>
-        {average.toFixed(1)}
+        {clampedAverage.toFixed(1)}
       </span>
       {!hideCount && (
         <span className={`text-gray-400 dark:text-gray-500 ${textClass}`}>

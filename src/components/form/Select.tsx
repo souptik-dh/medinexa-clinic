@@ -46,7 +46,7 @@ const Select: React.FC<SelectProps> = ({
             ? "border-error-500 focus:border-error-500 focus:ring-error-500/10 dark:border-error-500"
             : "border-gray-300 focus:border-brand-300 focus:ring-brand-500/10 dark:border-gray-700 dark:focus:border-brand-800"
         } ${
-          selectedValue
+          selectedValue !== ""
             ? "text-gray-800 dark:text-white/90"
             : "text-gray-400 dark:text-gray-400"
         } ${className}`}

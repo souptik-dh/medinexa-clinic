@@ -178,6 +178,7 @@ function OwnerBranchPicker({
     setClinicId(id);
     setLoadingBranches(true);
     setBranches([]);
+    setLoadError(null);
     onChange(null);
   };
 

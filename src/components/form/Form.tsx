@@ -13,7 +13,7 @@ const Form: FC<FormProps> = ({ onSubmit, children, className }) => {
         event.preventDefault(); // Prevent default form submission
         onSubmit(event);
       }}
-      className={` ${className}`} // Default spacing between form fields
+      className={className || undefined}
     >
       {children}
     </form>
