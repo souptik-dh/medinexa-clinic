@@ -13,6 +13,7 @@ import {
   canCreateBranch,
   canCreateClinic,
   canDeleteClinic,
+  canManageLabTests,
   canUpdateClinic,
 } from "@/lib/permissions";
 import {
@@ -41,6 +42,7 @@ export default function ClinicsPanel() {
   const canDelete = isAdmin || canDeleteClinic(userPermissions);
   const canUpdate = isAdmin || canUpdateClinic(userPermissions);
   const canCreateBranchForClinic = isAdmin || canCreateBranch(userPermissions);
+  const canManageLab = isAdmin || canManageLabTests(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,7 +126,7 @@ export default function ClinicsPanel() {
     ) {
       return;
     }
-    autoCreateBranchForClinic(selected, branches, user?.phone)
+    autoCreateBranchForClinic(selected, user?.phone)
       .then(() => {
         clearAutoBranchPending(selected.id);
         toast.success("Your first branch was created automatically.");
@@ -165,7 +167,7 @@ export default function ClinicsPanel() {
     setBusy(true);
     setError(null);
     try {
-      await autoCreateBranchForClinic(selected, branches, user?.phone);
+      await autoCreateBranchForClinic(selected, user?.phone);
       toast.success("Branch created automatically.");
       await loadBranches(selected.id);
     } catch (err) {
@@ -272,20 +274,24 @@ export default function ClinicsPanel() {
               {canCreateBranchForClinic &&
                 selected &&
                 !branchesLoading &&
-                branches.length <= 1 && (
+                branches.length < 1 && (
                   <button
                     onClick={autoCreateBranch}
                     disabled={busy}
-                    title={
-                      branches.length === 1
-                        ? "Create a second branch by duplicating this clinic's existing branch"
-                        : "Create a branch automatically using this clinic's own details"
-                    }
+                    title="Create a branch automatically using this clinic's own details"
                     className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                   >
                     {busy ? "Creating…" : "Auto-create branch"}
                   </button>
                 )}
+              {canManageLab && selected && (
+                <Link
+                  href={`/clinics/${selected.id}/lab-tests`}
+                  className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                >
+                  Lab Tests
+                </Link>
+              )}
               {canUpdate && selected && (
                 <Link
                   href={`/clinics/${selected.id}/edit`}

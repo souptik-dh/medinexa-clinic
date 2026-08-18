@@ -778,7 +778,157 @@ export type NotificationType =
   | "prescription_ready"
   | "doctor_invited"
   | "doctor_invite_accepted"
-  | "appointment_cancelled";
+  | "appointment_cancelled"
+  | "lab_test_booked"
+  | "lab_test_approved"
+  | "lab_test_rejected"
+  | "lab_test_cancelled"
+  | "lab_test_completed";
+
+// ---------------------------------------------------------------------------
+// Lab Tests
+// ---------------------------------------------------------------------------
+
+export type LabTestStatus = "active" | "inactive";
+
+// Clinic-defined free text, not a fixed enum — see labTestsApi.categories().
+export type LabTestCategory = string;
+
+export type LabTestAppointmentServiceMode = "CLINIC" | "HOME";
+
+export type LabTestPaymentMethod = "PAY_AT_CLINIC" | "ONLINE";
+
+export type LabTestAppointmentStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export type LabTestPaymentStatus = "UNPAID" | "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+
+export interface LabTest {
+  id: string;
+  clinic_id: string;
+  name: string;
+  code: string;
+  description: string | null;
+  category: LabTestCategory;
+  instructions: string | null;
+  default_precautions: string[];
+  status: LabTestStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BranchLabTest {
+  id: string;
+  clinic_id: string;
+  branch_id: string;
+  test_id: string;
+  test_name: string;
+  test_code: string;
+  test_category: LabTestCategory;
+  test_description: string | null;
+  price: number;
+  currency: string;
+  duration_minutes: number;
+  clinic_available: boolean;
+  home_collection_available: boolean;
+  prescription_required: boolean;
+  status: LabTestStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LabTestSchedule {
+  id: string;
+  branch_id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LabTestAppointment {
+  id: string;
+  appointment_number: string;
+  patient_id: string;
+  clinic_id: string;
+  branch_id: string;
+  branch_lab_test_id: string;
+  test_id: string;
+  service_mode: LabTestAppointmentServiceMode;
+  appointment_date: string;
+  start_time: string;
+  end_time: string;
+  duration_minutes: number;
+  price: number;
+  currency: string;
+  payment_method: LabTestPaymentMethod | null;
+  payment_status: LabTestPaymentStatus;
+  prescription_required: boolean;
+  prescription_id: string | null;
+  patient_notes: string | null;
+  clinic_notes: string | null;
+  precautions: string[] | null;
+  status: LabTestAppointmentStatus;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // Only present when service_mode is "HOME".
+  home_address?: string | null;
+  home_lat?: number | null;
+  home_lng?: number | null;
+  home_contact_phone?: string | null;
+  home_notes?: string | null;
+  // Present on list/detail responses only - the backend nests these for
+  // display so the UI doesn't need a separate lookup per row.
+  test?: { id: string; name: string; code: string | null; category: LabTestCategory | null; description?: string | null };
+  branch?: { id: string; name: string | null };
+  clinic?: { id: string; name: string | null };
+  patient?: { id: string; name: string | null; email?: string | null; phone?: string | null };
+}
+
+export interface LabTestAppointmentDetail extends LabTestAppointment {
+  patient: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    date_of_birth: string | null;
+    gender: string | null;
+  };
+  payments: {
+    id: string;
+    amount: number;
+    currency: string;
+    payment_method: LabTestPaymentMethod;
+    payment_status: LabTestPaymentStatus;
+    transaction_id: string | null;
+    provider: string | null;
+    paid_at: string | null;
+    collected_by: string | null;
+    collected_at: string | null;
+    reference_no: string | null;
+  }[];
+  prescriptions: {
+    id: string;
+    file_name: string;
+    file_url: string;
+    mime_type: string;
+    file_size: number;
+    uploaded_at: string;
+  }[];
+}
 
 export interface Notification {
   id: string;
@@ -1762,6 +1912,273 @@ export const ledgerApi = {
   async list(clinicId: string, month?: string): Promise<{ items: LedgerEntry[] }> {
     return apiFetch<{ items: LedgerEntry[] }>(
       `/clinics/${clinicId}/ledger${query({ month })}`
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab Tests — Clinic management
+// ---------------------------------------------------------------------------
+
+export interface LabTestListParams {
+  clinic_id?: string;
+  status?: LabTestStatus;
+  category?: LabTestCategory;
+  search?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export const labTestsApi = {
+  async list(params: LabTestListParams = {}): Promise<Paginated<LabTest>> {
+    return apiFetch<Paginated<LabTest>>(
+      `/clinic/lab-tests${query({
+        clinic_id: params.clinic_id,
+        status: params.status,
+        category: params.category,
+        search: params.search,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async create(
+    // name/code are optional — omit both to quick-create from just a category;
+    // the backend derives them from it (see API.md).
+    input: Omit<LabTest, "id" | "status" | "created_at" | "updated_at" | "name" | "code"> & {
+      name?: string;
+      code?: string;
+    }
+  ): Promise<LabTest> {
+    return apiFetch<LabTest>("/clinic/lab-tests", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async update(
+    id: string,
+    input: Partial<Omit<LabTest, "id" | "clinic_id" | "status" | "created_at" | "updated_at">>
+  ): Promise<LabTest> {
+    return apiFetch<LabTest>(`/clinic/lab-tests/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async toggleStatus(id: string, status: LabTestStatus): Promise<{ success: true; status: LabTestStatus }> {
+    return apiFetch<{ success: true; status: LabTestStatus }>(`/clinic/lab-tests/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  // Distinct categories this clinic has already used — suggestions for the
+  // create-form combobox, not an exhaustive/fixed list.
+  async categories(clinicId?: string): Promise<{ items: string[] }> {
+    return apiFetch<{ items: string[] }>(`/clinic/lab-tests/categories${query({ clinic_id: clinicId })}`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab Tests — Branch configuration
+// ---------------------------------------------------------------------------
+
+export const branchLabTestsApi = {
+  async list(branchId: string, status?: LabTestStatus): Promise<{ items: BranchLabTest[] }> {
+    return apiFetch<{ items: BranchLabTest[] }>(
+      `/clinic/branches/${branchId}/lab-tests${query({ status })}`
+    );
+  },
+
+  async configure(
+    branchId: string,
+    input: {
+      test_id: string;
+      price: number;
+      currency: string;
+      duration_minutes?: number;
+      clinic_available?: boolean;
+      home_collection_available?: boolean;
+      prescription_required?: boolean;
+    }
+  ): Promise<BranchLabTest> {
+    return apiFetch<BranchLabTest>(`/clinic/branches/${branchId}/lab-tests`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async update(
+    branchId: string,
+    id: string,
+    input: Partial<{
+      price: number;
+      currency: string;
+      duration_minutes: number;
+      clinic_available: boolean;
+      home_collection_available: boolean;
+      prescription_required: boolean;
+      status: LabTestStatus;
+    }>
+  ): Promise<BranchLabTest> {
+    return apiFetch<BranchLabTest>(`/clinic/branches/${branchId}/lab-tests/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab Tests — Schedules
+// ---------------------------------------------------------------------------
+
+export const labTestSchedulesApi = {
+  async list(branchId: string): Promise<{ items: LabTestSchedule[] }> {
+    return apiFetch<{ items: LabTestSchedule[] }>(
+      `/clinic/branches/${branchId}/lab-test-schedules`
+    );
+  },
+
+  async create(
+    branchId: string,
+    input: {
+      weekday: number;
+      start_time: string;
+      end_time: string;
+      is_active?: boolean;
+    }
+  ): Promise<LabTestSchedule> {
+    return apiFetch<LabTestSchedule>(`/clinic/branches/${branchId}/lab-test-schedules`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async update(
+    branchId: string,
+    id: string,
+    input: Partial<{
+      weekday: number;
+      start_time: string;
+      end_time: string;
+      is_active: boolean;
+    }>
+  ): Promise<LabTestSchedule> {
+    return apiFetch<LabTestSchedule>(
+      `/clinic/branches/${branchId}/lab-test-schedules/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(input),
+      }
+    );
+  },
+
+  async remove(branchId: string, id: string): Promise<void> {
+    return apiFetch<void>(`/clinic/branches/${branchId}/lab-test-schedules/${id}`, {
+      method: "DELETE",
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab Tests — Appointments (clinic management)
+// ---------------------------------------------------------------------------
+
+export interface LabTestAppointmentListParams {
+  branch_id?: string;
+  status?: LabTestAppointmentStatus;
+  test_id?: string;
+  service_mode?: LabTestAppointmentServiceMode;
+  payment_status?: LabTestPaymentStatus;
+  patient_name?: string;
+  appointment_number?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export const labTestAppointmentsApi = {
+  async list(
+    params: LabTestAppointmentListParams = {}
+  ): Promise<Paginated<LabTestAppointment>> {
+    return apiFetch<Paginated<LabTestAppointment>>(
+      `/clinic/lab-test-appointments${query({
+        branch_id: params.branch_id,
+        status: params.status,
+        test_id: params.test_id,
+        service_mode: params.service_mode,
+        payment_status: params.payment_status,
+        patient_name: params.patient_name,
+        appointment_number: params.appointment_number,
+        date_from: params.date_from,
+        date_to: params.date_to,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async get(id: string): Promise<LabTestAppointmentDetail> {
+    return apiFetch<LabTestAppointmentDetail>(
+      `/clinic/lab-test-appointments/${id}`
+    );
+  },
+
+  async approve(
+    id: string,
+    input?: { precautions?: string[]; clinic_notes?: string }
+  ): Promise<{ success: true; status: LabTestAppointmentStatus }> {
+    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+      `/clinic/lab-test-appointments/${id}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify(input ?? {}),
+      }
+    );
+  },
+
+  async reject(id: string, reason: string): Promise<{ success: true; status: LabTestAppointmentStatus }> {
+    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+      `/clinic/lab-test-appointments/${id}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }
+    );
+  },
+
+  async complete(id: string): Promise<{ success: true; status: LabTestAppointmentStatus }> {
+    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+      `/clinic/lab-test-appointments/${id}/complete`,
+      { method: "POST" }
+    );
+  },
+
+  async collectPayment(
+    id: string,
+    input: { reference_no?: string | null },
+    idempotencyKey: string
+  ): Promise<{ success: true; payment_status: LabTestPaymentStatus }> {
+    return apiFetch<{ success: true; payment_status: LabTestPaymentStatus }>(
+      `/clinic/lab-test-appointments/${id}/payment/collect`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        idempotencyKey,
+      }
+    );
+  },
+
+  async cancel(id: string, reason?: string): Promise<{ success: true }> {
+    return apiFetch<{ success: true }>(
+      `/lab-test-appointments/${id}/cancel`,
+      {
+        method: "POST",
+        body: JSON.stringify(reason ? { reason } : {}),
+      }
     );
   },
 };

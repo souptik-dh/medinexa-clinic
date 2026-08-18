@@ -55,6 +55,12 @@ function readStoredStaffClinic(): BranchStaffMe["clinic"] | null {
 
 interface AuthContextValue {
   user: User | null;
+  // True until the initial client-side read of localStorage has run. Consumers
+  // that gate rendering/redirects on `user` must wait for this to flip to
+  // false first - `user` starts `null` on both server and client (localStorage
+  // isn't read during the lazy-initial render) specifically to keep SSR output
+  // and the first client render identical and avoid a hydration mismatch.
+  isAuthReady: boolean;
   clinic: Clinic | null;
   // The clinic/branch a branch_staff user is assigned to, sourced from
   // GET /branch-staff/me rather than any client-supplied id - drives the
@@ -80,14 +86,25 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(() => getStoredUser());
-  const [clinic, setClinic] = useState<Clinic | null>(() => readStoredClinic());
-  const [staffClinic, setStaffClinic] = useState<BranchStaffMe["clinic"] | null>(() =>
-    readStoredStaffClinic()
-  );
-  const [staffBranch, setStaffBranch] = useState<BranchStaffMe["branch"] | null>(() =>
-    readStoredStaffBranch()
-  );
+  const [user, setUser] = useState<User | null>(null);
+  const [clinic, setClinic] = useState<Clinic | null>(null);
+  const [staffClinic, setStaffClinic] = useState<BranchStaffMe["clinic"] | null>(null);
+  const [staffBranch, setStaffBranch] = useState<BranchStaffMe["branch"] | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  // Reads localStorage only after mount (client-only) so the first client
+  // render matches the server's null-state render - reading it in the useState
+  // initializer above would make the client's first render diverge from SSR
+  // and trigger a hydration mismatch.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setUser(getStoredUser());
+    setClinic(readStoredClinic());
+    setStaffClinic(readStoredStaffClinic());
+    setStaffBranch(readStoredStaffBranch());
+    setIsAuthReady(true);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
@@ -347,6 +364,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        isAuthReady,
         clinic,
         staffClinic,
         staffBranch,

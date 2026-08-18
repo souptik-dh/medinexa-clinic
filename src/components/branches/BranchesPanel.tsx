@@ -33,6 +33,7 @@ import {
   canAccessBranchSettings,
   canCreateBranch,
   canDeleteBranch,
+  canManageLabTests,
   canUpdateBranch,
 } from "@/lib/permissions";
 
@@ -57,6 +58,7 @@ export default function BranchesPanel() {
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
   const canSchedule = isAdmin || canAccessBranchSettings(userPermissions);
+  const canManageLab = isAdmin || canManageLabTests(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,7 +164,7 @@ export default function BranchesPanel() {
     setBusy(true);
     setError(null);
     try {
-      await autoCreateBranchForClinic(selected, branches, user?.phone);
+      await autoCreateBranchForClinic(selected, user?.phone);
       toast.success("Branch created automatically.");
       await loadBranches(selected.id);
     } catch (err) {
@@ -265,15 +267,11 @@ export default function BranchesPanel() {
             </h3>
             {canCreate && selected && (
               <div className="flex items-center gap-2">
-                {!branchesLoading && !selectedLoading && selected && branches.length <= 1 && (
+                {!branchesLoading && !selectedLoading && selected && branches.length < 1 && (
                   <button
                     onClick={autoCreateBranch}
                     disabled={busy}
-                    title={
-                      branches.length === 1
-                        ? "Create a second branch by duplicating this clinic's existing branch"
-                        : "Create a branch automatically using this clinic's own details"
-                    }
+                    title="Create a branch automatically using this clinic's own details"
                     className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                   >
                     {busy ? "Creating…" : "Auto-create branch"}
@@ -357,6 +355,22 @@ export default function BranchesPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
+                          {canManageLab && (
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/lab-tests`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            >
+                              Lab Tests
+                            </Link>
+                          )}
+                          {canManageLab && (
+                            <Link
+                              href={`/clinics/${selected?.id}/branches/${b.id}/lab-schedule`}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            >
+                              Lab Schedule
+                            </Link>
+                          )}
                           {canSchedule && (
                             <Link
                               href={`/clinics/${selected?.id}/branches/${b.id}/schedule`}

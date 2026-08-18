@@ -14,14 +14,17 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!user) {
+    // Wait for the initial localStorage read to finish - otherwise this
+    // fires on every load (server and client both start with user === null)
+    // and bounces a logged-in user to /signin before their session loads.
+    if (isAuthReady && !user) {
       router.replace("/signin");
     }
-  }, [user, router]);
+  }, [isAuthReady, user, router]);
 
   // Block rendering of any protected page until an authenticated user is
   // confirmed - once a session expires (or was never present) no admin

@@ -19,6 +19,15 @@ export const BRANCH_STAFF_PERMISSIONS = [
   "branch:delete",
   "branch:create",
   "branch:update",
+  "lab_tests:manage",
+  "lab_appointments:view",
+  "lab_appointments:approve",
+  "lab_appointments:reject",
+  "lab_appointments:cancel",
+  "lab_appointments:complete",
+  "lab_payments:view",
+  "lab_payments:collect",
+  "lab_prescriptions:view",
 ] as const;
 
 export type BranchStaffPermission = (typeof BRANCH_STAFF_PERMISSIONS)[number];
@@ -32,7 +41,7 @@ export const DEFAULT_BRANCH_STAFF_PERMISSIONS: readonly BranchStaffPermission[] 
 
 export const BRANCH_STAFF_PERMISSION_META: {
   permission: BranchStaffPermission;
-  module: "appointments" | "staff" | "doctors" | "patients" | "clinics" | "branch";
+  module: "appointments" | "staff" | "doctors" | "patients" | "clinics" | "branch" | "lab_tests";
   label: string;
   description: string;
 }[] = [
@@ -156,6 +165,60 @@ export const BRANCH_STAFF_PERMISSION_META: {
     label: "Update branch",
     description: "Update branch details",
   },
+  {
+    permission: "lab_tests:manage",
+    module: "lab_tests",
+    label: "Manage lab tests",
+    description: "Create, edit, and configure lab tests",
+  },
+  {
+    permission: "lab_appointments:view",
+    module: "lab_tests",
+    label: "View lab appointments",
+    description: "View lab test appointments",
+  },
+  {
+    permission: "lab_appointments:approve",
+    module: "lab_tests",
+    label: "Approve lab appointments",
+    description: "Approve pending lab test appointments",
+  },
+  {
+    permission: "lab_appointments:reject",
+    module: "lab_tests",
+    label: "Reject lab appointments",
+    description: "Reject pending lab test appointments",
+  },
+  {
+    permission: "lab_appointments:cancel",
+    module: "lab_tests",
+    label: "Cancel lab appointments",
+    description: "Cancel pending or approved lab test appointments",
+  },
+  {
+    permission: "lab_appointments:complete",
+    module: "lab_tests",
+    label: "Complete lab appointments",
+    description: "Mark approved lab test appointments as completed",
+  },
+  {
+    permission: "lab_payments:view",
+    module: "lab_tests",
+    label: "View lab payments",
+    description: "View payment records for lab test appointments",
+  },
+  {
+    permission: "lab_payments:collect",
+    module: "lab_tests",
+    label: "Collect lab payments",
+    description: "Collect payments for lab test appointments",
+  },
+  {
+    permission: "lab_prescriptions:view",
+    module: "lab_tests",
+    label: "View lab prescriptions",
+    description: "View prescriptions uploaded for lab test appointments",
+  },
 ];
 
 export const BRANCH_STAFF_PERMISSION_MODULES = [
@@ -165,6 +228,7 @@ export const BRANCH_STAFF_PERMISSION_MODULES = [
   { module: "patients" as const, label: "Patients" },
   { module: "clinics" as const, label: "Clinics" },
   { module: "branch" as const, label: "Branch" },
+  { module: "lab_tests" as const, label: "Lab Tests" },
 ];
 
 export function hasPermission(
@@ -278,4 +342,58 @@ export function canAccessBranchSettings(
   permissions: readonly BranchStaffPermission[] | undefined
 ): boolean {
   return hasPermission(permissions, "branch:settings");
+}
+
+export function canManageLabTests(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_tests:manage");
+}
+
+export function canViewLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:view");
+}
+
+export function canApproveLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:approve");
+}
+
+export function canRejectLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:reject");
+}
+
+export function canCancelLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:cancel");
+}
+
+export function canCompleteLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:complete");
+}
+
+export function canViewLabPayments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_payments:view");
+}
+
+export function canCollectLabPayments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_payments:collect");
+}
+
+export function canViewLabPrescriptions(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_prescriptions:view");
 }

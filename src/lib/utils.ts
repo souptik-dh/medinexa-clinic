@@ -1,4 +1,4 @@
-import type { AppointmentStatus, NotificationType, PatientRelationship } from "@/lib/api";
+import type { AppointmentStatus, NotificationType, PatientRelationship, LabTestAppointmentStatus, LabTestPaymentStatus, LabTestCategory } from "@/lib/api";
 import type { BadgeColor as UiBadgeColor } from "@/components/ui/badge/Badge";
 
 export function formatCurrency(amount: number, currency = "INR"): string {
@@ -107,6 +107,12 @@ export const notificationLink = (type: NotificationType): string => {
       return "/doctors/invite";
     case "doctor_invite_accepted":
       return "/doctors";
+    case "lab_test_booked":
+    case "lab_test_approved":
+    case "lab_test_rejected":
+    case "lab_test_cancelled":
+    case "lab_test_completed":
+      return "/lab-test-appointments";
     default:
       return "/dashboard";
   }
@@ -172,3 +178,66 @@ export function formatFullAddress(details: {
     .filter(Boolean)
     .join("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Lab Test utilities
+// ---------------------------------------------------------------------------
+
+export const labTestAppointmentStatusColor = (status: LabTestAppointmentStatus): UiBadgeColor => {
+  switch (status) {
+    case "PENDING":
+      return "warning";
+    case "APPROVED":
+      return "info";
+    case "REJECTED":
+      return "error";
+    case "COMPLETED":
+      return "success";
+    case "CANCELLED":
+      return "dark";
+    default:
+      return "light";
+  }
+};
+
+export const labTestAppointmentStatusLabel = (status: LabTestAppointmentStatus): string => {
+  return status.charAt(0) + status.slice(1).toLowerCase();
+};
+
+export const labTestPaymentStatusLabel = (status: LabTestPaymentStatus): string => {
+  return status.charAt(0) + status.slice(1).toLowerCase();
+};
+
+export const labTestPaymentStatusColor = (status: LabTestPaymentStatus): UiBadgeColor => {
+  switch (status) {
+    case "PAID":
+      return "success";
+    case "PENDING":
+      return "warning";
+    case "UNPAID":
+      return "dark";
+    case "REFUNDED":
+      return "info";
+    case "FAILED":
+      return "error";
+    default:
+      return "light";
+  }
+};
+
+export const labTestCategoryLabel = (category: LabTestCategory): string => {
+  return category
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
+export const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];

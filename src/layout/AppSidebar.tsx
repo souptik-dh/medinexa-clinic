@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
-import { canAccessAppointments, canViewPatients } from "@/lib/permissions";
+import { canAccessAppointments, canViewPatients, canManageLabTests, canViewLabAppointments } from "@/lib/permissions";
 import {
   BellIcon,
   BoxCubeIcon,
@@ -42,7 +42,10 @@ const navItems: NavItem[] = [
   {
     icon: <CalenderIcon />,
     name: "Appointments",
-    path: "/appointments",
+    subItems: [
+      { name: "Doctor Appointment", path: "/appointments" },
+      { name: "Lab Test Appointments", path: "/lab-test-appointments" },
+    ],
   },
   {
     icon: <BoxCubeIcon />,
@@ -135,32 +138,61 @@ const othersItems: NavItem[] = [
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
-  const { user, can } = useAuth();
+  const { user, can, staffClinic } = useAuth();
 
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const isStaff = user?.role === "branch_staff";
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const mainItems = React.useMemo(
-  () =>
-    navItems.filter((item) => {
-      if (!mounted) return true; // render full list on server + first client pass
-      switch (item.name) {
-        case "Clinics": return isOwner;
-        case "Branches": return isOwner;
-        case "Staff": return isOwner || can("staff:manage");
-        case "Doctors": return isOwner || can("doctors:manage");
-        case "Patients": return isOwner || canViewPatients(user?.permissions);
-        case "Payment Ledger": return isOwner;
-        case "My Schedule": return user?.role === "doctor";
-        case "Appointments": return isOwner || canAccessAppointments(user?.permissions);
-        case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
-        case "Notifications": return !isStaff;
-        default: return true;
-      }
-    }),
-  [mounted, isOwner, isStaff, can, user]
-);
+  const mainItems = React.useMemo(() => {
+    const filtered = navItems
+      .filter((item) => {
+        if (!mounted) return true; // render full list on server + first client pass
+        switch (item.name) {
+          case "Clinics": return isOwner;
+          case "Branches": return isOwner;
+          case "Staff": return isOwner || can("staff:manage");
+          case "Doctors": return isOwner || can("doctors:manage");
+          case "Patients": return isOwner || canViewPatients(user?.permissions);
+          case "Payment Ledger": return isOwner;
+          case "My Schedule": return user?.role === "doctor";
+          // Shown if either sub-item would be — each is filtered individually below.
+          case "Appointments": return isOwner || canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions);
+          case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
+          case "Notifications": return !isStaff;
+          default: return true;
+        }
+      })
+      .map((item) => {
+        if (item.name !== "Appointments" || !item.subItems || !mounted) return item;
+        return {
+          ...item,
+          subItems: item.subItems.filter((sub) => {
+            if (sub.name === "Doctor Appointment") return isOwner || canAccessAppointments(user?.permissions);
+            if (sub.name === "Lab Test Appointments") return isOwner || canViewLabAppointments(user?.permissions);
+            return true;
+          }),
+        };
+      });
+
+    // Owners manage lab tests/schedules from inside Clinics/Branches (per clinic
+    // if it has a single branch, per branch row otherwise) rather than a
+    // standalone nav item. Branch staff never see those admin pages, so they
+    // keep a direct shortcut straight to their own (single) branch's pages.
+    if (!mounted || isOwner || !canManageLabTests(user?.permissions)) return filtered;
+    const clinicId = staffClinic?.id;
+    const branchId = user?.branch_id;
+    if (!clinicId || !branchId) return filtered;
+
+    const staffLabItems: NavItem[] = [
+      { icon: <BoxCubeIcon />, name: "Lab Tests", path: `/clinics/${clinicId}/lab-tests` },
+      { icon: <ListIcon />, name: "Branch Tests", path: `/clinics/${clinicId}/branches/${branchId}/lab-tests` },
+      { icon: <CalenderIcon />, name: "Lab Schedule", path: `/clinics/${clinicId}/branches/${branchId}/lab-schedule` },
+    ];
+    const appointmentsIndex = filtered.findIndex((i) => i.name === "Appointments");
+    const insertIndex = appointmentsIndex === -1 ? filtered.length : appointmentsIndex + 1;
+    return [...filtered.slice(0, insertIndex), ...staffLabItems, ...filtered.slice(insertIndex)];
+  }, [mounted, isOwner, isStaff, can, user, staffClinic]);
   const showOthers = isOwner || !isStaff;
 
   const renderMenuItems = (
