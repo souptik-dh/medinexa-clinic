@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import NmcDoctorSearch, {
   NmcDoctorResult,
@@ -11,7 +12,6 @@ import SpecializationPicker, {
 import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { useRouter } from "next/navigation";
 import {
-  ApiError,
   BranchOperatingDay,
   SlotTemplateItem,
   SlotType,
@@ -21,11 +21,16 @@ import {
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import FieldError from "@/components/form/FieldError";
 import { getInputClass } from "@/components/form/fieldStyles";
+import PhoneNumberField from "@/components/form/input/PhoneNumberField";
+import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { useAuth } from "@/context/AuthContext";
 
 type RequiredField =
   | "branch"
   | "inviteName"
   | "inviteEmail"
+  | "phone"
   | "feeAmount"
   | "currency"
   | "specializations"
@@ -55,6 +60,8 @@ export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null 
 
 export default function InviteDoctorForm() {
   const router = useRouter();
+  const { can } = useAuth();
+  const canManage = can("doctors:manage");
 
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [inviteName, setInviteName] = useState("");
@@ -97,7 +104,7 @@ export default function InviteDoctorForm() {
       const res = await doctorInvitesApi.uploadCertificate(file);
       setCertificate(res.certificate_url);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Certificate upload failed");
+      setError(getErrorMessage(err, "Certificate upload failed"));
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -115,6 +122,10 @@ export default function InviteDoctorForm() {
   };
 
   const createInvite = async () => {
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setSubmitted(true);
     const amount = Number(feeAmount);
     if (
@@ -130,11 +141,16 @@ export default function InviteDoctorForm() {
       setError("Please fill in all required fields.");
       return;
     }
+    if (phone.trim() !== "" && !isValidPhone(phone)) {
+      setError(PHONE_VALIDATION_MESSAGE);
+      return;
+    }
     const slotError = validateSlotTemplates(slots);
     if (slotError) {
       setError(slotError);
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -152,13 +168,24 @@ export default function InviteDoctorForm() {
         slot_type: slotType,
         slot_template: slots,
       });
+      toast.success("Doctor invite sent successfully.");
       router.push("/doctors");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Invite creation failed");
+      const message = getErrorMessage(err, "Unable to send invite. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   };
+
+  if (!canManage) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        You do not have permission to invite doctors.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -229,7 +256,12 @@ export default function InviteDoctorForm() {
               )}
             </Field>
             <Field label="Phone">
-              <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+              <PhoneNumberField
+                value={phone}
+                onChange={setPhone}
+                onBlur={() => touch("phone")}
+                error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+              />
             </Field>
             <Field label="Registration no.">
               <input type="text" value={regNo} disabled className={inputClass} />

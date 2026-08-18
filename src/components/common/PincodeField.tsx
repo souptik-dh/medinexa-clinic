@@ -34,8 +34,10 @@ export default function PincodeField({
   useEffect(() => {
     if (autoValidate && value && value.trim().length === 6) {
       lookup(value.trim());
+    } else {
+      clear();
     }
-  }, [autoValidate, value, lookup]);
+  }, [autoValidate, value, lookup, clear]);
 
   return (
     <div>
@@ -45,7 +47,6 @@ export default function PincodeField({
           value={value}
           onChange={(e) => {
             onChange(e.target.value);
-            clear();
           }}
           onBlur={onBlur}
           disabled={disabled}
@@ -69,7 +70,7 @@ export default function PincodeField({
         <div className="mt-2 max-h-40 overflow-auto rounded-md border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
           {results.map((po) => (
             <button
-              key={po.Name + po.BranchType}
+              key={po.Name + po.BranchType + po.District}
               onClick={() => {
                 onSelect(po);
                 clear();

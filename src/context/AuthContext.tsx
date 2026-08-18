@@ -70,7 +70,7 @@ interface AuthContextValue {
     phone?: string;
     password: string;
     clinicName?: string;
-  }) => Promise<{ verified: boolean; message: string }>;
+  }) => Promise<{ verified: boolean; message: string; clinicId?: string }>;
   staffLogin: (email: string) => Promise<void>;
   verifyStaffOtp: (email: string, otp: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -113,7 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const scheduleNextCheck = () => {
       const expiryMs = getAccessTokenExpiryMs();
-      const delay = expiryMs !== null ? Math.max(expiryMs - Date.now(), 0) : 0;
+      const delay = expiryMs !== null
+        ? Math.max(expiryMs - Date.now(), 0)
+        : 5 * 60 * 1000; // Default 5 min when token has no exp claim
       timer = setTimeout(async () => {
         if (cancelled) return;
         const active = await ensureActiveSession();
@@ -209,13 +211,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.access_token && res.refresh_token) {
           setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
           persist(res.user, res.clinic);
-          return { verified: true, message: res.message ?? "Account created." };
+          return { verified: true, message: res.message ?? "Account created.", clinicId: res.clinic?.id };
         }
         return {
           verified: false,
           message:
             res.message ??
             "Registration successful. Check your email to verify your account before logging in.",
+          clinicId: res.clinic?.id,
         };
       } catch (err) {
         if (err instanceof ApiError) {

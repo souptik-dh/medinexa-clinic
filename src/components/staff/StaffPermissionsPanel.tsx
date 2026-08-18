@@ -1,14 +1,16 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import Checkbox from "@/components/form/input/Checkbox";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError, StaffMember, staffApi } from "@/lib/api";
+import { StaffMember, staffApi } from "@/lib/api";
 import {
   BRANCH_STAFF_PERMISSION_MODULES,
   BRANCH_STAFF_PERMISSION_META,
   BranchStaffPermission,
 } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 export default function StaffPermissionsPanel() {
   const router = useRouter();
@@ -45,7 +47,7 @@ export default function StaffPermissionsPanel() {
       }
       setPermValues(permRes.permissions as BranchStaffPermission[]);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load permissions");
+      setError(getErrorMessage(err, "Failed to load permissions"));
     } finally {
       setLoading(false);
     }
@@ -62,13 +64,20 @@ export default function StaffPermissionsPanel() {
   };
 
   const save = async () => {
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await staffApi.setPermissions(branchId, staffId, permValues);
+      toast.success("Permissions updated successfully.");
       router.push("/staff");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
+      const message = getErrorMessage(err, "Unable to update permissions. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

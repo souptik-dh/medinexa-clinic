@@ -39,10 +39,12 @@ export default function SpecializationPicker({
   const atMax = value.length >= max;
 
   useEffect(() => {
+    let wasOpen = open;
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        onBlur?.();
+        if (wasOpen) onBlur?.();
+        wasOpen = false;
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -105,6 +107,7 @@ export default function SpecializationPicker({
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (disabled) return;
     if (e.key === "Enter") {
       e.preventDefault();
       if (matches.length > 0) {

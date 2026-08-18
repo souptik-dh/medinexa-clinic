@@ -4,10 +4,13 @@ import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
-import { ApiError, TradeLicenseValidationStatus, clinicsApi } from "@/lib/api";
+import { TradeLicenseValidationStatus, clinicsApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
+import { getErrorMessage } from "@/lib/errorMessage";
+import { useAuth } from "@/context/AuthContext";
+import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
 
 interface ClinicFormProps {
   mode: "create" | "edit";
@@ -27,6 +30,11 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const isEdit = mode === "edit";
+
+  const { user } = useAuth();
+  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  const canSubmit = isAdmin || (isEdit ? canUpdateClinic(userPermissions) : canCreateClinic(userPermissions));
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -78,10 +86,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         }
       })
       .catch((err) => {
-        if (active)
-          setError(
-            err instanceof ApiError ? err.message : "Failed to load clinic"
-          );
+        if (active) setError(getErrorMessage(err, "Failed to load clinic"));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -116,9 +121,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
     } catch (err) {
       setTradeLicenseValidationStatus("PENDING");
       setTradeLicenseMessage(
-        err instanceof ApiError
-          ? err.message
-          : "Unable to validate Trade License Number at this time. Please try again."
+        getErrorMessage(err, "Unable to validate Trade License Number at this time. Please try again.")
       );
     } finally {
       setValidating(false);
@@ -133,6 +136,10 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
   };
 
   const submit = async () => {
+    if (!canSubmit) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setSubmitted(true);
     if (
       !name.trim() ||
@@ -150,6 +157,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
       setError("Validate the Trade License Number before creating the clinic.");
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -169,16 +177,28 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
       };
       if (isEdit) {
         await clinicsApi.update(clinicId, input);
+        toast.success("Clinic updated successfully.");
       } else {
         await clinicsApi.create(input);
+        toast.success("Clinic created successfully.");
       }
       router.push("/clinics");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
+      const message = getErrorMessage(err, "Unable to save clinic. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   };
+
+  if (!canSubmit) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        You do not have permission to {isEdit ? "edit" : "create"} clinics.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

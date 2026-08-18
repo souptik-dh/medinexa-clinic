@@ -1,8 +1,8 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError,
   BranchDoctor,
   BranchOperatingDay,
   DoctorAssignmentException,
@@ -17,6 +17,7 @@ import SlotWeekEditor from "@/components/doctors/SlotWeekEditor";
 import DatePicker from "@/components/form/date-picker";
 import { formatDate, today } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 function formatDateOnly(d: Date): string {
   const y = d.getFullYear();
@@ -44,11 +45,12 @@ export default function DoctorAssignmentEditPanel() {
   const params = useParams<{ branchId?: string; doctorId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
   const doctorId = typeof params.doctorId === "string" ? params.doctorId : "";
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   // A doctor editing their own assignment may only change slot_type/slot_template/
   // certificate — the backend rejects fee_amount from a doctor with 403
   // FEE_OWNER_CONTROLLED, so it must never be included in that role's PATCH body.
   const isDoctorSelf = user?.role === "doctor";
+  const canManage = isDoctorSelf || can("doctors:manage");
 
   const [doctor, setDoctor] = useState<BranchDoctor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +102,7 @@ export default function DoctorAssignmentEditPanel() {
         setSlotsDirty(false);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load doctor");
+      setError(getErrorMessage(err, "Failed to load doctor"));
     } finally {
       setLoading(false);
     }
@@ -126,7 +128,7 @@ export default function DoctorAssignmentEditPanel() {
       setExceptions(res.items);
     } catch (err) {
       setExceptions([]);
-      setExceptionsError(err instanceof ApiError ? err.message : "Failed to load leave dates");
+      setExceptionsError(getErrorMessage(err, "Failed to load leave dates"));
     } finally {
       setExceptionsLoading(false);
     }
@@ -157,8 +159,11 @@ export default function DoctorAssignmentEditPanel() {
       });
       setNewExceptionReason("");
       await loadExceptions(doctor.assignment_id);
+      toast.success("Leave date(s) added successfully.");
     } catch (err) {
-      setExceptionsError(err instanceof ApiError ? err.message : "Could not add leave date(s)");
+      const message = getErrorMessage(err, "Could not add leave date(s)");
+      setExceptionsError(message);
+      toast.error(message);
     } finally {
       setExceptionBusy(false);
     }
@@ -171,8 +176,11 @@ export default function DoctorAssignmentEditPanel() {
     try {
       await doctorsApi.removeException(doctor.assignment_id, exception.id);
       await loadExceptions(doctor.assignment_id);
+      toast.success("Leave date removed successfully.");
     } catch (err) {
-      setExceptionsError(err instanceof ApiError ? err.message : "Could not remove leave date");
+      const message = getErrorMessage(err, "Could not remove leave date");
+      setExceptionsError(message);
+      toast.error(message);
     } finally {
       setExceptionBusy(false);
     }
@@ -192,7 +200,7 @@ export default function DoctorAssignmentEditPanel() {
       const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
       setCertificate(res.certificate_url);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Certificate upload failed");
+      setError(getErrorMessage(err, "Certificate upload failed"));
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -201,6 +209,10 @@ export default function DoctorAssignmentEditPanel() {
 
   const save = async () => {
     if (!doctor) return;
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     const amount = Number(fee);
     if (!isDoctorSelf && (!amount || amount <= 0)) {
       setError("Enter a valid fee amount greater than 0.");
@@ -213,6 +225,7 @@ export default function DoctorAssignmentEditPanel() {
         return;
       }
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -222,13 +235,24 @@ export default function DoctorAssignmentEditPanel() {
         slot_type: slotType,
         ...(slotsDirty ? { slot_template: slots } : {}),
       });
+      toast.success("Assignment updated successfully.");
       router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Update failed");
+      const message = getErrorMessage(err, "Unable to update assignment. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   };
+
+  if (!canManage) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        You do not have permission to edit doctor assignments.
+      </div>
+    );
+  }
 
   if (loading) {
     return (

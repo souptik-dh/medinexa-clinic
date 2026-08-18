@@ -1,11 +1,15 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
-import { ApiError, DoctorProfile, doctorsApi } from "@/lib/api";
+import toast from "react-hot-toast";
+import { DoctorProfile, doctorsApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass } from "@/components/form/fieldStyles";
+import PhoneNumberField from "@/components/form/input/PhoneNumberField";
+import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
+import { getErrorMessage } from "@/lib/errorMessage";
 
-type RequiredField = "name";
+type RequiredField = "name" | "phone";
 
 export default function DoctorProfileForm() {
   const [name, setName] = useState("");
@@ -28,7 +32,7 @@ export default function DoctorProfileForm() {
       setRegNo(p.reg_no ?? "");
       setBio(p.bio ?? "");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load doctor profile");
+      setError(getErrorMessage(err, "Failed to load doctor profile"));
     } finally {
       setLoading(false);
     }
@@ -44,6 +48,11 @@ export default function DoctorProfileForm() {
       setError("Please fill in all required fields.");
       return;
     }
+    if (phone.trim() !== "" && !isValidPhone(phone)) {
+      setError(PHONE_VALIDATION_MESSAGE);
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     setError(null);
     setOk(null);
@@ -55,8 +64,11 @@ export default function DoctorProfileForm() {
         bio: bio || null,
       });
       setOk("Profile updated.");
+      toast.success("Profile updated successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Update failed");
+      const message = getErrorMessage(err, "Unable to update profile. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -104,11 +116,11 @@ export default function DoctorProfileForm() {
               />
             </Field>
             <Field label="Phone">
-              <input
-                type="text"
+              <PhoneNumberField
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={inputClass}
+                onChange={setPhone}
+                onBlur={() => touch("phone")}
+                error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
               />
             </Field>
           </div>

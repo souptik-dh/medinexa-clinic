@@ -1,9 +1,11 @@
 "use client";
 import React, { useRef, useState } from "react";
 import Image from "next/image";
-import { ApiError, branchesApi } from "@/lib/api";
+import toast from "react-hot-toast";
+import { branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateBranch } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 interface BranchPhotoPanelProps {
   branchId: string;
@@ -30,14 +32,21 @@ export default function BranchPhotoPanel({
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!canUpload) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
 
     setUploading(true);
     setError(null);
     try {
       const res = await branchesApi.uploadPhoto(branchId, file);
       onPhotoUpdated(res.photo_url);
+      toast.success("Branch photo updated successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Photo upload failed");
+      const message = getErrorMessage(err, "Photo upload failed");
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

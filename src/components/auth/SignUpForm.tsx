@@ -1,4 +1,5 @@
 "use client";
+import toast from "react-hot-toast";
 import Checkbox from "@/components/form/input/Checkbox";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -8,12 +9,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { markAutoBranchPending } from "@/lib/autoCreateBranch";
+import { PHONE_VALIDATION_MESSAGE, isValidPhone, sanitizePhoneDigits } from "@/lib/phone";
+import { getErrorMessage } from "@/lib/errorMessage";
 
-type RequiredField = "firstName" | "lastName" | "email" | "password";
+type RequiredField = "firstName" | "lastName" | "email" | "phone" | "password";
 
 export default function SignUpForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
+  const [autoCreateBranch, setAutoCreateBranch] = useState(true);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -36,6 +41,11 @@ export default function SignUpForm() {
       setError("Please fill in all required fields.");
       return;
     }
+    if (phone.trim() !== "" && !isValidPhone(phone)) {
+      setError(PHONE_VALIDATION_MESSAGE);
+      return;
+    }
+    if (submitting) return;
     setSubmitting(true);
     try {
       const result = await register({
@@ -43,15 +53,23 @@ export default function SignUpForm() {
         email,
         phone: phone || undefined,
         password,
-        clinicName: clinicName || undefined,
+        // The backend requires clinicName as a string — default it client-side
+        // to match this field's own "Defaults to your name if left blank" copy.
+        clinicName: clinicName || name,
       });
+      if (autoCreateBranch && result.clinicId) {
+        markAutoBranchPending(result.clinicId);
+      }
+      toast.success(result.verified ? "Account created successfully." : result.message);
       if (result.verified) {
         router.push("/dashboard");
       } else {
         setPendingMessage(result.message);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create account");
+      const message = getErrorMessage(err, "Unable to create account");
+      setError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -161,12 +179,21 @@ export default function SignUpForm() {
               <div>
                 <Label>Phone</Label>
                 <Input
-                  type="text"
+                  type="tel"
                   id="phone"
                   name="phone"
-                  placeholder="+91..."
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="10-digit mobile number"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                  onBlur={() => touch("phone")}
+                  error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                  hint={
+                    showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                      ? PHONE_VALIDATION_MESSAGE
+                      : undefined
+                  }
                 />
               </div>
               <div>
@@ -198,6 +225,17 @@ export default function SignUpForm() {
                 {showError("password", !password.trim()) && (
                   <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
                 )}
+              </div>
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  className="w-5 h-5 mt-0.5"
+                  checked={autoCreateBranch}
+                  onChange={setAutoCreateBranch}
+                />
+                <p className="inline-block font-normal text-gray-500 dark:text-gray-400">
+                  Automatically create my first branch as soon as my clinic has a
+                  trade license number on file.
+                </p>
               </div>
               <div className="flex items-center gap-3">
                 <Checkbox

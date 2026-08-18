@@ -1,11 +1,13 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, BranchGalleryImage, branchesApi } from "@/lib/api";
+import toast from "react-hot-toast";
+import { BranchGalleryImage, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import {
   canUpdateBranch,
   canDeleteBranch,
 } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 interface BranchGalleryPanelProps {
   branchId: string;
@@ -34,7 +36,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       const res = await branchesApi.listGallery(branchId);
       setImages(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load gallery");
+      setError(getErrorMessage(err, "Failed to load gallery"));
       setImages([]);
     } finally {
       setLoading(false);
@@ -48,6 +50,10 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!canUpload) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -57,22 +63,32 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+      toast.success("Image uploaded successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Upload failed");
+      const message = getErrorMessage(err, "Upload failed");
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
     }
   };
 
   const deleteImage = async (imageId: string) => {
+    if (!canDelete) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     if (!window.confirm("Delete this image?")) return;
     setDeleting(imageId);
     setError(null);
     try {
       await branchesApi.removeGalleryImage(branchId, imageId);
       await loadGallery();
+      toast.success("Image deleted successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      const message = getErrorMessage(err, "Unable to delete image. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setDeleting(null);
     }

@@ -1,8 +1,8 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError,
   BranchClosure,
   BranchOperatingDay,
   branchScheduleApi,
@@ -12,6 +12,7 @@ import { canAccessBranchSettings } from "@/lib/permissions";
 import DatePicker from "@/components/form/date-picker";
 import { formatDate, today } from "@/lib/utils";
 import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -51,7 +52,7 @@ export default function BranchSchedulePanel() {
       const res = await branchScheduleApi.get(branchId);
       setOperatingDays(res.operating_days);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load branch schedule");
+      setError(getErrorMessage(err, "Failed to load branch schedule"));
     } finally {
       setLoading(false);
     }
@@ -66,7 +67,7 @@ export default function BranchSchedulePanel() {
       setClosures(res.items);
     } catch (err) {
       setClosures([]);
-      setClosuresError(err instanceof ApiError ? err.message : "Failed to load closures");
+      setClosuresError(getErrorMessage(err, "Failed to load closures"));
     } finally {
       setClosuresLoading(false);
     }
@@ -87,15 +88,18 @@ export default function BranchSchedulePanel() {
         { weekday, is_open: !current },
       ]);
       setOperatingDays(res.operating_days);
+      toast.success("Schedule updated successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not update that day");
+      const message = getErrorMessage(err, "Could not update that day");
+      setError(message);
+      toast.error(message);
     } finally {
       setDayBusy(false);
     }
   };
 
   const addClosure = async () => {
-    if (!branchId) return;
+    if (!branchId || !canEdit) return;
     if (closureMode === "single" && !singleDate) return;
     if (closureMode === "range" && (!rangeFrom || !rangeTo || rangeTo < rangeFrom)) return;
     setClosureBusy(true);
@@ -108,21 +112,28 @@ export default function BranchSchedulePanel() {
       });
       setReason("");
       await loadClosures();
+      toast.success("Closure added successfully.");
     } catch (err) {
-      setClosuresError(err instanceof ApiError ? err.message : "Could not add closure");
+      const message = getErrorMessage(err, "Could not add closure");
+      setClosuresError(message);
+      toast.error(message);
     } finally {
       setClosureBusy(false);
     }
   };
 
   const removeClosure = async (closure: BranchClosure) => {
+    if (!canEdit) return;
     setClosureBusy(true);
     setClosuresError(null);
     try {
       await branchScheduleApi.removeClosure(branchId, closure.id);
       await loadClosures();
+      toast.success("Closure removed successfully.");
     } catch (err) {
-      setClosuresError(err instanceof ApiError ? err.message : "Could not remove closure");
+      const message = getErrorMessage(err, "Could not remove closure");
+      setClosuresError(message);
+      toast.error(message);
     } finally {
       setClosureBusy(false);
     }
