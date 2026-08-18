@@ -124,14 +124,16 @@ export default function ClinicsPanel() {
     ) {
       return;
     }
-    clearAutoBranchPending(selected.id);
     autoCreateBranchForClinic(selected, branches, user?.phone)
       .then(() => {
+        clearAutoBranchPending(selected.id);
         toast.success("Your first branch was created automatically.");
         loadBranches(selected.id);
       })
       .catch((err) => {
-        setError(getErrorMessage(err, "Auto-create failed"));
+        const message = getErrorMessage(err, "Auto-create failed");
+        setError(message);
+        toast.error(message);
       });
   }, [selected, branches, branchesLoading, user?.phone, loadBranches]);
 

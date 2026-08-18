@@ -223,7 +223,7 @@ export default function BranchForm({ mode }: BranchFormProps) {
         await branchesApi.create(clinicId, input);
         toast.success("Branch created successfully.");
       }
-      router.push("/branches");
+      setTimeout(() => router.push("/branches"), 150);
     } catch (err) {
       const message = getErrorMessage(err, "Unable to save branch. Please try again.");
       setError(message);

@@ -182,7 +182,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         await clinicsApi.create(input);
         toast.success("Clinic created successfully.");
       }
-      router.push("/clinics");
+      setTimeout(() => router.push("/clinics"), 150);
     } catch (err) {
       const message = getErrorMessage(err, "Unable to save clinic. Please try again.");
       setError(message);
