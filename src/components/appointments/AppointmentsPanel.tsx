@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import {
   Table,
@@ -26,6 +27,7 @@ import {
   relationshipLabel,
   today,
 } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 type Action = "confirm" | "pay" | "complete" | "cancel";
 
@@ -79,7 +81,7 @@ export default function AppointmentsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load appointments");
+      setError(getErrorMessage(err, "Failed to load appointments"));
     } finally {
       setLoading(false);
     }
@@ -101,8 +103,27 @@ export default function AppointmentsPanel() {
     openModal();
   };
 
+  const ACTION_PERMISSION: Record<Action, Parameters<typeof can>[0]> = {
+    confirm: "appointments:confirm",
+    pay: "appointments:payment",
+    complete: "appointments:complete",
+    cancel: "appointments:cancel",
+  };
+
+  const ACTION_SUCCESS_MESSAGE: Record<Action, string> = {
+    confirm: "Appointment confirmed successfully.",
+    pay: "Payment recorded successfully.",
+    complete: "Appointment marked as completed successfully.",
+    cancel: "Appointment cancelled successfully.",
+  };
+
   const runAction = async () => {
-    if (!active) return;
+    if (!active || !action) return;
+    if (!can(ACTION_PERMISSION[action])) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -125,8 +146,11 @@ export default function AppointmentsPanel() {
       }
       closeModal();
       await load();
+      toast.success(ACTION_SUCCESS_MESSAGE[action]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      const message = getErrorMessage(err, "Unable to complete this action. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -159,7 +183,7 @@ export default function AppointmentsPanel() {
       const full = await appointmentsApi.get(appt.id);
       setDetail(full);
     } catch (err) {
-      setDetailError(err instanceof ApiError ? err.message : "Failed to load appointment");
+      setDetailError(getErrorMessage(err, "Failed to load appointment"));
     } finally {
       setDetailLoading(false);
     }

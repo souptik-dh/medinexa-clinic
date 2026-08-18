@@ -4,17 +4,34 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
-import { ApiError, Clinic, clinicsApi } from "@/lib/api";
+import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import { Branch, Clinic, ClinicLicenseType, branchesApi, clinicsApi } from "@/lib/api";
 import { formatDate, formatFullAddress } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
-import { canCreateClinic, canDeleteClinic, canUpdateClinic } from "@/lib/permissions";
+import {
+  canCreateBranch,
+  canCreateClinic,
+  canDeleteClinic,
+  canUpdateClinic,
+} from "@/lib/permissions";
+import {
+  autoCreateBranchForClinic,
+  clearAutoBranchPending,
+  isAutoBranchPending,
+} from "@/lib/autoCreateBranch";
 
 export default function ClinicsPanel() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Clinic | null>(null);
+  const [selectedLoading, setSelectedLoading] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clinicToDelete, setClinicToDelete] = useState<Clinic | null>(null);
 
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
@@ -23,6 +40,7 @@ export default function ClinicsPanel() {
   const canCreate = isAdmin || canCreateClinic(userPermissions);
   const canDelete = isAdmin || canDeleteClinic(userPermissions);
   const canUpdate = isAdmin || canUpdateClinic(userPermissions);
+  const canCreateBranchForClinic = isAdmin || canCreateBranch(userPermissions);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -30,9 +48,9 @@ export default function ClinicsPanel() {
     try {
       const res = await clinicsApi.list({ limit: 50 });
       setClinics(res.items);
-      setSelected((prev) => prev ?? res.items[0] ?? null);
+      setSelectedId((prev) => prev ?? res.items[0]?.id ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load clinics");
+      setError(getErrorMessage(err, "Failed to load clinics"));
     } finally {
       setLoading(false);
     }
@@ -42,11 +60,80 @@ export default function ClinicsPanel() {
     if (isAdmin) load();
   }, [isAdmin, load]);
 
+  // GET /clinics only returns a lean projection (no trade_license_url, no address
+  // fields) — the full record must be fetched per-clinic once one is selected.
+  useEffect(() => {
+    if (!selectedId) {
+      setSelected(null);
+      return;
+    }
+    let active = true;
+    setSelectedLoading(true);
+    clinicsApi
+      .get(selectedId)
+      .then((c) => {
+        if (active) setSelected(c);
+      })
+      .catch((err) => {
+        if (active) setError(getErrorMessage(err, "Failed to load clinic details"));
+      })
+      .finally(() => {
+        if (active) setSelectedLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedId]);
+
+  const loadBranches = useCallback(async (clinicId: string) => {
+    setBranchesLoading(true);
+    try {
+      const res = await branchesApi.list(clinicId);
+      setBranches(res.items);
+    } catch {
+      setBranches([]);
+    } finally {
+      setBranchesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedId) {
+      loadBranches(selectedId);
+    } else {
+      setBranches([]);
+    }
+  }, [selectedId, loadBranches]);
+
   useEffect(() => {
     if (selected && !selected.trade_license_url) {
       toast("Trade license: No document uploaded.", { icon: "⚠️" });
     }
   }, [selected]);
+
+  // Consumes the "auto-create my first branch" preference set at sign-up: that
+  // clinic had no trade license yet then, so the branch couldn't be created until
+  // now — once the clinic has one and still has no branches, create it here.
+  useEffect(() => {
+    if (
+      !selected ||
+      branchesLoading ||
+      branches.length > 0 ||
+      !selected.trade_license_number ||
+      !isAutoBranchPending(selected.id)
+    ) {
+      return;
+    }
+    clearAutoBranchPending(selected.id);
+    autoCreateBranchForClinic(selected, branches, user?.phone)
+      .then(() => {
+        toast.success("Your first branch was created automatically.");
+        loadBranches(selected.id);
+      })
+      .catch((err) => {
+        setError(getErrorMessage(err, "Auto-create failed"));
+      });
+  }, [selected, branches, branchesLoading, user?.phone, loadBranches]);
 
   if (!isAdmin) {
     return (
@@ -56,17 +143,54 @@ export default function ClinicsPanel() {
     );
   }
 
-  const removeClinic = async (clinic: Clinic) => {
-    if (!window.confirm(`Delete clinic "${clinic.name}"? Active appointments must be handled first.`)) return;
+  const LICENSE_URL_FIELD: Record<ClinicLicenseType, keyof Clinic> = {
+    "trade-license": "trade_license_url",
+    "drug-license": "drug_license_url",
+    "clinical-establishment-registration": "clinical_establishment_reg_url",
+  };
+
+  const handleLicenseUpdated = (type: ClinicLicenseType, url: string) => {
+    const field = LICENSE_URL_FIELD[type];
+    setSelected((prev) => (prev ? { ...prev, [field]: url } : prev));
+  };
+
+  const autoCreateBranch = async () => {
+    if (!selected) return;
+    if (!canCreateBranchForClinic) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await clinicsApi.remove(clinic.id, true);
-      await load();
+      await autoCreateBranchForClinic(selected, branches, user?.phone);
+      toast.success("Branch created automatically.");
+      await loadBranches(selected.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Delete failed");
+      const message = getErrorMessage(err, "Auto-create failed");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const confirmDeleteClinic = async () => {
+    const clinic = clinicToDelete;
+    if (!clinic) return;
+    if (!canDelete) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
+    setError(null);
+    try {
+      await clinicsApi.remove(clinic.id, true);
+      if (selectedId === clinic.id) setSelectedId(null);
+      await load();
+      toast.success("Clinic deleted successfully.");
+      setClinicToDelete(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Unable to delete clinic. Please try again."));
     }
   };
 
@@ -105,9 +229,9 @@ export default function ClinicsPanel() {
               {clinics.map((c) => (
                 <li key={c.id}>
                   <button
-                    onClick={() => setSelected(c)}
+                    onClick={() => setSelectedId(c.id)}
                     className={`w-full rounded-xl border p-4 text-left transition ${
-                      selected?.id === c.id
+                      selectedId === c.id
                         ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10"
                         : "border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700"
                     }`}
@@ -143,6 +267,23 @@ export default function ClinicsPanel() {
               )}
             </h3>
             <div className="flex items-center gap-2">
+              {canCreateBranchForClinic &&
+                selected &&
+                !branchesLoading &&
+                branches.length <= 1 && (
+                  <button
+                    onClick={autoCreateBranch}
+                    disabled={busy}
+                    title={
+                      branches.length === 1
+                        ? "Create a second branch by duplicating this clinic's existing branch"
+                        : "Create a branch automatically using this clinic's own details"
+                    }
+                    className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                  >
+                    {busy ? "Creating…" : "Auto-create branch"}
+                  </button>
+                )}
               {canUpdate && selected && (
                 <Link
                   href={`/clinics/${selected.id}/edit`}
@@ -153,7 +294,7 @@ export default function ClinicsPanel() {
               )}
               {canDelete && (
                 <button
-                  onClick={() => selected && removeClinic(selected)}
+                  onClick={() => selected && setClinicToDelete(selected)}
                   disabled={busy || !selected}
                   className="rounded-lg border border-error-500/40 px-4 py-2 text-sm font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                 >
@@ -162,9 +303,13 @@ export default function ClinicsPanel() {
               )}
             </div>
           </div>
-          {!selected ? (
+          {!selectedId ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               Select a clinic to view its details.
+            </p>
+          ) : selectedLoading || !selected ? (
+            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              Loading…
             </p>
           ) : (
             <div className="space-y-3 text-sm">
@@ -196,9 +341,27 @@ export default function ClinicsPanel() {
       {/* Clinic licenses */}
       {selected && (
         <div className="mt-6">
-          <ClinicLicensesPanel clinicId={selected.id} clinicName={selected.name} />
+          <ClinicLicensesPanel
+            clinicId={selected.id}
+            clinicName={selected.name}
+            onLicenseUpdated={handleLicenseUpdated}
+          />
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={clinicToDelete !== null}
+        onClose={() => setClinicToDelete(null)}
+        onConfirm={confirmDeleteClinic}
+        title={clinicToDelete ? `Clinic "${clinicToDelete.name}"` : ""}
+        description="This clinic and its records will be permanently removed."
+        impactItems={[
+          "All branches under this clinic",
+          "All doctors and staff assigned to those branches",
+          "Any active appointments (they'll be cancelled automatically)",
+        ]}
+        confirmLabel="Delete clinic"
+      />
     </div>
   );
 }

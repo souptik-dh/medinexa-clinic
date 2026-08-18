@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   Table,
@@ -12,9 +13,10 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
-import { ApiError, StaffMember, staffApi } from "@/lib/api";
+import { StaffMember, staffApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 export default function StaffPanel() {
   const router = useRouter();
@@ -43,7 +45,7 @@ export default function StaffPanel() {
       setItems(res.items);
     } catch (err) {
       setItems([]);
-      setError(err instanceof ApiError ? err.message : "Failed to load staff");
+      setError(getErrorMessage(err, "Failed to load staff"));
     } finally {
       setLoading(false);
     }
@@ -63,14 +65,21 @@ export default function StaffPanel() {
 
   const create = async () => {
     if (!branch) return;
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await staffApi.create(branch.id, { name, email });
       closeModal();
       await load(branch);
+      toast.success("Staff member added successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Add staff failed");
+      const message = getErrorMessage(err, "Unable to add staff member. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -78,14 +87,21 @@ export default function StaffPanel() {
 
   const remove = async (member: StaffMember) => {
     if (!branch) return;
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     if (!window.confirm(`Remove "${member.name}" from staff?`)) return;
     setBusy(true);
     setError(null);
     try {
       await staffApi.remove(branch.id, member.id);
       await load(branch);
+      toast.success("Staff member removed successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Remove failed");
+      const message = getErrorMessage(err, "Unable to remove staff member. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }

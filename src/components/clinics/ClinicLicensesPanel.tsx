@@ -1,12 +1,15 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, Clinic, ClinicLicenseType, clinicsApi } from "@/lib/api";
+import toast from "react-hot-toast";
+import { Clinic, ClinicLicenseType, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateClinic } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 interface ClinicLicensesPanelProps {
   clinicId: string;
   clinicName: string;
+  onLicenseUpdated?: (type: ClinicLicenseType, url: string) => void;
 }
 
 interface LicenseDef {
@@ -41,7 +44,11 @@ const LICENSE_DEFS: LicenseDef[] = [
   },
 ];
 
-export default function ClinicLicensesPanel({ clinicId, clinicName }: ClinicLicensesPanelProps) {
+export default function ClinicLicensesPanel({
+  clinicId,
+  clinicName,
+  onLicenseUpdated,
+}: ClinicLicensesPanelProps) {
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingType, setUploadingType] = useState<ClinicLicenseType | null>(null);
@@ -65,7 +72,7 @@ export default function ClinicLicensesPanel({ clinicId, clinicName }: ClinicLice
       const c = await clinicsApi.get(clinicId);
       setClinic(c);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load licenses");
+      setError(getErrorMessage(err, "Failed to load licenses"));
     } finally {
       setLoading(false);
     }
@@ -81,15 +88,23 @@ export default function ClinicLicensesPanel({ clinicId, clinicName }: ClinicLice
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!canUpload) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setUploadingType(type);
     setError(null);
     setOk(null);
     try {
-      await clinicsApi.uploadLicense(clinicId, type, file);
+      const res = await clinicsApi.uploadLicense(clinicId, type, file);
       await load();
+      onLicenseUpdated?.(res.type, res.url);
       setOk("Document uploaded.");
+      toast.success("Document uploaded successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Upload failed");
+      const message = getErrorMessage(err, "Upload failed");
+      setError(message);
+      toast.error(message);
     } finally {
       setUploadingType(null);
       const ref = fileRefs.current[type];

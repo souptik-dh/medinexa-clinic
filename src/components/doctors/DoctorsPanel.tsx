@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useState } from "react";
 import Image from "next/image";
+import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
@@ -11,10 +12,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
+import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
 import {
-  ApiError,
   BranchDoctor,
   DoctorInvite,
   DoctorSearchResult,
@@ -27,6 +28,7 @@ import {
   inviteStatusColor,
   inviteStatusLabel,
 } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorMessage";
 import Link from "next/link";
 
 type Tab = "doctors" | "invites" | "search";
@@ -53,6 +55,7 @@ export default function DoctorsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [doctorToRemove, setDoctorToRemove] = useState<BranchDoctor | null>(null);
 
   // doctor directory search (GET /doctors/search)
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,7 +96,7 @@ export default function DoctorsPanel() {
       } catch (err) {
         setDoctors([]);
         setInvites([]);
-        setError(err instanceof ApiError ? err.message : "Failed to load doctors");
+        setError(getErrorMessage(err, "Failed to load doctors"));
       } finally {
         setLoading(false);
       }
@@ -122,37 +125,48 @@ export default function DoctorsPanel() {
       setHasSearched(true);
     } catch (err) {
       setSearchResults([]);
-      setSearchError(err instanceof ApiError ? err.message : "Search failed");
+      setSearchError(getErrorMessage(err, "Search failed"));
     } finally {
       setSearchLoading(false);
     }
   };
 
   const revokeInvite = async (invite: DoctorInvite) => {
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     if (!window.confirm(`Revoke the invite for ${invite.email}?`)) return;
     setBusy(true);
     setError(null);
     try {
       await doctorInvitesApi.revoke(invite.id);
       if (branch) await load(branch, "invites");
+      toast.success("Invite revoked successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Revoke failed");
+      const message = getErrorMessage(err, "Unable to revoke invite. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   };
 
-  const removeDoctor = async (doc: BranchDoctor) => {
-    if (!window.confirm(`Remove ${doc.name} from this branch?`)) return;
-    setBusy(true);
+  const confirmRemoveDoctor = async () => {
+    const doc = doctorToRemove;
+    if (!doc) return;
+    if (!canManage) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setError(null);
     try {
       await doctorsApi.removeAssignment(doc.assignment_id);
       if (branch) await load(branch, "doctors");
+      toast.success("Doctor removed from branch successfully.");
+      setDoctorToRemove(null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Remove failed");
-    } finally {
-      setBusy(false);
+      toast.error(getErrorMessage(err, "Unable to remove doctor. Please try again."));
     }
   };
 
@@ -179,8 +193,11 @@ export default function DoctorsPanel() {
           d.id === photoDoctor.id ? { ...d, photo_url: res.photo_url } : d
         )
       );
+      toast.success("Doctor photo updated successfully.");
     } catch (err) {
-      setPhotoError(err instanceof ApiError ? err.message : "Photo upload failed");
+      const message = getErrorMessage(err, "Photo upload failed");
+      setPhotoError(message);
+      toast.error(message);
     } finally {
       setPhotoBusy(false);
     }
@@ -452,7 +469,7 @@ export default function DoctorsPanel() {
                           )}
                           {canManage && (
                             <button
-                              onClick={() => removeDoctor(doc)}
+                              onClick={() => setDoctorToRemove(doc)}
                               disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
@@ -599,6 +616,16 @@ export default function DoctorsPanel() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDeleteModal
+        isOpen={doctorToRemove !== null}
+        onClose={() => setDoctorToRemove(null)}
+        onConfirm={confirmRemoveDoctor}
+        title={doctorToRemove ? `Remove ${doctorToRemove.name} from this branch?` : ""}
+        description="This does not delete the doctor's account — they can be re-invited later."
+        impactItems={["The doctor's upcoming schedule at this branch"]}
+        confirmLabel="Remove doctor"
+      />
     </div>
   );
 }

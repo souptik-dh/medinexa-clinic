@@ -7,6 +7,12 @@ import { ApiError, TradeLicenseValidationStatus, branchesApi, clinicsApi } from 
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass } from "@/components/form/fieldStyles";
+import PhoneNumberField from "@/components/form/input/PhoneNumberField";
+import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
+import { getErrorMessage } from "@/lib/errorMessage";
+import toast from "react-hot-toast";
+import { useAuth } from "@/context/AuthContext";
+import { canCreateBranch, canUpdateBranch } from "@/lib/permissions";
 
 interface BranchFormProps {
   mode: "create" | "edit";
@@ -29,6 +35,11 @@ export default function BranchForm({ mode }: BranchFormProps) {
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
   const isEdit = mode === "edit";
+
+  const { user } = useAuth();
+  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  const canSubmit = isAdmin || (isEdit ? canUpdateBranch(userPermissions) : canCreateBranch(userPermissions));
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -157,11 +168,14 @@ export default function BranchForm({ mode }: BranchFormProps) {
   };
 
   const submit = async () => {
+    if (!canSubmit) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setSubmitted(true);
     if (
       !name.trim() ||
       !address.trim() ||
-      !phone.trim() ||
       !city.trim() ||
       !district.trim() ||
       !stateField.trim() ||
@@ -172,10 +186,15 @@ export default function BranchForm({ mode }: BranchFormProps) {
       setError("Please fill in all required fields.");
       return;
     }
+    if (!isValidPhone(phone)) {
+      setError(PHONE_VALIDATION_MESSAGE);
+      return;
+    }
     if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
       setError("Validate the Trade License Number before creating the branch.");
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -199,16 +218,28 @@ export default function BranchForm({ mode }: BranchFormProps) {
       };
       if (isEdit) {
         await branchesApi.update(branchId, input);
+        toast.success("Branch updated successfully.");
       } else {
         await branchesApi.create(clinicId, input);
+        toast.success("Branch created successfully.");
       }
       router.push("/branches");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Save failed");
+      const message = getErrorMessage(err, "Unable to save branch. Please try again.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   };
+
+  if (!canSubmit) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        You do not have permission to {isEdit ? "edit" : "create"} branches.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -251,14 +282,12 @@ export default function BranchForm({ mode }: BranchFormProps) {
                 {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
               <Field label="Phone *">
-                <input
-                  type="text"
+                <PhoneNumberField
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={setPhone}
                   onBlur={() => touch("phone")}
-                  className={getInputClass(showError("phone", !phone.trim()))}
+                  error={showError("phone", !isValidPhone(phone))}
                 />
-                {showError("phone", !phone.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
             </div>
             <Field label="Address *">

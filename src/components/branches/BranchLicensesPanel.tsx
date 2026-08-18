@@ -1,13 +1,16 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ApiError, Branch, BranchLicenseType, branchesApi } from "@/lib/api";
+import toast from "react-hot-toast";
+import { Branch, BranchLicenseType, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateBranch } from "@/lib/permissions";
+import { getErrorMessage } from "@/lib/errorMessage";
 
 interface BranchLicensesPanelProps {
   clinicId: string;
   branchId: string;
   branchName: string;
+  onLicenseUpdated?: (type: BranchLicenseType, url: string) => void;
 }
 
 interface LicenseDef {
@@ -42,7 +45,12 @@ const LICENSE_DEFS: LicenseDef[] = [
   },
 ];
 
-export default function BranchLicensesPanel({ clinicId, branchId, branchName }: BranchLicensesPanelProps) {
+export default function BranchLicensesPanel({
+  clinicId,
+  branchId,
+  branchName,
+  onLicenseUpdated,
+}: BranchLicensesPanelProps) {
   const [branch, setBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingType, setUploadingType] = useState<BranchLicenseType | null>(null);
@@ -67,7 +75,7 @@ export default function BranchLicensesPanel({ clinicId, branchId, branchName }: 
       const b = res.items.find((x) => x.id === branchId) ?? null;
       setBranch(b);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load licenses");
+      setError(getErrorMessage(err, "Failed to load licenses"));
     } finally {
       setLoading(false);
     }
@@ -83,15 +91,23 @@ export default function BranchLicensesPanel({ clinicId, branchId, branchName }: 
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!canUpload) {
+      toast.error("You do not have permission to perform this action.");
+      return;
+    }
     setUploadingType(type);
     setError(null);
     setOk(null);
     try {
-      await branchesApi.uploadLicense(branchId, type, file);
+      const res = await branchesApi.uploadLicense(branchId, type, file);
       await load();
+      onLicenseUpdated?.(res.type, res.url);
       setOk("Document uploaded.");
+      toast.success("Document uploaded successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Upload failed");
+      const message = getErrorMessage(err, "Upload failed");
+      setError(message);
+      toast.error(message);
     } finally {
       setUploadingType(null);
       const ref = fileRefs.current[type];

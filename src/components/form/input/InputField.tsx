@@ -1,7 +1,7 @@
 import React, { FC } from "react";
 
 interface InputProps {
-  type?: "text" | "number" | "email" | "password" | "date" | "time" | string;
+  type?: "text" | "number" | "email" | "password" | "date" | "time" | "tel" | string;
   id?: string;
   name?: string;
   placeholder?: string;
@@ -13,6 +13,8 @@ interface InputProps {
   min?: string;
   max?: string;
   step?: number;
+  maxLength?: number;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   disabled?: boolean;
   success?: boolean;
   error?: boolean;
@@ -33,6 +35,8 @@ const Input: FC<InputProps> = ({
   min,
   max,
   step,
+  maxLength,
+  inputMode,
   disabled = false,
   success = false,
   error = false,
@@ -67,6 +71,8 @@ const Input: FC<InputProps> = ({
         min={min}
         max={max}
         step={step}
+        maxLength={maxLength}
+        inputMode={inputMode}
         disabled={disabled}
         required={required}
         className={inputClasses}
