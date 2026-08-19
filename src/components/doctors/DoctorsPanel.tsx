@@ -53,7 +53,13 @@ export default function DoctorsPanel() {
   const initialClinicId = searchParams.get("clinic_id") ?? undefined;
   const initialBranchId = searchParams.get("branch_id") ?? undefined;
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
-  const [tab, setTab] = useState<Tab>("doctors");
+  const [tab, setTab] = useState<Tab>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("doctors-panel-tab");
+      if (saved === "doctors" || saved === "invites" || saved === "search") return saved;
+    }
+    return "doctors";
+  });
 
   const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
   const [invites, setInvites] = useState<DoctorInvite[]>([]);
@@ -116,6 +122,7 @@ export default function DoctorsPanel() {
 
   const onTabChange = (t: Tab) => {
     setTab(t);
+    sessionStorage.setItem("doctors-panel-tab", t);
     if (t !== "search") load(branch, t);
   };
 
@@ -270,6 +277,7 @@ export default function DoctorsPanel() {
           {tab === "invites" && canManage && (
             <Link
               href="/doctors/invite"
+              onClick={() => sessionStorage.setItem("compact-back-url", "/doctors")}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
               + New invite
