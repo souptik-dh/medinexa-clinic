@@ -9,16 +9,20 @@ const nextConfig: NextConfig = {
     });
     return config;
   },
-    
-    turbopack: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
+
+  turbopack: {
+    // Pin the workspace root to this project - without this, a stray
+    // package.json/package-lock.json in a parent directory (e.g. from
+    // running an npm command in the wrong folder) makes Turbopack infer
+    // the wrong root and fail to resolve dependencies like tailwindcss.
+    root: __dirname,
+    rules: {
+      "*.svg": {
+        loaders: ["@svgr/webpack"],
+        as: "*.js",
       },
     },
-  
+  },
 };
 
 export default nextConfig;

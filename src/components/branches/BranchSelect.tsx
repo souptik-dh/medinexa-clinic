@@ -15,6 +15,11 @@ interface BranchSelectProps {
   disabled?: boolean;
   error?: boolean;
   hint?: string;
+  // Pre-select a clinic (and, once its branches load, a branch) instead of
+  // defaulting to the owner's first one — used for deep links from the
+  // Clinics sidebar tree into a specific clinic/branch.
+  initialClinicId?: string;
+  initialBranchId?: string;
 }
 
 const selectClass =
@@ -30,6 +35,8 @@ export default function BranchSelect({
   disabled,
   error,
   hint,
+  initialClinicId,
+  initialBranchId,
 }: BranchSelectProps) {
   const { user, staffClinic, staffBranch } = useAuth();
 
@@ -51,6 +58,8 @@ export default function BranchSelect({
       disabled={disabled}
       error={error}
       hint={hint}
+      initialClinicId={initialClinicId}
+      initialBranchId={initialBranchId}
     />
   );
 }
@@ -115,6 +124,8 @@ function OwnerBranchPicker({
   disabled,
   error: hasRequiredError,
   hint,
+  initialClinicId,
+  initialBranchId,
 }: BranchSelectProps) {
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [clinicId, setClinicId] = useState("");
@@ -122,6 +133,9 @@ function OwnerBranchPicker({
   const [loadingClinics, setLoadingClinics] = useState(true);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Only honor the deep-linked branch on its first resolution — later clinic
+  // switches (by the user, or a re-render) should fall back to "first branch".
+  const pendingInitialBranchId = useRef(initialBranchId);
 
   useEffect(() => {
     let active = true;
@@ -131,7 +145,11 @@ function OwnerBranchPicker({
         if (!active) return;
         setClinics(res.items);
         if (res.items.length > 0) {
-          setClinicId(res.items[0].id);
+          const preferred =
+            initialClinicId && res.items.some((c) => c.id === initialClinicId)
+              ? initialClinicId
+              : res.items[0].id;
+          setClinicId(preferred);
           setLoadingBranches(true);
         }
       })
@@ -145,6 +163,7 @@ function OwnerBranchPicker({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -156,7 +175,10 @@ function OwnerBranchPicker({
         if (!active) return;
         setBranches(res.items);
         if (!value && res.items.length > 0) {
-          onChange(res.items[0]);
+          const pendingId = pendingInitialBranchId.current;
+          pendingInitialBranchId.current = undefined;
+          const preferred = pendingId ? res.items.find((b) => b.id === pendingId) : undefined;
+          onChange(preferred ?? res.items[0]);
         }
       })
       .catch(() => {
