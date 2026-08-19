@@ -17,6 +17,7 @@ import {
   LabTestCategory,
   labTestsApi,
 } from "@/lib/api";
+import ClinicTabs from "@/components/clinics/ClinicTabs";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 
@@ -78,6 +79,7 @@ export default function LabTestsPanel() {
 
   return (
     <div>
+      <ClinicTabs />
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
         <FilterField label="Status">
           <select

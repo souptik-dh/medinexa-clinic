@@ -40,6 +40,11 @@ const navItems: NavItem[] = [
     path: "/dashboard",
   },
   {
+    icon: <TableIcon />,
+    name: "Clinics",
+    path: "/clinics",
+  },
+  {
     icon: <CalenderIcon />,
     name: "Appointments",
     subItems: [
@@ -48,24 +53,9 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    icon: <BoxCubeIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
-  {
-    icon: <TableIcon />,
-    name: "Clinics",
-    path: "/clinics",
-  },
-  {
-    icon: <ListIcon />,
-    name: "Branches",
-    path: "/branches",
-  },
-  {
-    icon: <GroupIcon />,
-    name: "Staff",
-    path: "/staff",
+    icon: <PageIcon />,
+    name: "Patients",
+    path: "/patients",
   },
   {
     icon: <UserIcon />,
@@ -73,9 +63,24 @@ const navItems: NavItem[] = [
     path: "/doctors",
   },
   {
-    icon: <PageIcon />,
-    name: "Patients",
-    path: "/patients",
+    icon: <GroupIcon />,
+    name: "Staff",
+    path: "/staff",
+  },
+  {
+    icon: <PieChartIcon />,
+    name: "Reports",
+    path: "/reports",
+  },
+  {
+    icon: <PlugInIcon />,
+    name: "Settings",
+    path: "/settings",
+  },
+  {
+    icon: <BoxCubeIcon />,
+    name: "Calendar",
+    path: "/calendar",
   },
   {
     icon: <DollarLineIcon />,
@@ -150,14 +155,15 @@ const AppSidebar: React.FC = () => {
         if (!mounted) return true; // render full list on server + first client pass
         switch (item.name) {
           case "Clinics": return isOwner;
-          case "Branches": return isOwner;
           case "Staff": return isOwner || can("staff:manage");
           case "Doctors": return isOwner || can("doctors:manage");
           case "Patients": return isOwner || canViewPatients(user?.permissions);
+          case "Reports": return isOwner;
+          case "Settings": return isOwner;
           case "Payment Ledger": return isOwner;
           case "My Schedule": return user?.role === "doctor";
           // Shown if either sub-item would be — each is filtered individually below.
-          case "Appointments": return isOwner || canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions);
+          case "Appointments": return !isOwner && (canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions));
           case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
           case "Notifications": return !isStaff;
           default: return true;
@@ -168,15 +174,15 @@ const AppSidebar: React.FC = () => {
         return {
           ...item,
           subItems: item.subItems.filter((sub) => {
-            if (sub.name === "Doctor Appointment") return isOwner || canAccessAppointments(user?.permissions);
-            if (sub.name === "Lab Test Appointments") return isOwner || canViewLabAppointments(user?.permissions);
+            if (sub.name === "Doctor Appointment") return canAccessAppointments(user?.permissions);
+            if (sub.name === "Lab Test Appointments") return canViewLabAppointments(user?.permissions);
             return true;
           }),
         };
       });
 
-    // Owners manage lab tests/schedules from inside Clinics/Branches (per clinic
-    // if it has a single branch, per branch row otherwise) rather than a
+    // Owners manage lab tests/schedules from the Clinics/Branches pages (per
+    // clinic if it has a single branch, per branch row otherwise) rather than a
     // standalone nav item. Branch staff never see those admin pages, so they
     // keep a direct shortcut straight to their own (single) branch's pages.
     if (!mounted || isOwner || !canManageLabTests(user?.permissions)) return filtered;
@@ -200,7 +206,8 @@ const AppSidebar: React.FC = () => {
     menuType: "main" | "others"
   ) => (
     <ul className="flex flex-col gap-4">
-      {navItems.map((nav, index) => (
+      {navItems.map((nav, index) => {
+        return (
         <li key={nav.name}>
           {nav.subItems ? (
             <button
@@ -317,7 +324,8 @@ const AppSidebar: React.FC = () => {
             </div>
           )}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 

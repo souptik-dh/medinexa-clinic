@@ -355,6 +355,12 @@ export default function BranchesPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex justify-end gap-1.5">
+                          <Link
+                            href={`/clinics/${selected?.id}/branches/${b.id}/overview`}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                          >
+                            Overview
+                          </Link>
                           {canManageLab && (
                             <Link
                               href={`/clinics/${selected?.id}/branches/${b.id}/lab-tests`}

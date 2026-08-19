@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
@@ -12,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
+import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
@@ -47,6 +49,9 @@ const initials = (name: string): string =>
 export default function DoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
+  const searchParams = useSearchParams();
+  const initialClinicId = searchParams.get("clinic_id") ?? undefined;
+  const initialBranchId = searchParams.get("branch_id") ?? undefined;
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [tab, setTab] = useState<Tab>("doctors");
 
@@ -230,11 +235,17 @@ export default function DoctorsPanel() {
 
   return (
     <div className="space-y-4">
+      <ClinicTabs />
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           Branch doctors
         </h3>
-        <BranchSelect value={branch?.id ?? ""} onChange={onBranchChange} />
+        <BranchSelect
+          value={branch?.id ?? ""}
+          onChange={onBranchChange}
+          initialClinicId={initialClinicId}
+          initialBranchId={initialBranchId}
+        />
       </div>
 
       {error && (

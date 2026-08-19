@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import PincodeField from "@/components/common/PincodeField";
@@ -175,14 +176,17 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         drug_license_number: drugLicenseNumber || null,
         clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
+      let redirectTo = "/clinics";
       if (isEdit) {
         await clinicsApi.update(clinicId, input);
         toast.success("Clinic updated successfully.");
+        redirectTo = `/clinics/${clinicId}/overview`;
       } else {
-        await clinicsApi.create(input);
+        const created = await clinicsApi.create(input);
         toast.success("Clinic created successfully.");
+        redirectTo = `/clinics/${created.id}/overview`;
       }
-      setTimeout(() => router.push("/clinics"), 150);
+      setTimeout(() => router.push(redirectTo), 150);
     } catch (err) {
       const message = getErrorMessage(err, "Unable to save clinic. Please try again.");
       setError(message);
@@ -209,9 +213,14 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          {isEdit ? "Edit clinic" : "Create a clinic"}
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            {isEdit ? "Edit clinic" : "Create a clinic"}
+          </h3>
+          <Link href="/clinics" className="text-sm font-medium text-brand-500 hover:underline">
+            View all clinics
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           {isEdit
             ? "Update this clinic&apos;s name, description and address details."
@@ -381,7 +390,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={() => router.push("/clinics")}
+            onClick={() => router.push(isEdit ? `/clinics/${clinicId}/overview` : "/clinics")}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             Cancel

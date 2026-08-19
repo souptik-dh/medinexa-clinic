@@ -2,7 +2,7 @@ import { Branch, BranchCreateInput, Clinic, branchesApi, clinicsApi } from "@/li
 
 // A clinic created via sign-up has no trade license yet, so "auto-create my first
 // branch" can't run right away. The preference is stashed per-clinic and consumed
-// later (see ClinicsPanel) once the clinic actually has a trade license on file.
+// later (see ClinicOverviewPanel) once the clinic actually has a trade license on file.
 const PENDING_KEY_PREFIX = "medinexa.autoBranchPending.";
 
 export function markAutoBranchPending(clinicId: string) {

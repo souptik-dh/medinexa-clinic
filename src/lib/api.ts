@@ -1695,6 +1695,7 @@ export const reviewsApi = {
 // ---------------------------------------------------------------------------
 
 export interface AppointmentListParams {
+  clinic_id?: string;
   status?: AppointmentStatus;
   date_from?: string;
   date_to?: string;
@@ -1714,6 +1715,7 @@ export const appointmentsApi = {
   async list(params: AppointmentListParams = {}): Promise<Paginated<Appointment>> {
     return apiFetch<Paginated<Appointment>>(
       `/appointments${query({
+        clinic_id: params.clinic_id,
         status: params.status,
         date_from: params.date_from,
         date_to: params.date_to,
