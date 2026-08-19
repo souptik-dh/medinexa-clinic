@@ -6,16 +6,11 @@ import { usePathname, useParams, useSearchParams } from "next/navigation";
 const TABS: { key: string; label: string; href: (clinicId: string) => string }[] = [
   { key: "overview", label: "Overview", href: (id) => `/clinics/${id}/overview` },
   { key: "branches", label: "Branches", href: (id) => `/clinics/${id}/branches` },
-  { key: "doctors", label: "Doctors", href: (id) => `/doctors?clinic_id=${id}` },
+  { key: "doctors", label: "Doctors", href: (id) => `/clinics/${id}/doctors` },
   { key: "lab-tests", label: "Lab Tests", href: (id) => `/clinics/${id}/lab-tests` },
   { key: "lab-schedules", label: "Lab Schedules", href: (id) => `/clinics/${id}/lab-schedule` },
 ];
 
-// Shared tab bar for every clinic-scoped page. Doctors is a plain link out to
-// the global, query-param-filtered Doctors page rather than a /clinics/[clinicId]/...
-// route, so there's no [clinicId] route param there — fall back to the
-// `clinic_id` query param so the bar still renders (and stays selected on the
-// Doctors tab) instead of disappearing once you click into it.
 export default function ClinicTabs() {
   const pathname = usePathname();
   const params = useParams<{ clinicId?: string }>();
@@ -29,7 +24,9 @@ export default function ClinicTabs() {
     <div className="mb-6 flex gap-6 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
       {TABS.map((tab) => {
         const href = tab.href(clinicId);
-        const active = pathname === href.split("?")[0] || pathname.startsWith(`${href.split("?")[0]}/`);
+        const active =
+          pathname === href ||
+          pathname.startsWith(`${href}/`);
         return (
           <Link
             key={tab.key}

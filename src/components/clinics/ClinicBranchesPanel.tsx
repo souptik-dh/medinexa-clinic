@@ -3,7 +3,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
-import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
   Table,
   TableBody,
@@ -25,20 +24,15 @@ import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
 import BranchReviewsPanel from "@/components/branches/BranchReviewsPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import RatingStars from "@/components/common/RatingStars";
-import { formatFullAddress } from "@/lib/utils";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
 import {
-  canAccessBranchSettings,
   canCreateBranch,
   canDeleteBranch,
-  canManageLabTests,
   canUpdateBranch,
 } from "@/lib/permissions";
 
-// A per-clinic version of the global /branches directory — same actions and
-// detail panels, but the clinic comes from the route instead of a picker.
 export default function ClinicBranchesPanel() {
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
@@ -51,16 +45,17 @@ export default function ClinicBranchesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [search, setSearch] = useState("");
 
   const { user } = useAuth();
-  const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
-  const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  const userPermissions =
+    user?.role === "branch_staff" ? user.permissions : undefined;
+  const isAdmin =
+    user?.role === "clinic_owner" || user?.role === "sys_admin";
 
   const canCreate = isAdmin || canCreateBranch(userPermissions);
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
-  const canSchedule = isAdmin || canAccessBranchSettings(userPermissions);
-  const canManageLab = isAdmin || canManageLabTests(userPermissions);
 
   const loadBranches = useCallback(async () => {
     if (!clinicId) return;
@@ -82,15 +77,21 @@ export default function ClinicBranchesPanel() {
     clinicsApi
       .get(clinicId)
       .then(setClinic)
-      .catch((err) => setError(getErrorMessage(err, "Failed to load clinic details")))
+      .catch((err) =>
+        setError(getErrorMessage(err, "Failed to load clinic details"))
+      )
       .finally(() => setClinicLoading(false));
     loadBranches();
   }, [clinicId, loadBranches]);
 
   const handlePhotoUpdated = (photoUrl: string) => {
-    setSelectedBranch((prev) => (prev ? { ...prev, photo_url: photoUrl } : prev));
+    setSelectedBranch((prev) =>
+      prev ? { ...prev, photo_url: photoUrl } : prev
+    );
     setBranches((prev) =>
-      prev.map((b) => (b.id === selectedBranch?.id ? { ...b, photo_url: photoUrl } : b))
+      prev.map((b) =>
+        b.id === selectedBranch?.id ? { ...b, photo_url: photoUrl } : b
+      )
     );
   };
 
@@ -102,9 +103,13 @@ export default function ClinicBranchesPanel() {
 
   const handleLicenseUpdated = (type: BranchLicenseType, url: string) => {
     const field = LICENSE_URL_FIELD[type];
-    setSelectedBranch((prev) => (prev ? { ...prev, [field]: url } : prev));
+    setSelectedBranch((prev) =>
+      prev ? { ...prev, [field]: url } : prev
+    );
     setBranches((prev) =>
-      prev.map((b) => (b.id === selectedBranch?.id ? { ...b, [field]: url } : b))
+      prev.map((b) =>
+        b.id === selectedBranch?.id ? { ...b, [field]: url } : b
+      )
     );
   };
 
@@ -144,9 +149,21 @@ export default function ClinicBranchesPanel() {
       toast.success("Branch deleted successfully.");
       setBranchToDelete(null);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Unable to delete branch. Please try again."));
+      toast.error(
+        getErrorMessage(err, "Unable to delete branch. Please try again.")
+      );
     }
   };
+
+  const filtered = branches.filter((b) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      b.name.toLowerCase().includes(q) ||
+      b.city?.toLowerCase().includes(q) ||
+      b.district?.toLowerCase().includes(q)
+    );
+  });
 
   if (!isAdmin) {
     return (
@@ -168,18 +185,15 @@ export default function ClinicBranchesPanel() {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
             Branches
-            {clinic && (
-              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                — {clinic.name}
-              </span>
-            )}
           </h3>
-          {canCreate && (
-            <div className="flex items-center gap-2">
-              {!branchesLoading && !clinicLoading && branches.length < 1 && (
+          <div className="flex items-center gap-2">
+            {!branchesLoading &&
+              !clinicLoading &&
+              branches.length < 1 &&
+              canCreate && (
                 <button
                   onClick={autoCreateBranch}
                   disabled={busy}
@@ -189,57 +203,129 @@ export default function ClinicBranchesPanel() {
                   {busy ? "Creating…" : "Auto-create branch"}
                 </button>
               )}
+            {canCreate && (
               <Link
                 href={`/clinics/${clinicId}/branches/new`}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
-                + New branch
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add Branch
               </Link>
-            </div>
-          )}
+            )}
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1 sm:max-w-sm">
+            <svg
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search branches..."
+              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent pl-10 pr-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            />
+          </div>
         </div>
 
         {clinicLoading || branchesLoading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading branches…</p>
-        ) : branches.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No branches for this clinic.
+            Loading branches…
+          </p>
+        ) : filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            {search
+              ? "No branches match your search."
+              : "No branches for this clinic."}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
             <Table>
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Name
+                  <TableCell
+                    isHeader
+                    className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                  >
+                    Branch Name
                   </TableCell>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Phone
+                  <TableCell
+                    isHeader
+                    className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                  >
+                    Location
                   </TableCell>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <TableCell
+                    isHeader
+                    className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                  >
                     Rating
                   </TableCell>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
+                  <TableCell
+                    isHeader
+                    className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                  >
+                    Status
+                  </TableCell>
+                  <TableCell
+                    isHeader
+                    className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
+                  >
                     Actions
                   </TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {branches.map((b) => (
+                {filtered.map((b) => (
                   <TableRow key={b.id}>
                     <TableCell className="py-3">
-                      <button onClick={() => setSelectedBranch(b)} className="text-left hover:text-brand-500">
-                        <Tooltip content={formatFullAddress(b)} className="block w-full">
-                          <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">{b.name}</p>
-                          <span className="text-gray-400 text-theme-xs dark:text-gray-500">{b.timezone}</span>
-                        </Tooltip>
-                      </button>
+                      <Link
+                        href={`/clinics/${clinicId}/branches/${b.id}/overview`}
+                        className="font-medium text-gray-800 text-theme-sm hover:text-brand-500 dark:text-white/90"
+                      >
+                        {b.name}
+                      </Link>
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {b.phone}
+                      {b.city || b.district || "—"}
                     </TableCell>
                     <TableCell className="py-3">
-                      <RatingStars average={b.rating?.average ?? null} count={b.rating?.count ?? 0} size="sm" />
+                      <RatingStars
+                        average={b.rating?.average ?? null}
+                        count={b.rating?.count ?? 0}
+                        size="sm"
+                      />
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
+                        Active
+                      </span>
                     </TableCell>
                     <TableCell className="py-3">
                       <div className="flex justify-end gap-1.5">
@@ -247,36 +333,12 @@ export default function ClinicBranchesPanel() {
                           href={`/clinics/${clinicId}/branches/${b.id}/overview`}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
-                          Overview
+                          Open
                         </Link>
-                        {canManageLab && (
-                          <Link
-                            href={`/clinics/${clinicId}/branches/${b.id}/lab-tests`}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-                          >
-                            Lab Tests
-                          </Link>
-                        )}
-                        {canManageLab && (
-                          <Link
-                            href={`/clinics/${clinicId}/branches/${b.id}/lab-schedule`}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-                          >
-                            Lab Schedule
-                          </Link>
-                        )}
-                        {canSchedule && (
-                          <Link
-                            href={`/clinics/${clinicId}/branches/${b.id}/schedule`}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-                          >
-                            Schedule
-                          </Link>
-                        )}
                         {canUpdate && (
                           <Link
                             href={`/clinics/${clinicId}/branches/${b.id}/edit`}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.03]"
                           >
                             Edit
                           </Link>
@@ -308,11 +370,15 @@ export default function ClinicBranchesPanel() {
             photoUrl={selectedBranch.photo_url}
             onPhotoUpdated={handlePhotoUpdated}
           />
-          <BranchGalleryPanel branchId={selectedBranch.id} branchName={selectedBranch.name} />
+          <BranchGalleryPanel
+            branchId={selectedBranch.id}
+            branchName={selectedBranch.name}
+          />
           {!selectedBranch.trade_license_url && (
             <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
               <p className="font-medium text-gray-800 dark:text-white/90">
-                Trade license <span className="text-error-500">*</span>
+                Trade license{" "}
+                <span className="text-error-500">*</span>
               </p>
               <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
                 ⚠ No document uploaded.
@@ -333,7 +399,9 @@ export default function ClinicBranchesPanel() {
         isOpen={branchToDelete !== null}
         onClose={() => setBranchToDelete(null)}
         onConfirm={confirmDeleteBranch}
-        title={branchToDelete ? `Branch "${branchToDelete.name}"` : ""}
+        title={
+          branchToDelete ? `Branch "${branchToDelete.name}"` : ""
+        }
         description="This branch and its records will be permanently removed."
         impactItems={[
           "Doctors and staff assigned to this branch",

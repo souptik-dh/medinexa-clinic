@@ -2,9 +2,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
+import BranchTabs from "@/components/branches/BranchTabs";
 import { LabTestSchedule, labTestSchedulesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
-import LabScheduleWeekEditor, { LabScheduleEntry } from "@/components/lab-tests/LabScheduleWeekEditor";
+import LabScheduleWeekEditor, {
+  LabScheduleEntry,
+} from "@/components/lab-tests/LabScheduleWeekEditor";
 
 function toEntry(item: LabTestSchedule): LabScheduleEntry {
   return {
@@ -68,7 +71,9 @@ export default function BranchLabSchedulePanel() {
     setSaving(true);
     setError(null);
     try {
-      const removed = original.filter((o) => !entries.some((e) => e.localKey === o.localKey));
+      const removed = original.filter(
+        (o) => !entries.some((e) => e.localKey === o.localKey)
+      );
       const added = entries.filter((e) => !e.id);
       const changed = entries.filter((e) => {
         if (!e.id) return false;
@@ -99,7 +104,10 @@ export default function BranchLabSchedulePanel() {
       toast.success("Lab schedule updated successfully.");
       await load();
     } catch (err) {
-      const msg = getErrorMessage(err, "Failed to save schedule changes");
+      const msg = getErrorMessage(
+        err,
+        "Failed to save schedule changes"
+      );
       setError(msg);
       toast.error(msg);
     } finally {
@@ -108,19 +116,26 @@ export default function BranchLabSchedulePanel() {
   };
 
   return (
-    <div>
+    <div className="space-y-4">
+      <BranchTabs />
+
       {error && (
-        <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
         </div>
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            Loading…
+          </p>
         ) : (
           <>
-            <LabScheduleWeekEditor entries={entries} onChange={setEntries} />
+            <LabScheduleWeekEditor
+              entries={entries}
+              onChange={setEntries}
+            />
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 type="button"
