@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import TruckLoader from "@/components/common/TruckLoader";
 import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -142,7 +143,7 @@ export default function BranchSchedulePanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <TruckLoader label="Loading schedule…" />
       </div>
     );
   }
@@ -206,7 +207,7 @@ export default function BranchSchedulePanel() {
         )}
 
         {closuresLoading ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          <TruckLoader label="Loading…" />
         ) : activeClosures.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">No closures added.</p>
         ) : (

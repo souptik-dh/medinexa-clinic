@@ -10,6 +10,7 @@ import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFi
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
 
@@ -228,9 +229,7 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         </p>
 
         {loading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading…
-          </p>
+          <TruckLoader label="Loading…" />
         ) : (
           <div className="mt-6 space-y-4">
             <Field label="Name *">

@@ -13,6 +13,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
+import TruckLoader from "@/components/common/TruckLoader";
 import { StaffMember, staffApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
@@ -165,9 +166,7 @@ export default function StaffPanel() {
             Select a branch to manage its staff.
           </p>
         ) : loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading staff…
-          </p>
+          <TruckLoader label="Loading staff…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No staff members at this branch yet.

@@ -6,6 +6,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import LabTestForm, { LabTestFormValues } from "@/components/lab-tests/LabTestForm";
 import { LabTest, labTestsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function EditLabTestPage() {
   const router = useRouter();
@@ -46,7 +47,7 @@ export default function EditLabTestPage() {
         items={[{ label: "Lab Tests", href: cancelHref }]}
       />
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        <TruckLoader />
       ) : error ? (
         <div className="max-w-[560px] rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}

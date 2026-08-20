@@ -26,6 +26,7 @@ import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import RatingStars from "@/components/common/RatingStars";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 import { useAuth } from "@/context/AuthContext";
 import {
   canCreateBranch,
@@ -254,9 +255,7 @@ export default function ClinicBranchesPanel() {
         </div>
 
         {clinicLoading || branchesLoading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading branches…
-          </p>
+          <TruckLoader label="Loading branches…" />
         ) : filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {search

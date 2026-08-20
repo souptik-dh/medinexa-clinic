@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 interface ConfigForm {
   test_id: string;
@@ -138,7 +139,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
   };
 
   if (loading) {
-    return <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>;
+    return <TruckLoader label="Loading…" />;
   }
 
   return (

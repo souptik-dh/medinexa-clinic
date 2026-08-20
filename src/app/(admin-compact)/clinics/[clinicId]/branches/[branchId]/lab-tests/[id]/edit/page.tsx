@@ -5,6 +5,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import BranchLabTestForm from "@/components/lab-tests/BranchLabTestForm";
 import { BranchLabTest, branchLabTestsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function EditBranchLabTestPage() {
   const { branchId, id } = useParams<{ branchId: string; id: string }>();
@@ -32,7 +33,7 @@ export default function EditBranchLabTestPage() {
         items={[{ label: "Branches", href: "/branches" }]}
       />
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        <TruckLoader />
       ) : error ? (
         <div className="max-w-[500px] rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}

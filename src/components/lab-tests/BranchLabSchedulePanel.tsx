@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import LabScheduleWeekEditor, {
   LabScheduleEntry,
 } from "@/components/lab-tests/LabScheduleWeekEditor";
+import TruckLoader from "@/components/common/TruckLoader";
 
 function toEntry(item: LabTestSchedule): LabScheduleEntry {
   return {
@@ -127,9 +128,7 @@ export default function BranchLabSchedulePanel() {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading…
-          </p>
+          <TruckLoader label="Loading schedule…" />
         ) : (
           <>
             <LabScheduleWeekEditor

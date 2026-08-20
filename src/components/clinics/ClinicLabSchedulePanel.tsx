@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
 import { Branch, branchesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function ClinicLabSchedulePanel() {
   const params = useParams<{ clinicId?: string }>();
@@ -60,9 +61,7 @@ export default function ClinicLabSchedulePanel() {
             {error}
           </div>
         ) : loading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading…
-          </p>
+          <TruckLoader label="Loading schedule…" />
         ) : !showPicker ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             Redirecting…

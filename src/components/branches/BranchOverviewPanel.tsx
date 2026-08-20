@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function BranchOverviewPanel() {
   const params = useParams<{ clinicId?: string; branchId?: string }>();
@@ -128,11 +129,7 @@ export default function BranchOverviewPanel() {
   };
 
   if (loading) {
-    return (
-      <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-        Loading…
-      </p>
-    );
+    return <TruckLoader label="Loading branch…" />;
   }
   if (error || !branch) {
     return (

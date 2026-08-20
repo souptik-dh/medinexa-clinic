@@ -44,7 +44,7 @@ export default function BranchTabs() {
   if (!clinicId || !branchId) return null;
 
   return (
-    <div className="mb-6 flex gap-6 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
+    <div className="mb-6 flex gap-6 overflow-x-auto border-b border-gray-200 dark:border-gray-800 no-scrollbar">
       {TABS.map((tab) => {
         const href = tab.href(clinicId, branchId);
         const active =

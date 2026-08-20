@@ -44,6 +44,9 @@ function useBackTarget(): BackTarget {
   if (pathname.match(/\/clinics\/[^/]+\/lab-schedule\/?$/)) {
     return { label: "Clinic Overview", href: `/clinics/${clinicId}/overview` };
   }
+  if (pathname.match(/\/clinics\/[^/]+\/all-appointments\/?$/)) {
+    return { label: "Clinic Overview", href: `/clinics/${clinicId}/overview` };
+  }
   if (pathname.match(/\/clinics\/[^/]+\/lab-tests\/new\/?$/)) {
     return { label: "Lab Tests", href: `/clinics/${clinicId}/lab-tests` };
   }
@@ -116,6 +119,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.match(/\/clinics\/[^/]+\/doctors\/?$/)) return "Clinic Doctors";
   if (pathname.match(/\/clinics\/[^/]+\/lab-tests\/?$/) && !pathname.includes("/lab-tests/new")) return "Lab Tests";
   if (pathname.match(/\/clinics\/[^/]+\/lab-schedule\/?$/)) return "Lab Schedules";
+  if (pathname.match(/\/clinics\/[^/]+\/all-appointments\/?$/)) return "All Appointments";
   if (pathname.match(/\/clinics\/[^/]+\/lab-tests\/new\/?$/)) return "Add Lab Test";
   if (pathname.match(/\/clinics\/[^/]+\/lab-tests\/[^/]+\/edit\/?$/)) return "Edit Lab Test";
 

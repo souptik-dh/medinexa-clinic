@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import TruckLoader from "@/components/common/TruckLoader";
 import { useParams, useRouter } from "next/navigation";
 import {
   BranchDoctor,
@@ -257,7 +258,7 @@ export default function DoctorAssignmentEditPanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <TruckLoader label="Loading…" />
       </div>
     );
   }
@@ -390,7 +391,7 @@ export default function DoctorAssignmentEditPanel() {
             // record server-side) — only active ones are still "in effect" here.
             const activeExceptions = exceptions.filter((e) => e.status !== "cancelled");
             if (exceptionsLoading) {
-              return <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>;
+              return <TruckLoader label="Loading…" />;
             }
             if (activeExceptions.length === 0) {
               return <p className="text-sm text-gray-500 dark:text-gray-400">No leave dates added.</p>;

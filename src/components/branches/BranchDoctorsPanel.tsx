@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import TruckLoader from "@/components/common/TruckLoader";
 import BranchTabs from "@/components/branches/BranchTabs";
 import {
   BranchDoctor,
@@ -179,9 +180,7 @@ export default function BranchDoctorsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              Loading doctors…
-            </p>
+            <TruckLoader label="Loading doctors…" />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || specializationFilter

@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
+import TruckLoader from "@/components/common/TruckLoader";
 import { useClinicId } from "@/hooks/useClinicId";
 import {
   Branch,
@@ -175,9 +176,7 @@ export default function LabTestAppointmentsPanel() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading lab test appointments...
-          </p>
+          <TruckLoader label="Loading lab test appointments…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No lab test appointments match the current filters.
