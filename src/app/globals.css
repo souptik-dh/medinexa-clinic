@@ -743,6 +743,102 @@ span.flatpickr-weekday,
   transition: all 0.2s ease; /* Smooth transition for visual effects */
 }
 
+/* Truck Loader */
+.truck-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 2.5rem 0;
+}
+.truck-loader .truckWrapper {
+  width: 200px;
+  height: 100px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.truck-loader .truckBody {
+  width: 130px;
+  height: fit-content;
+  margin-bottom: 6px;
+  animation: truck-motion 1s linear infinite;
+}
+@keyframes truck-motion {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(3px); }
+  100% { transform: translateY(0px); }
+}
+.truck-loader .truckTires {
+  width: 130px;
+  height: fit-content;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0px 10px 0px 15px;
+  position: absolute;
+  bottom: 0;
+}
+.truck-loader .truckTires svg {
+  width: 24px;
+}
+.truck-loader .road {
+  width: 100%;
+  height: 1.5px;
+  background-color: var(--color-gray-300, #d0d5dd);
+  position: relative;
+  bottom: 0;
+  align-self: flex-end;
+  border-radius: 3px;
+}
+.truck-loader .road::before {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 100%;
+  background-color: var(--color-gray-300, #d0d5dd);
+  right: -50%;
+  border-radius: 3px;
+  animation: truck-road 1.4s linear infinite;
+  border-left: 10px solid white;
+}
+.truck-loader .road::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 100%;
+  background-color: var(--color-gray-300, #d0d5dd);
+  right: -65%;
+  border-radius: 3px;
+  animation: truck-road 1.4s linear infinite;
+  border-left: 4px solid white;
+}
+.truck-loader .lampPost {
+  position: absolute;
+  bottom: 0;
+  right: -90%;
+  height: 90px;
+  animation: truck-road 1.4s linear infinite;
+}
+@keyframes truck-road {
+  0% { transform: translateX(0px); }
+  100% { transform: translateX(-350px); }
+}
+.dark .truck-loader .road,
+.dark .truck-loader .road::before,
+.dark .truck-loader .road::after {
+  background-color: var(--color-gray-600, #475467);
+}
+.dark .truck-loader .road::before {
+  border-left-color: var(--color-gray-950, #0c111d);
+}
+.dark .truck-loader .road::after {
+  border-left-color: var(--color-gray-950, #0c111d);
+}
+
 .task {
   border-radius: 0.75rem;
   box-shadow: 0 1px 3px 0 rgba(16, 24, 40, 0.1),

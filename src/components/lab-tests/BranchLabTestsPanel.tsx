@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import BranchTabs from "@/components/branches/BranchTabs";
+import TruckLoader from "@/components/common/TruckLoader";
 import { BranchLabTest, branchLabTestsApi } from "@/lib/api";
 import { labTestCategoryLabel, formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
@@ -104,9 +105,7 @@ export default function BranchLabTestsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              Loading…
-            </p>
+            <TruckLoader label="Loading lab tests…" />
           ) : items.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               No lab tests configured for this branch yet.

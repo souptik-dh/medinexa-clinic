@@ -5,6 +5,7 @@ import { Clinic, ClinicLicenseType, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateClinic } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 interface ClinicLicensesPanelProps {
   clinicId: string;
@@ -131,9 +132,7 @@ export default function ClinicLicensesPanel({
       )}
 
       {loading ? (
-        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Loading licenses…
-        </p>
+        <TruckLoader label="Loading licenses…" />
       ) : (
         <div className="space-y-3">
           {LICENSE_DEFS.map((def) => {

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
+import TruckLoader from "@/components/common/TruckLoader";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   Table,
@@ -316,9 +317,7 @@ export default function DoctorsPanel() {
                 Search the doctor directory by name, specialization, or registration number.
               </p>
             ) : searchLoading ? (
-              <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                Searching…
-              </p>
+              <TruckLoader label="Searching…" />
             ) : searchResults.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 No doctors found for &quot;{searchQuery}&quot;.
@@ -382,9 +381,7 @@ export default function DoctorsPanel() {
             Select a branch to view its doctors and invites.
           </p>
         ) : loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading…
-          </p>
+          <TruckLoader label="Loading doctors…" />
         ) : tab === "doctors" ? (
           doctors.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">

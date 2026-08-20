@@ -11,6 +11,7 @@ import {
   BranchStaffPermission,
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function StaffPermissionsPanel() {
   const router = useRouter();
@@ -101,9 +102,7 @@ export default function StaffPermissionsPanel() {
       )}
 
       {loading ? (
-        <p className="mt-6 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Loading…
-        </p>
+        <TruckLoader label="Loading permissions…" />
       ) : (
         <div className="mt-6 space-y-6">
           {BRANCH_STAFF_PERMISSION_MODULES.map((mod) => (

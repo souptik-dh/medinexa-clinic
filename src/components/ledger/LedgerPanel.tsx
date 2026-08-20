@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, LedgerEntry, clinicsApi, ledgerApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function LedgerPanel() {
   const { user } = useAuth();
@@ -146,9 +147,7 @@ export default function LedgerPanel() {
             Select a clinic to view its payment ledger.
           </p>
         ) : loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading ledger…
-          </p>
+          <TruckLoader label="Loading ledger…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No payments recorded for this clinic{month ? " in this month" : ""}.

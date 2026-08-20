@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import Badge from "@/components/ui/badge/Badge";
 import Link from "next/link";
 import { Appointment, appointmentsApi } from "@/lib/api";
+import TruckLoader from "@/components/common/TruckLoader";
 import {
   appointmentStatusColor,
   appointmentStatusLabel,
@@ -77,9 +78,7 @@ const Calendar: React.FC = () => {
   return (
     <div className="rounded-2xl border  border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
       {loading ? (
-        <div className="flex h-96 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-          Loading appointments…
-        </div>
+        <TruckLoader label="Loading appointments…" />
       ) : error ? (
         <div className="flex flex-col items-center gap-3 p-8 text-sm text-error-600 dark:text-error-400">
           <p>{error}</p>

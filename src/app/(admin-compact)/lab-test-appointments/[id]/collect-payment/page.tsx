@@ -6,6 +6,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { LabTestAppointmentDetail, labTestAppointmentsApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function CollectPaymentPage() {
   const { id } = useParams<{ id: string }>();
@@ -52,7 +53,7 @@ export default function CollectPaymentPage() {
         items={[{ label: "Lab Appointments", href: "/lab-test-appointments" }]}
       />
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        <TruckLoader />
       ) : (
         <form
           onSubmit={handleSubmit}

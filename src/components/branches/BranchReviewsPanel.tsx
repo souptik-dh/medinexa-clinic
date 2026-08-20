@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { ApiError, BranchReview, RatingSummary, reviewsApi } from "@/lib/api";
+import TruckLoader from "@/components/common/TruckLoader";
 import RatingStars from "@/components/common/RatingStars";
 
 interface BranchReviewsPanelProps {
@@ -42,7 +43,7 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <TruckLoader label="Loading reviews…" />
       ) : error ? (
         <p className="mt-4 text-sm text-error-600 dark:text-error-400">{error}</p>
       ) : reviews.length === 0 ? (

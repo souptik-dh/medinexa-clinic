@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Badge from "@/components/ui/badge/Badge";
+import TruckLoader from "@/components/common/TruckLoader";
 import RatingStars from "@/components/common/RatingStars";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -216,7 +217,7 @@ export default function DoctorProfilePanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+        <TruckLoader label="Loading profile…" />
       </div>
     );
   }
@@ -311,7 +312,7 @@ export default function DoctorProfilePanel() {
             Bookings at this branch
           </h4>
           {bookingsLoading ? (
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <TruckLoader label="Loading…" />
           ) : bookingsError ? (
             <p className="mt-2 text-sm text-error-600 dark:text-error-400">{bookingsError}</p>
           ) : (
@@ -334,7 +335,7 @@ export default function DoctorProfilePanel() {
             Invite record
           </h4>
           {invitesLoading ? (
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <TruckLoader label="Loading…" />
           ) : invitesError ? (
             <p className="mt-2 text-sm text-error-600 dark:text-error-400">{invitesError}</p>
           ) : invites && invites.length > 0 ? (
@@ -370,7 +371,7 @@ export default function DoctorProfilePanel() {
             {rating && <RatingStars average={rating.average} count={rating.count} />}
           </div>
           {reviewsLoading ? (
-            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <TruckLoader label="Loading…" />
           ) : reviewsError ? (
             <p className="mt-4 text-sm text-error-600 dark:text-error-400">{reviewsError}</p>
           ) : !reviews || reviews.length === 0 ? (

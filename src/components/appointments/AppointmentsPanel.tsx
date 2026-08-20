@@ -12,6 +12,7 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
+import TruckLoader from "@/components/common/TruckLoader";
 import {
   Appointment,
   AppointmentDetail,
@@ -246,9 +247,7 @@ export default function AppointmentsPanel() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading appointments…
-          </p>
+          <TruckLoader label="Loading appointments…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No appointments match the current filters.
@@ -499,7 +498,7 @@ export default function AppointmentsPanel() {
         </h5>
 
         {detailLoading ? (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          <TruckLoader label="Loading…" />
         ) : detailError ? (
           <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {detailError}

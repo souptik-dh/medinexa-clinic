@@ -33,6 +33,7 @@ import {
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
+import TruckLoader from "@/components/common/TruckLoader";
 import { canDeleteClinic } from "@/lib/permissions";
 import {
   autoCreateBranchForClinic,
@@ -170,11 +171,7 @@ export default function ClinicOverviewPanel() {
   };
 
   if (loading) {
-    return (
-      <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-        Loading…
-      </p>
-    );
+    return <TruckLoader label="Loading clinic…" />;
   }
   if (error || !clinic) {
     return (
@@ -361,7 +358,7 @@ export default function ClinicOverviewPanel() {
             Recent Appointments
           </h3>
           <Link
-            href="/appointments"
+            href={`/clinics/${clinicId}/all-appointments`}
             className="text-sm font-medium text-brand-500 hover:underline"
           >
             View all →

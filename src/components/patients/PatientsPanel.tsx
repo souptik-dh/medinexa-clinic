@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, Patient, patientsApi } from "@/lib/api";
+import TruckLoader from "@/components/common/TruckLoader";
 import { formatDate } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
@@ -133,9 +134,7 @@ export default function PatientsPanel() {
             Select a branch to view its patients.
           </p>
         ) : loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading patients…
-          </p>
+          <TruckLoader label="Loading patients…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No patients found for this branch.

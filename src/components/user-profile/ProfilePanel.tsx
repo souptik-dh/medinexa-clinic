@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, clinicsApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function ProfilePanel() {
   const { user, clinic, staffClinic, staffBranch, logout } = useAuth();
@@ -154,7 +155,7 @@ export default function ProfilePanel() {
             </a>
           </div>
           {loading ? (
-            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+            <TruckLoader label="Loading profile…" />
           ) : error ? (
             <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
           ) : clinics.length === 0 ? (

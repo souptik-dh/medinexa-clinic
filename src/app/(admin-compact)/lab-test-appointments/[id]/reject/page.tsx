@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { LabTestAppointmentDetail, labTestAppointmentsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function RejectLabTestAppointmentPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,7 +52,7 @@ export default function RejectLabTestAppointmentPage() {
         items={[{ label: "Lab Appointments", href: "/lab-test-appointments" }]}
       />
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
+        <TruckLoader />
       ) : (
         <form
           onSubmit={handleSubmit}

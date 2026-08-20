@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import TruckLoader from "@/components/common/TruckLoader";
 import toast from "react-hot-toast";
 import { BranchGalleryImage, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -126,9 +127,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       )}
 
       {loading ? (
-        <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Loading gallery…
-        </div>
+        <TruckLoader label="Loading gallery…" />
       ) : images.length === 0 ? (
         <div className="py-12 text-center">
           <svg

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
+import TruckLoader from "@/components/common/TruckLoader";
 import {
   ApiError,
   Appointment,
@@ -135,9 +136,7 @@ export default function PrescriptionsPanel() {
           Prescriptions
         </h3>
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Loading appointments…
-          </p>
+          <TruckLoader label="Loading prescriptions…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No appointments match the current filter.
@@ -222,7 +221,7 @@ export default function PrescriptionsPanel() {
                   {prescriptionError}
                 </p>
               ) : !prescription ? (
-                <p className="py-4 text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+                <TruckLoader label="Loading…" />
               ) : (
                 <div className="space-y-4">
                   {prescription.scan_url && (

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ApiError, Notification, notificationsApi } from "@/lib/api";
 import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
+import TruckLoader from "@/components/common/TruckLoader";
 
 export default function NotificationsPanel() {
   const [items, setItems] = useState<Notification[]>([]);
@@ -122,7 +123,7 @@ export default function NotificationsPanel() {
 
       <div className="mt-5">
         {loading ? (
-          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+          <TruckLoader label="Loading notifications…" />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {unreadOnly ? "No unread notifications." : "No notifications yet."}

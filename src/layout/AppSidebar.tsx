@@ -163,7 +163,7 @@ const AppSidebar: React.FC = () => {
           case "Payment Ledger": return isOwner;
           case "My Schedule": return user?.role === "doctor";
           // Shown if either sub-item would be — each is filtered individually below.
-          case "Appointments": return !isOwner && (canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions));
+          case "Appointments": return isOwner || canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions);
           case "Calendar": return isOwner || canAccessAppointments(user?.permissions);
           case "Notifications": return !isStaff;
           default: return true;
@@ -174,8 +174,8 @@ const AppSidebar: React.FC = () => {
         return {
           ...item,
           subItems: item.subItems.filter((sub) => {
-            if (sub.name === "Doctor Appointment") return canAccessAppointments(user?.permissions);
-            if (sub.name === "Lab Test Appointments") return canViewLabAppointments(user?.permissions);
+            if (sub.name === "Doctor Appointment") return isOwner || canAccessAppointments(user?.permissions);
+            if (sub.name === "Lab Test Appointments") return isOwner || canViewLabAppointments(user?.permissions);
             return true;
           }),
         };
