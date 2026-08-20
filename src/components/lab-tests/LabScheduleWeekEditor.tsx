@@ -41,7 +41,15 @@ export default function LabScheduleWeekEditor({
   };
 
   const addRangeForDay = (weekday: number) => {
-    onChange([...entries, newEntry(weekday)]);
+    const candidate = newEntry(weekday);
+    const isDuplicate = entries.some(
+      (e) =>
+        e.weekday === weekday &&
+        e.start_time === candidate.start_time &&
+        e.end_time === candidate.end_time
+    );
+    if (isDuplicate) return;
+    onChange([...entries, candidate]);
   };
 
   const updateEntry = (localKey: string, patch: Partial<LabScheduleEntry>) => {

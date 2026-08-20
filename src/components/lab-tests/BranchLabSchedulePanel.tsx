@@ -30,6 +30,21 @@ function hasChanged(a: LabScheduleEntry, b: LabScheduleEntry): boolean {
   );
 }
 
+// Collapses entries that share the same day and time range down to one, so a
+// day only ever displays a single row per distinct range — even if the
+// backend already holds duplicate records for it.
+function dedupeEntries(list: LabScheduleEntry[]): LabScheduleEntry[] {
+  const seen = new Map<string, LabScheduleEntry>();
+  for (const entry of list) {
+    const key = `${entry.weekday}|${entry.start_time}|${entry.end_time}`;
+    const existing = seen.get(key);
+    if (!existing || (!existing.id && entry.id)) {
+      seen.set(key, entry);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 export default function BranchLabSchedulePanel() {
   const params = useParams<{ branchId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -48,7 +63,7 @@ export default function BranchLabSchedulePanel() {
       const res = await labTestSchedulesApi.list(branchId);
       const loaded = res.items.map(toEntry);
       setOriginal(loaded);
-      setEntries(loaded);
+      setEntries(dedupeEntries(loaded));
     } catch (err) {
       setError(getErrorMessage(err, "Failed to load schedule"));
     } finally {

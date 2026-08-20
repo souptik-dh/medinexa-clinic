@@ -97,8 +97,8 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       setError("Please select a lab test.");
       return;
     }
-    if (!config.price || Number(config.price) < 0) {
-      setError("Please enter a valid price.");
+    if (!config.price || Number(config.price) <= 0 || Number(config.price) > 1_000_000) {
+      setError("Please enter a valid price greater than 0 and up to 1,000,000.");
       return;
     }
     if (config.currency.trim().length !== 3) {
@@ -106,8 +106,8 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       return;
     }
     const duration = config.duration_minutes ? Number(config.duration_minutes) : undefined;
-    if (duration !== undefined && (duration < 5 || duration > 480)) {
-      setError("Duration must be between 5 and 480 minutes.");
+    if (duration !== undefined && (duration < 5 || duration > 240)) {
+      setError("Duration must be between 5 and 240 minutes.");
       return;
     }
     setBusy(true);
@@ -180,6 +180,9 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
               type="number"
               value={config.price}
               onChange={(e) => updateField("price", e.target.value)}
+              min={0.01}
+              max={1_000_000}
+              step="0.01"
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </div>
@@ -206,7 +209,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
             onChange={(e) => updateField("duration_minutes", e.target.value)}
             placeholder="30"
             min={5}
-            max={480}
+            max={240}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
