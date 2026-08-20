@@ -930,6 +930,22 @@ export interface LabTestAppointmentDetail extends LabTestAppointment {
   }[];
 }
 
+export interface LabTestPayment {
+  id: string;
+  appointment_id: string;
+  amount: number;
+  currency: string;
+  payment_method: LabTestPaymentMethod;
+  payment_status: LabTestPaymentStatus;
+  transaction_id: string | null;
+  provider: string | null;
+  paid_at: string | null;
+  collected_by: string | null;
+  collected_at: string | null;
+  reference_no: string | null;
+  created_at: string;
+}
+
 export interface Notification {
   id: string;
   user_id: string;
@@ -1969,8 +1985,8 @@ export const labTestsApi = {
     });
   },
 
-  async toggleStatus(id: string, status: LabTestStatus): Promise<{ success: true; status: LabTestStatus }> {
-    return apiFetch<{ success: true; status: LabTestStatus }>(`/clinic/lab-tests/${id}/status`, {
+  async toggleStatus(id: string, status: LabTestStatus): Promise<LabTest> {
+    return apiFetch<LabTest>(`/clinic/lab-tests/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
@@ -2132,8 +2148,8 @@ export const labTestAppointmentsApi = {
   async approve(
     id: string,
     input?: { precautions?: string[]; clinic_notes?: string }
-  ): Promise<{ success: true; status: LabTestAppointmentStatus }> {
-    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+  ): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>(
       `/clinic/lab-test-appointments/${id}/approve`,
       {
         method: "POST",
@@ -2142,8 +2158,8 @@ export const labTestAppointmentsApi = {
     );
   },
 
-  async reject(id: string, reason: string): Promise<{ success: true; status: LabTestAppointmentStatus }> {
-    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+  async reject(id: string, reason: string): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>(
       `/clinic/lab-test-appointments/${id}/reject`,
       {
         method: "POST",
@@ -2152,8 +2168,8 @@ export const labTestAppointmentsApi = {
     );
   },
 
-  async complete(id: string): Promise<{ success: true; status: LabTestAppointmentStatus }> {
-    return apiFetch<{ success: true; status: LabTestAppointmentStatus }>(
+  async complete(id: string): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>(
       `/clinic/lab-test-appointments/${id}/complete`,
       { method: "POST" }
     );
@@ -2163,8 +2179,8 @@ export const labTestAppointmentsApi = {
     id: string,
     input: { reference_no?: string | null },
     idempotencyKey: string
-  ): Promise<{ success: true; payment_status: LabTestPaymentStatus }> {
-    return apiFetch<{ success: true; payment_status: LabTestPaymentStatus }>(
+  ): Promise<LabTestPayment> {
+    return apiFetch<LabTestPayment>(
       `/clinic/lab-test-appointments/${id}/payment/collect`,
       {
         method: "POST",
@@ -2174,8 +2190,8 @@ export const labTestAppointmentsApi = {
     );
   },
 
-  async cancel(id: string, reason?: string): Promise<{ success: true }> {
-    return apiFetch<{ success: true }>(
+  async cancel(id: string, reason?: string): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>(
       `/lab-test-appointments/${id}/cancel`,
       {
         method: "POST",
