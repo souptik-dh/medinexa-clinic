@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
+import Badge from "@/components/ui/badge/Badge";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/context/AuthContext";
 import TruckLoader from "@/components/common/TruckLoader";
@@ -113,16 +114,13 @@ export default function StaffPanel() {
     router.push(`/staff/${branch.id}/${member.id}/permissions`);
   };
 
-  const permissionLabels = (member: StaffMember): string => {
+  const permissionLabels = (member: StaffMember): string[] => {
     const perms = (member.permissions ?? []) as BranchStaffPermission[];
-    if (perms.length === 0) return "—";
-    return perms
-      .map(
-        (p) =>
-          BRANCH_STAFF_PERMISSION_META.find((m) => m.permission === p)?.label ??
-          p
-      )
-      .join(", ");
+    return perms.map(
+      (p) =>
+        BRANCH_STAFF_PERMISSION_META.find((m) => m.permission === p)?.label ??
+        p
+    );
   };
 
   return (
@@ -182,10 +180,10 @@ export default function StaffPanel() {
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Email
                   </TableCell>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <TableCell isHeader className="py-3 max-w-[280px] font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Permissions
                   </TableCell>
-                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                  <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 whitespace-nowrap">
                     Added
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
@@ -194,24 +192,36 @@ export default function StaffPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((member) => (
+                {items.map((member) => {
+                  const labels = permissionLabels(member);
+                  return (
                   <TableRow key={member.id}>
-                    <TableCell className="py-3">
+                    <TableCell className="py-3 align-top">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
                         {member.name}
                       </p>
                     </TableCell>
-                    <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                    <TableCell className="py-3 align-top text-gray-500 text-theme-sm dark:text-gray-400">
                       {member.email}
                     </TableCell>
-                    <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {permissionLabels(member)}
+                    <TableCell className="py-3 align-top max-w-[280px] text-gray-500 text-theme-sm dark:text-gray-400">
+                      {labels.length === 0 ? (
+                        "—"
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {labels.map((label) => (
+                            <Badge key={label} size="sm" color="light">
+                              {label}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
                     </TableCell>
-                    <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
+                    <TableCell className="py-3 align-top whitespace-nowrap text-gray-500 text-theme-sm dark:text-gray-400">
                       {formatDate(member.created_at)}
                     </TableCell>
-                    <TableCell className="py-3">
-                      <div className="flex justify-end gap-1.5">
+                    <TableCell className="py-3 align-top">
+                      <div className="flex flex-nowrap justify-end gap-1.5">
                         {canManage && (
                           <button
                             onClick={() => openPermissions(member)}
@@ -233,7 +243,8 @@ export default function StaffPanel() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
