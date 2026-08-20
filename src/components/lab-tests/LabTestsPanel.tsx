@@ -16,6 +16,7 @@ import {
   LabTest,
   LabTestStatus,
   LabTestCategory,
+  LabTestCategoryOption,
   labTestsApi,
 } from "@/lib/api";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
@@ -30,7 +31,7 @@ export default function LabTestsPanel() {
   const [items, setItems] = useState<LabTest[]>([]);
   const [statusFilter, setStatusFilter] = useState<LabTestStatus | "">("");
   const [categoryFilter, setCategoryFilter] = useState<LabTestCategory | "">("");
-  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<LabTestCategoryOption[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,8 +104,8 @@ export default function LabTestsPanel() {
           >
             <option value="">All categories</option>
             {categoryOptions.map((c) => (
-              <option key={c} value={c}>
-                {labTestCategoryLabel(c)}
+              <option key={c.id ?? c.name} value={c.name}>
+                {c.name}
               </option>
             ))}
           </select>

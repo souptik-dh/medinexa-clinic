@@ -794,6 +794,15 @@ export type LabTestStatus = "active" | "inactive";
 // Clinic-defined free text, not a fixed enum — see labTestsApi.categories().
 export type LabTestCategory = string;
 
+// An entry from labTestsApi.categories(): registered categories carry an id
+// and badge_color; legacy free-text values already used on a test but never
+// registered come back with id: null, badge_color: null.
+export interface LabTestCategoryOption {
+  id: string | null;
+  name: string;
+  badge_color: string | null;
+}
+
 export type LabTestAppointmentServiceMode = "CLINIC" | "HOME";
 
 export type LabTestPaymentMethod = "PAY_AT_CLINIC" | "ONLINE";
@@ -1994,8 +2003,8 @@ export const labTestsApi = {
 
   // Distinct categories this clinic has already used — suggestions for the
   // create-form combobox, not an exhaustive/fixed list.
-  async categories(clinicId?: string): Promise<{ items: string[] }> {
-    return apiFetch<{ items: string[] }>(`/clinic/lab-tests/categories${query({ clinic_id: clinicId })}`);
+  async categories(clinicId?: string): Promise<{ items: LabTestCategoryOption[] }> {
+    return apiFetch<{ items: LabTestCategoryOption[] }>(`/clinic/lab-tests/categories${query({ clinic_id: clinicId })}`);
   },
 };
 

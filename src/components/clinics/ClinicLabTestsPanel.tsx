@@ -14,6 +14,7 @@ import {
 import {
   Branch,
   LabTest,
+  LabTestCategoryOption,
   LabTestStatus,
   branchesApi,
   labTestsApi,
@@ -32,7 +33,7 @@ export default function ClinicLabTestsPanel() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [statusFilter, setStatusFilter] = useState<LabTestStatus | "">("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<LabTestCategoryOption[]>([]);
   const [search, setSearch] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -188,8 +189,8 @@ export default function ClinicLabTestsPanel() {
             >
               <option value="">All categories</option>
               {categoryOptions.map((c) => (
-                <option key={c} value={c}>
-                  {labTestCategoryLabel(c)}
+                <option key={c.id ?? c.name} value={c.name}>
+                  {c.name}
                 </option>
               ))}
             </select>

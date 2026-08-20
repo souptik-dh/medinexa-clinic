@@ -79,7 +79,8 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       .categories()
       .then((res) => {
         if (res.items.length > 0) {
-          setCategoryOptions(Array.from(new Set([...res.items, ...DEFAULT_CATEGORY_SUGGESTIONS])));
+          const names = res.items.map((c) => c.name);
+          setCategoryOptions(Array.from(new Set([...names, ...DEFAULT_CATEGORY_SUGGESTIONS])));
         }
       })
       .catch(() => {});
@@ -105,6 +106,18 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       setError("Category is required.");
       return;
     }
+    const precautions = form.default_precautions
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (precautions.length > 50) {
+      setError("You can add at most 50 precautions.");
+      return;
+    }
+    if (precautions.some((p) => p.length > 255)) {
+      setError("Each precaution must be 255 characters or fewer.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -113,10 +126,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
         description: form.description.trim() || null,
         category: form.category.trim(),
         instructions: form.instructions.trim() || null,
-        default_precautions: form.default_precautions
-          .split(",")
-          .map((p) => p.trim())
-          .filter(Boolean),
+        default_precautions: precautions,
       });
     } catch {
       setBusy(false);
