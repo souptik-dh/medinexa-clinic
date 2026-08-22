@@ -5,6 +5,8 @@ import { Clinic, branchesApi, clinicsApi, doctorsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic } from "@/lib/permissions";
+import Pagination from "@/components/tables/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type ClinicRow = Clinic & { doctorCount: number | null };
 
@@ -77,6 +79,10 @@ export default function ClinicsPanel() {
         c.state?.toLowerCase().includes(q)
     );
   }, [clinics, search]);
+
+  const { page, setPage, totalPages, pageItems } = usePagination(filtered, {
+    resetKey: search,
+  });
 
   if (!isAdmin) {
     return (
@@ -174,7 +180,7 @@ export default function ClinicsPanel() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => (
+          {pageItems.map((c) => (
             <Link
               key={c.id}
               href={`/clinics/${c.id}/overview`}
@@ -275,6 +281,12 @@ export default function ClinicsPanel() {
               </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {!loading && filtered.length > 10 && (
+        <div className="flex justify-center">
+          <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
     </div>

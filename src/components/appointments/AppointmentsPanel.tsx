@@ -10,7 +10,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
+import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import TruckLoader from "@/components/common/TruckLoader";
 import {
@@ -69,6 +71,9 @@ export default function AppointmentsPanel() {
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const { isOpen, openModal, closeModal } = useModal();
+  const { page, setPage, totalPages, pageItems } = usePagination(items, {
+    resetKey: `${status}-${dateFrom}-${dateTo}`,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,7 +286,7 @@ export default function AppointmentsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((appt) => (
+                {pageItems.map((appt) => (
                   <TableRow key={appt.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -349,6 +354,11 @@ export default function AppointmentsPanel() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        )}
+        {items.length > 10 && (
+          <div className="mt-4 flex justify-center">
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>

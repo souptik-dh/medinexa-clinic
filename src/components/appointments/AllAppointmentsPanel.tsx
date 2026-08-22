@@ -12,7 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
+import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import TruckLoader from "@/components/common/TruckLoader";
 import {
@@ -91,6 +93,12 @@ export default function AllAppointmentsPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const { isOpen, openModal, closeModal } = useModal();
+  const {
+    page: docPage,
+    setPage: setDocPage,
+    totalPages: docTotalPages,
+    pageItems: docPageItems,
+  } = usePagination(docItems, { resetKey: `${docStatus}-${docDateFrom}-${docDateTo}` });
 
   // Lab appointments state
   const [labItems, setLabItems] = useState<LabTestAppointment[]>([]);
@@ -102,6 +110,14 @@ export default function AllAppointmentsPanel() {
   const [labLoading, setLabLoading] = useState(false);
   const [labError, setLabError] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const {
+    page: labPage,
+    setPage: setLabPage,
+    totalPages: labTotalPages,
+    pageItems: labPageItems,
+  } = usePagination(labItems, {
+    resetKey: `${labBranch}-${labStatus}-${labSearch}-${labDateFrom}-${labDateTo}`,
+  });
 
   // Load branches for filters
   useEffect(() => {
@@ -392,7 +408,7 @@ export default function AllAppointmentsPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {docItems.map((appt) => (
+                    {docPageItems.map((appt) => (
                       <TableRow key={appt.id}>
                         <TableCell className="py-3">
                           <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -459,6 +475,11 @@ export default function AllAppointmentsPanel() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+            {docItems.length > 10 && (
+              <div className="mt-4 flex justify-center">
+                <Pagination currentPage={docPage} totalPages={docTotalPages} onPageChange={setDocPage} />
               </div>
             )}
           </div>
@@ -572,7 +593,7 @@ export default function AllAppointmentsPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {labItems.map((appt) => (
+                    {labPageItems.map((appt) => (
                       <TableRow key={appt.id}>
                         <TableCell className="py-3">
                           <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -644,6 +665,11 @@ export default function AllAppointmentsPanel() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+            {labItems.length > 10 && (
+              <div className="mt-4 flex justify-center">
+                <Pagination currentPage={labPage} totalPages={labTotalPages} onPageChange={setLabPage} />
               </div>
             )}
           </div>

@@ -16,7 +16,9 @@ import {
 import { Modal } from "@/components/ui/modal";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import {
   BranchDoctor,
@@ -87,6 +89,19 @@ export default function DoctorsPanel() {
     openModal: openPhotoModal,
     closeModal: closePhotoModal,
   } = useModal();
+
+  const {
+    page: doctorsPage,
+    setPage: setDoctorsPage,
+    totalPages: doctorsTotalPages,
+    pageItems: doctorsPageItems,
+  } = usePagination(doctors, { resetKey: branch?.id });
+  const {
+    page: invitesPage,
+    setPage: setInvitesPage,
+    totalPages: invitesTotalPages,
+    pageItems: invitesPageItems,
+  } = usePagination(invites, { resetKey: branch?.id });
 
   const load = useCallback(
     async (b: BranchSelectValue | null, activeTab: Tab) => {
@@ -388,6 +403,7 @@ export default function DoctorsPanel() {
               No doctors assigned to this branch yet. Invite one from the Invites tab.
             </p>
           ) : (
+            <>
             <div className="max-w-full overflow-x-auto">
               <Table>
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
@@ -416,7 +432,7 @@ export default function DoctorsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {doctors.map((doc) => (
+                  {doctorsPageItems.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="py-3">
                         <Link
@@ -499,12 +515,23 @@ export default function DoctorsPanel() {
                 </TableBody>
               </Table>
             </div>
+            {doctors.length > 10 && (
+              <div className="mt-4 flex justify-center">
+                <Pagination
+                  currentPage={doctorsPage}
+                  totalPages={doctorsTotalPages}
+                  onPageChange={setDoctorsPage}
+                />
+              </div>
+            )}
+            </>
           )
         ) : invites.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No invites for this branch yet.
           </p>
         ) : (
+          <>
           <div className="max-w-full overflow-x-auto">
             <Table>
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
@@ -527,7 +554,7 @@ export default function DoctorsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {invites.map((inv) => (
+                {invitesPageItems.map((inv) => (
                   <TableRow key={inv.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -571,6 +598,16 @@ export default function DoctorsPanel() {
               </TableBody>
             </Table>
           </div>
+          {invites.length > 10 && (
+            <div className="mt-4 flex justify-center">
+              <Pagination
+                currentPage={invitesPage}
+                totalPages={invitesTotalPages}
+                onPageChange={setInvitesPage}
+              />
+            </div>
+          )}
+          </>
         )}
       </div>
 

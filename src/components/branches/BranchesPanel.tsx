@@ -25,9 +25,11 @@ import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
 import BranchReviewsPanel from "@/components/branches/BranchReviewsPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import RatingStars from "@/components/common/RatingStars";
+import Pagination from "@/components/tables/Pagination";
 import { formatDate, formatFullAddress } from "@/lib/utils";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { usePagination } from "@/hooks/usePagination";
 
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -60,6 +62,10 @@ export default function BranchesPanel() {
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
   const canSchedule = isAdmin || canAccessBranchSettings(userPermissions);
   const canManageLab = isAdmin || canManageLabTests(userPermissions);
+
+  const { page, setPage, totalPages, pageItems } = usePagination(branches, {
+    resetKey: selectedId,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -302,6 +308,7 @@ export default function BranchesPanel() {
               No branches for this clinic.
             </p>
           ) : (
+            <>
             <div className="max-w-full">
               <Table>
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
@@ -324,7 +331,7 @@ export default function BranchesPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {branches.map((b) => (
+                  {pageItems.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="py-3">
                         <button
@@ -408,6 +415,12 @@ export default function BranchesPanel() {
                 </TableBody>
               </Table>
             </div>
+            {branches.length > 10 && (
+              <div className="mt-4 flex justify-center">
+                <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+              </div>
+            )}
+            </>
           )}
         </div>
       </div>

@@ -158,6 +158,13 @@ export default function CompactHeader() {
     if (stored) {
       sessionStorage.removeItem("compact-back-url");
       router.push(stored);
+      return;
+    }
+    // Prefer real browser back navigation so the user lands on whatever page
+    // they actually came from; the computed `back.href` is only a fallback
+    // for a direct/refreshed page load where there's no in-app history.
+    if (window.history.length > 1) {
+      router.back();
     } else {
       router.push(back.href);
     }

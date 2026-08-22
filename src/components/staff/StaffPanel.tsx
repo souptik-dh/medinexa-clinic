@@ -12,7 +12,9 @@ import {
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import Badge from "@/components/ui/badge/Badge";
+import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
+import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import TruckLoader from "@/components/common/TruckLoader";
 import { StaffMember, staffApi } from "@/lib/api";
@@ -34,6 +36,9 @@ export default function StaffPanel() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
+  const { page, setPage, totalPages, pageItems } = usePagination(items, {
+    resetKey: branch?.id,
+  });
 
   const load = useCallback(async (b: BranchSelectValue | null) => {
     if (!b) {
@@ -192,7 +197,7 @@ export default function StaffPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((member) => {
+                {pageItems.map((member) => {
                   const labels = permissionLabels(member);
                   return (
                   <TableRow key={member.id}>
@@ -247,6 +252,11 @@ export default function StaffPanel() {
                 })}
               </TableBody>
             </Table>
+          </div>
+        )}
+        {items.length > 10 && (
+          <div className="mt-4 flex justify-center">
+            <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
         )}
       </div>

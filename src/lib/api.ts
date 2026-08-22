@@ -176,21 +176,41 @@ export function notifySessionExpired(): void {
   }
 }
 
+// POST /auth/refresh rotates the refresh token - the old one is revoked as
+// soon as the new one is issued. Concurrent callers (multiple panels 401ing
+// around the same time, plus AuthContext's proactive expiry check) must
+// therefore share a single in-flight request; otherwise a caller that reads
+// the refresh token just before another one's rotation lands sends the
+// now-revoked token and gets REFRESH_TOKEN_INVALID, forcing a spurious logout
+// even though the session was refreshed successfully moments earlier.
+let refreshInFlight: Promise<string | null> | null = null;
+
 async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+
   const refreshToken = getRefreshToken();
   if (!refreshToken) return null;
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as AuthTokens;
+      setTokens(data);
+      return data.access_token;
+    } catch {
+      return null;
+    }
+  })();
+
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as AuthTokens;
-    setTokens(data);
-    return data.access_token;
-  } catch {
-    return null;
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
   }
 }
 
