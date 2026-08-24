@@ -75,6 +75,15 @@ export interface ClinicOwnerRegisterResponse {
   message?: string;
 }
 
+// POST /auth/patient/register returns tokens immediately (no email
+// verification flow) - see API.md §Authentication.
+export interface PatientAuthResponse extends AuthTokens {
+  user: User;
+}
+
+// POST /auth/super-admin/login - same envelope as other logins.
+export type SuperAdminAuthResponse = PatientAuthResponse;
+
 export interface ErrorEnvelope {
   error: {
     code: string;
@@ -174,6 +183,19 @@ export function notifySessionExpired(): void {
   } else if (typeof window !== "undefined") {
     window.location.href = "/signin";
   }
+}
+
+// The API answers 402 SUBSCRIPTION_INACTIVE on clinic-scoped endpoints once
+// the trial ends / subscription lapses. Any panel can hit this, so instead of
+// handling it per-page we broadcast an event; SubscriptionGateBanner listens
+// and shows a persistent banner with a link to /billing.
+export const SUBSCRIPTION_INACTIVE_EVENT = "medinexa:subscription-inactive";
+
+export function notifySubscriptionInactive(message?: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<string | undefined>(SUBSCRIPTION_INACTIVE_EVENT, { detail: message })
+  );
 }
 
 // POST /auth/refresh rotates the refresh token - the old one is revoked as
@@ -300,6 +322,9 @@ async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise
   if (!response.ok) {
     const envelope = payload as ErrorEnvelope | null;
     const err = envelope?.error;
+    if (err?.code === "SUBSCRIPTION_INACTIVE") {
+      notifySubscriptionInactive(err.message);
+    }
     throw new ApiError(
       err?.message || `Request failed with status ${response.status}`,
       err?.code || "INTERNAL_ERROR",
@@ -803,7 +828,12 @@ export type NotificationType =
   | "lab_test_approved"
   | "lab_test_rejected"
   | "lab_test_cancelled"
-  | "lab_test_completed";
+  | "lab_test_completed"
+  | "lab_test_payment_success"
+  | "subscription_expiring"
+  | "subscription_expired"
+  | "subscription_activated"
+  | "subscription_deactivated";
 
 // ---------------------------------------------------------------------------
 // Lab Tests
@@ -1052,6 +1082,305 @@ export interface LedgerEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Subscriptions & billing
+// ---------------------------------------------------------------------------
+
+// Display status adds one derived, never-persisted value (EXPIRING) on top of
+// the four stored statuses - see API.md §Subscriptions & billing.
+export type SubscriptionStatus =
+  | "TRIAL"
+  | "ACTIVE"
+  | "EXPIRING"
+  | "EXPIRED"
+  | "INACTIVE";
+
+export interface Subscription {
+  id: string;
+  clinic_id: string;
+  status: SubscriptionStatus;
+  stored_status?: Exclude<SubscriptionStatus, "EXPIRING">;
+  is_trial: boolean;
+  monthly_amount: number;
+  currency: string;
+  period_start: string | null;
+  period_end: string | null;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  days_remaining: number;
+  expiring_soon: boolean;
+  auto_renew: boolean;
+  inactive_since: string | null;
+  deactivation_reason: string | null;
+  blocked: boolean;
+  blocked_reason: string | null;
+}
+
+export type SubscriptionPaymentMethod = "upi" | "card" | "netbanking" | "wallet";
+
+export type SubscriptionPaymentStatus = "PENDING" | "PAID" | "FAILED";
+
+export interface SubscriptionPayment {
+  id: string;
+  clinic_id: string;
+  subscription_id: string;
+  invoice_no: string;
+  amount: number;
+  currency: string;
+  months: number;
+  method: SubscriptionPaymentMethod | "cash" | "manual";
+  provider: string;
+  provider_order_id: string;
+  provider_payment_id: string | null;
+  status: SubscriptionPaymentStatus;
+  failure_reason: string | null;
+  reference_no: string | null;
+  verification_method: "signature" | "webhook" | "manual" | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  initiated_by: string | null;
+  created_at: string;
+}
+
+export interface SubscriptionPlanInfo {
+  id: string | null;
+  name: string;
+  monthly_amount: number;
+  currency: string;
+  trial_months: number;
+}
+
+export interface SubscriptionDetailResponse {
+  subscription: Subscription;
+  current_plan: SubscriptionPlanInfo;
+  settings: {
+    expiring_warning_days: number;
+    max_months_per_payment: number;
+  };
+}
+
+export interface SubscriptionHistoryEntry {
+  id: string;
+  clinic_id: string;
+  from_status: string | null;
+  to_status: string;
+  reason: string | null;
+  changed_by: string | null;
+  source: "system" | "clinic" | "super_admin" | "payment" | "webhook";
+  created_at: string;
+}
+
+export interface SubscriptionInitiatePaymentResponse {
+  payment: SubscriptionPayment;
+  plan: {
+    name: string;
+    monthly_amount: number;
+    currency: string;
+    months: number;
+  };
+  next_steps: string[];
+}
+
+export interface SubscriptionVerifyPaymentResponse {
+  message: string;
+  payment: SubscriptionPayment;
+  subscription: Subscription;
+}
+
+export interface SubscriptionReactivateResponse {
+  reactivated: boolean;
+  payment_applied: boolean;
+  message: string;
+  subscription: Subscription;
+}
+
+export interface SubscriptionTrialView {
+  clinic_id: string;
+  trial: {
+    is_trial: boolean;
+    status: SubscriptionStatus | "CONCLUDED";
+    started_at: string | null;
+    ends_at: string | null;
+    days_remaining: number;
+    expiring_soon: boolean;
+    expired: boolean;
+  };
+  subscription_status: SubscriptionStatus;
+  monthly_amount: number;
+  currency: string;
+  blocked: boolean;
+  blocked_reason: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Super Admin platform
+// ---------------------------------------------------------------------------
+
+export interface SuperAdminClinicListItem {
+  id: string;
+  name: string;
+  city?: string | null;
+  district?: string | null;
+  owner: {
+    id: string;
+    email: string;
+    name: string;
+    phone?: string | null;
+  };
+  branch_count: number;
+  subscription: Subscription | null;
+  created_at: string;
+}
+
+export interface SuperAdminClinicDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  location: {
+    nearby_location: string | null;
+    city: string | null;
+    district: string | null;
+    pin_code: string | null;
+    state: string | null;
+  };
+  owner: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    account_status: string;
+    created_at: string | null;
+  };
+  licenses: {
+    trade_license_number: string | null;
+    trade_license_validation_status: TradeLicenseValidationStatus | null;
+    drug_license_number: string | null;
+    clinical_establishment_reg_number: string | null;
+  };
+  subscription: Subscription;
+  branches: {
+    id: string;
+    name: string;
+    address: string;
+    city: string | null;
+    district: string | null;
+    pin_code: string | null;
+    state: string | null;
+    phone: string;
+    timezone: string;
+    trade_license_validation_status: TradeLicenseValidationStatus | null;
+    created_at: string;
+  }[];
+  staff: {
+    user_id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    account_status: string;
+    branch_id: string;
+    branch_name: string;
+    added_at: string;
+  }[];
+  doctors: {
+    id: string;
+    name: string;
+    specialization: string | null;
+    reg_no: string | null;
+    smc_name: string | null;
+    degree: string | null;
+    branch_id: string;
+    fee_amount: number;
+    currency: string;
+  }[];
+  lab_configuration: {
+    active_tests: number;
+    categories: number;
+    branch_test_links: number;
+  };
+  appointment_summary: {
+    by_status: Record<string, number>;
+    lab_tests_by_status: Record<string, number>;
+    appointments_last_30d: number;
+    collected_estimate_inr: number;
+  };
+  created_at: string;
+}
+
+export interface SuperAdminSubscriptionDetailResponse {
+  subscription: Subscription;
+  current_plan: SubscriptionPlanInfo;
+  lifetime: {
+    total_paid: number;
+    paid_payment_count: number;
+  };
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor: { user_id: string; email: string } | null;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  changes: { from?: unknown; to?: unknown } & Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface PlatformSetting {
+  key: string;
+  value: string;
+  description?: string | null;
+  updated_at?: string;
+}
+
+export interface PlatformSettingsResponse {
+  items: PlatformSetting[];
+  editable_keys: { key: string; description: string }[];
+}
+
+export interface SuperAdminStatistics {
+  clinics: {
+    total: number;
+    by_status: Record<"TRIAL" | "ACTIVE" | "EXPIRED" | "INACTIVE", number>;
+    expiring_within_days: number;
+    expiring_window_days: number;
+  };
+  revenue_inr: {
+    total_collected: number;
+    current_month: number;
+    previous_month: number;
+    paid_payment_count: number;
+    monthly_breakdown: { month: string; amount: number; count: number }[];
+  };
+  mrr_estimate_inr: number;
+  current_plan: { name: string; monthly_amount: number; currency: string };
+}
+
+export interface SuperAdminGrantItem {
+  user_id: string;
+  email: string;
+  name: string;
+  account_status: string;
+  revoked: boolean;
+  granted_by_email: string | null;
+  granted_at: string;
+}
+
+export interface SuperAdminPlanVersion {
+  id: string;
+  name: string;
+  billing_period: string;
+  monthly_amount: number;
+  currency: string;
+  trial_months: number;
+  is_active: boolean;
+  effective_from: string | null;
+  created_by_email: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
 
@@ -1141,6 +1470,40 @@ export const authApi = {
     });
   },
 
+  async registerPatient(input: {
+    name: string;
+    email: string;
+    password: string;
+  }): Promise<PatientAuthResponse> {
+    return apiFetch<PatientAuthResponse>("/auth/patient/register", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async loginPatient(input: {
+    email: string;
+    password: string;
+  }): Promise<PatientAuthResponse> {
+    return apiFetch<PatientAuthResponse>("/auth/patient/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async loginSuperAdmin(input: {
+    email: string;
+    password: string;
+  }): Promise<SuperAdminAuthResponse> {
+    return apiFetch<SuperAdminAuthResponse>("/auth/super-admin/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
   async verifyStaffOtp(input: {
     email: string;
     otp: string;
@@ -1182,6 +1545,18 @@ export const clinicsApi = {
   async list(params: ClinicListParams = {}): Promise<Paginated<Clinic>> {
     return apiFetch<Paginated<Clinic>>(
       `/clinics${query({ search: params.search, limit: params.limit, cursor: params.cursor })}`
+    );
+  },
+
+  // Authenticated owner's own clinics (full detail incl. licenses).
+  async mine(): Promise<{ items: Clinic[] }> {
+    return apiFetch<{ items: Clinic[] }>("/clinics/mine");
+  },
+
+  // Public discovery for patients.
+  async nearby(input: { lat: number; lng: number; radius_km?: number; limit?: number }): Promise<Clinic[]> {
+    return apiFetch<Clinic[]>(
+      `/clinics/nearby${query({ lat: input.lat, lng: input.lng, radius_km: input.radius_km, limit: input.limit })}`
     );
   },
 
@@ -1238,6 +1613,23 @@ export const clinicsApi = {
 export const branchesApi = {
   async list(clinicId: string): Promise<Paginated<Branch>> {
     return apiFetch<Paginated<Branch>>(`/clinics/${clinicId}/branches`);
+  },
+
+  // Public discovery for patients.
+  async nearby(input: {
+    lat: number;
+    lng: number;
+    radius_km?: number;
+    limit?: number;
+  }): Promise<(Branch & { clinic_name?: string | null; distance_km?: number })[]> {
+    return apiFetch<(Branch & { clinic_name?: string | null; distance_km?: number })[]>(
+      `/branches/nearby${query({
+        lat: input.lat,
+        lng: input.lng,
+        radius_km: input.radius_km,
+        limit: input.limit,
+      })}`
+    );
   },
 
   async create(clinicId: string, input: BranchCreateInput): Promise<Branch> {
@@ -1800,6 +2192,14 @@ export const appointmentsApi = {
   async statusHistory(id: string): Promise<Paginated<StatusHistoryEntry>> {
     return apiFetch<Paginated<StatusHistoryEntry>>(`/appointments/${id}/status-history`);
   },
+
+  // Patient-only: review a completed appointment (1-5 rating).
+  async review(id: string, input: { rating: number; comment?: string }): Promise<BranchReview> {
+    return apiFetch<BranchReview>(`/appointments/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1831,6 +2231,22 @@ export const notificationsApi = {
     return apiFetch<void>("/notifications/read-all", {
       method: "PATCH",
       body: JSON.stringify(branchId ? { branch_id: branchId } : {}),
+    });
+  },
+
+  async registerDeviceToken(input: {
+    token: string;
+    platform: "web" | "android" | "ios";
+  }): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/notifications/device-tokens", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async removeDeviceToken(token: string): Promise<void> {
+    return apiFetch<void>(`/notifications/device-tokens${query({ token })}`, {
+      method: "DELETE",
     });
   },
 };
@@ -1964,6 +2380,260 @@ export const ledgerApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Subscriptions & billing
+// ---------------------------------------------------------------------------
+
+export const subscriptionsApi = {
+  async get(clinicId: string): Promise<SubscriptionDetailResponse> {
+    return apiFetch<SubscriptionDetailResponse>(`/clinics/${clinicId}/subscription`);
+  },
+
+  async history(
+    clinicId: string,
+    params: { limit?: number; cursor?: string } = {}
+  ): Promise<Paginated<SubscriptionHistoryEntry>> {
+    return apiFetch<Paginated<SubscriptionHistoryEntry>>(
+      `/clinics/${clinicId}/subscription/history${query({
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async payments(
+    clinicId: string,
+    params: {
+      status?: SubscriptionPaymentStatus;
+      limit?: number;
+      cursor?: string;
+    } = {}
+  ): Promise<Paginated<SubscriptionPayment>> {
+    return apiFetch<Paginated<SubscriptionPayment>>(
+      `/clinics/${clinicId}/subscription/payments${query({
+        status: params.status,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  // Amount is always computed server-side (plan.amount × months); the client
+  // never sends it.
+  async initiatePayment(
+    clinicId: string,
+    input: { months: number; method?: SubscriptionPaymentMethod }
+  ): Promise<SubscriptionInitiatePaymentResponse> {
+    return apiFetch<SubscriptionInitiatePaymentResponse>(
+      `/clinics/${clinicId}/subscription/payments`,
+      { method: "POST", body: JSON.stringify(input) }
+    );
+  },
+
+  // paymentId matches by id OR provider_order_id.
+  async verifyPayment(
+    clinicId: string,
+    paymentId: string,
+    input: {
+      provider_payment_id: string;
+      provider_signature: string;
+      reference_no?: string | null;
+    }
+  ): Promise<SubscriptionVerifyPaymentResponse> {
+    return apiFetch<SubscriptionVerifyPaymentResponse>(
+      `/clinics/${clinicId}/subscription/payments/${paymentId}/verify`,
+      { method: "POST", body: JSON.stringify(input) }
+    );
+  },
+
+  async reactivate(clinicId: string): Promise<SubscriptionReactivateResponse> {
+    return apiFetch<SubscriptionReactivateResponse>(
+      `/clinics/${clinicId}/subscription/reactivate`,
+      { method: "POST" }
+    );
+  },
+
+  // Trial-focused view for a dedicated widget.
+  async trial(clinicId: string): Promise<SubscriptionTrialView> {
+    return apiFetch<SubscriptionTrialView>(`/clinics/${clinicId}/subscription/trial`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Super Admin platform
+// ---------------------------------------------------------------------------
+
+export interface SuperAdminClinicListParams {
+  q?: string;
+  subscription_status?: SubscriptionStatus;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface SuperAdminAuditLogParams {
+  action?: string;
+  actor_user_id?: string;
+  resource_type?: string;
+  resource_id?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export const superAdminApi = {
+  async clinics(params: SuperAdminClinicListParams = {}): Promise<Paginated<SuperAdminClinicListItem>> {
+    return apiFetch<Paginated<SuperAdminClinicListItem>>(
+      `/super-admin/clinics${query({
+        q: params.q,
+        subscription_status: params.subscription_status,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async clinic(clinicId: string): Promise<SuperAdminClinicDetail> {
+    return apiFetch<SuperAdminClinicDetail>(`/super-admin/clinics/${clinicId}`);
+  },
+
+  async activateClinic(clinicId: string): Promise<{ message: string; subscription: Subscription }> {
+    return apiFetch(`/super-admin/clinics/${clinicId}/activate`, { method: "POST" });
+  },
+
+  async deactivateClinic(clinicId: string, reason: string): Promise<{ message: string; subscription: Subscription }> {
+    return apiFetch(`/super-admin/clinics/${clinicId}/deactivate`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async clinicPayments(
+    clinicId: string,
+    params: { status?: SubscriptionPaymentStatus; limit?: number; cursor?: string } = {}
+  ): Promise<Paginated<SubscriptionPayment>> {
+    return apiFetch<Paginated<SubscriptionPayment>>(
+      `/super-admin/clinics/${clinicId}/payments${query({
+        status: params.status,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async clinicSubscription(clinicId: string): Promise<SuperAdminSubscriptionDetailResponse> {
+    return apiFetch<SuperAdminSubscriptionDetailResponse>(
+      `/super-admin/clinics/${clinicId}/subscription`
+    );
+  },
+
+  async extendSubscription(
+    clinicId: string,
+    input: { months?: number; trial_days?: number; reason: string }
+  ): Promise<{ message: string; subscription: Subscription }> {
+    return apiFetch(`/super-admin/clinics/${clinicId}/subscription/extend`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async auditLogs(params: SuperAdminAuditLogParams = {}): Promise<Paginated<AuditLogEntry>> {
+    return apiFetch<Paginated<AuditLogEntry>>(
+      `/super-admin/audit-logs${query({
+        action: params.action,
+        actor_user_id: params.actor_user_id,
+        resource_type: params.resource_type,
+        resource_id: params.resource_id,
+        from: params.from,
+        to: params.to,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async settings(): Promise<PlatformSettingsResponse> {
+    return apiFetch<PlatformSettingsResponse>("/super-admin/settings");
+  },
+
+  async updateSetting(key: string, value: string): Promise<{ message: string; key: string; value: string }> {
+    return apiFetch("/super-admin/settings", {
+      method: "PATCH",
+      body: JSON.stringify({ key, value }),
+    });
+  },
+
+  async statistics(): Promise<SuperAdminStatistics> {
+    return apiFetch<SuperAdminStatistics>("/super-admin/statistics");
+  },
+
+  async superAdmins(): Promise<{ items: SuperAdminGrantItem[] }> {
+    return apiFetch<{ items: SuperAdminGrantItem[] }>("/super-admin/super-admins");
+  },
+
+  async grantSuperAdmin(email: string): Promise<{ message: string; user_id: string; email: string }> {
+    return apiFetch("/super-admin/super-admins", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async revokeSuperAdmin(userId: string): Promise<void> {
+    return apiFetch<void>(`/super-admin/super-admins/${userId}`, { method: "DELETE" });
+  },
+
+  async plans(): Promise<{ items: SuperAdminPlanVersion[] }> {
+    return apiFetch<{ items: SuperAdminPlanVersion[] }>("/super-admin/plans");
+  },
+
+  async publishPlan(input: {
+    name?: string;
+    monthly_amount: number;
+    currency?: string;
+    trial_months?: number;
+  }): Promise<{
+    message: string;
+    plan_id: string;
+    monthly_amount: number;
+    currency: string;
+    trial_months: number;
+  }> {
+    return apiFetch("/super-admin/plans", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async payments(
+    params: {
+      clinic_id?: string;
+      status?: SubscriptionPaymentStatus;
+      from?: string;
+      to?: string;
+      limit?: number;
+      cursor?: string;
+    } = {}
+  ): Promise<Paginated<SubscriptionPayment & { clinic_name?: string | null }>> {
+    return apiFetch<Paginated<SubscriptionPayment & { clinic_name?: string | null }>>(
+      `/super-admin/payments${query({
+        clinic_id: params.clinic_id,
+        status: params.status,
+        from: params.from,
+        to: params.to,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async processSubscriptions(): Promise<{
+    message: string;
+    result: { expiredTrials: number; expiredSubscriptions: number; expiringNotified: number };
+  }> {
+    return apiFetch("/super-admin/system/process-subscriptions", { method: "POST" });
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Lab Tests — Clinic management
 // ---------------------------------------------------------------------------
 
@@ -2025,6 +2695,16 @@ export const labTestsApi = {
   // create-form combobox, not an exhaustive/fixed list.
   async categories(clinicId?: string): Promise<{ items: LabTestCategoryOption[] }> {
     return apiFetch<{ items: LabTestCategoryOption[] }>(`/clinic/lab-tests/categories${query({ clinic_id: clinicId })}`);
+  },
+
+  // Bulk-register new categories (1-20 items, UPPER_SNAKE_CASE values).
+  async createCategories(
+    names: string[]
+  ): Promise<{ created: LabTestCategoryOption[]; skipped?: LabTestCategoryOption[] }> {
+    return apiFetch<{ created: LabTestCategoryOption[]; skipped?: LabTestCategoryOption[] }>(
+      "/clinic/lab-tests/categories",
+      { method: "POST", body: JSON.stringify({ categories: names }) }
+    );
   },
 };
 
@@ -2227,5 +2907,203 @@ export const labTestAppointmentsApi = {
         body: JSON.stringify(reason ? { reason } : {}),
       }
     );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Patients — self-service (patient role)
+// ---------------------------------------------------------------------------
+
+export interface PatientProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  photo_url: string | null;
+  gender: string | null;
+  dob: string | null;
+  blood_group: string | null;
+  allergies: string | null;
+  chronic_conditions: string | null;
+  current_medications: string | null;
+  created_at: string;
+}
+
+export interface PatientSession {
+  id: string;
+  device_info: string | null;
+  ip_address: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+export const patientsMeApi = {
+  async get(): Promise<PatientProfile> {
+    return apiFetch<PatientProfile>("/patients/me");
+  },
+
+  async update(input: Partial<{
+    name: string;
+    phone: string;
+    photo_url: string;
+    gender: string;
+    dob: string;
+    blood_group: string;
+    allergies: string;
+    chronic_conditions: string;
+    current_medications: string;
+  }>): Promise<PatientProfile> {
+    return apiFetch<PatientProfile>("/patients/me", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async medicalInfo(): Promise<Record<string, unknown>> {
+    return apiFetch<Record<string, unknown>>("/patients/me/medical-info");
+  },
+
+  async appointmentSummary(): Promise<{ items: Record<string, unknown>[] }> {
+    return apiFetch<{ items: Record<string, unknown>[] }>("/patients/me/appointment-summary");
+  },
+
+  async changePassword(input: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/patients/me/change-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async changeEmailRequest(newEmail: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/patients/me/change-email/request", {
+      method: "POST",
+      body: JSON.stringify({ new_email: newEmail }),
+    });
+  },
+
+  async changeEmailVerify(token: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/patients/me/change-email/verify", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  async sessions(): Promise<{ items: PatientSession[] }> {
+    return apiFetch<{ items: PatientSession[] }>("/patients/me/sessions");
+  },
+
+  async revokeSession(sessionId: string): Promise<void> {
+    return apiFetch<void>(`/patients/me/sessions/${sessionId}`, { method: "DELETE" });
+  },
+
+  async logoutAll(): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/patients/me/sessions/logout-all", {
+      method: "POST",
+    });
+  },
+
+  async getPhotoUploadGrant(): Promise<PhotoUploadGrant> {
+    return apiFetch<PhotoUploadGrant>("/patients/me/photo/signature", { method: "POST" });
+  },
+
+  async uploadPhoto(file: File): Promise<{ photo_url: string }> {
+    const grant = await patientsMeApi.getPhotoUploadGrant();
+    await uploadFileToCloudinary(grant, file);
+    return apiFetch<{ photo_url: string }>("/patients/me/photo", {
+      method: "POST",
+      body: JSON.stringify({ public_id: grant.public_id }),
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab tests — patient browsing & booking (patient role)
+// ---------------------------------------------------------------------------
+
+export const patientLabTestsApi = {
+  // Public: tests configured for a branch (price, availability flags).
+  async listForBranch(
+    branchId: string,
+    params: { category?: LabTestCategory; search?: string; limit?: number; cursor?: string } = {}
+  ): Promise<Paginated<BranchLabTest>> {
+    return apiFetch<Paginated<BranchLabTest>>(
+      `/branches/${branchId}/lab-tests${query({
+        category: params.category,
+        search: params.search,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async categoriesForBranch(branchId: string): Promise<{ items: LabTestCategoryOption[] }> {
+    return apiFetch<{ items: LabTestCategoryOption[] }>(
+      `/branches/${branchId}/lab-tests/categories`
+    );
+  },
+
+  // Availability for a chosen date (slot capacity per service mode).
+  async availability(branchId: string, input: { date: string }): Promise<{
+    date: string;
+    clinic_visit: { available: boolean; slots_remaining: number | null };
+    home_collection: { available: boolean; slots_remaining: number | null };
+  }> {
+    return apiFetch(`/branches/${branchId}/lab-tests/availability`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  // Patient books a lab test appointment.
+  async book(input: {
+    branch_id: string;
+    test_id: string;
+    service_mode: LabTestAppointmentServiceMode;
+    preferred_date: string;
+    preferred_slot: string | null;
+    patient_name: string;
+    patient_phone: string;
+    patient_email?: string;
+    address?: string | null;
+    prescription_url?: string | null;
+    notes?: string | null;
+  }, idempotencyKey: string): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>("/lab-test-appointments", {
+      method: "POST",
+      body: JSON.stringify(input),
+      idempotencyKey,
+    });
+  },
+
+  async listMine(params: { status?: LabTestAppointmentStatus; limit?: number; cursor?: string } = {}): Promise<
+    Paginated<LabTestAppointment>
+  > {
+    return apiFetch<Paginated<LabTestAppointment>>(
+      `/lab-test-appointments${query({
+        status: params.status,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  async get(id: string): Promise<LabTestAppointmentDetail> {
+    return apiFetch<LabTestAppointmentDetail>(`/lab-test-appointments/${id}`);
+  },
+
+  async pay(
+    id: string,
+    input: { provider_payment_id: string; provider_signature?: string | null; reference_no?: string | null },
+    idempotencyKey: string
+  ): Promise<LabTestPayment> {
+    return apiFetch<LabTestPayment>(`/lab-test-appointments/${id}/payment`, {
+      method: "POST",
+      body: JSON.stringify(input),
+      idempotencyKey,
+    });
   },
 };

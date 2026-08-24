@@ -5,6 +5,8 @@ import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
+import SubscriptionGateBanner from "@/components/subscription/SubscriptionGateBanner";
+import SubscriptionTrialBanner from "@/components/subscription/SubscriptionTrialBanner";
 import { useRouter } from "next/navigation";
 import React, { useEffect } from "react";
 
@@ -52,8 +54,12 @@ export default function AdminLayout({
       >
         {/* Header */}
         <AppHeader />
+        <SubscriptionGateBanner />
         {/* Page Content */}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
+        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+          <SubscriptionTrialBanner />
+          {children}
+        </div>
       </div>
     </div>
   );

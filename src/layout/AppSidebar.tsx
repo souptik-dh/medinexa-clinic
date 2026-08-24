@@ -88,6 +88,11 @@ const navItems: NavItem[] = [
     path: "/ledger",
   },
   {
+    icon: <DocsIcon />,
+    name: "Billing",
+    path: "/billing",
+  },
+  {
     icon: <CalenderIcon />,
     name: "My Schedule",
     path: "/doctor-schedule",
@@ -106,6 +111,44 @@ const navItems: NavItem[] = [
     icon: <UserCircleIcon />,
     name: "Profile",
     path: "/profile",
+  },
+];
+
+const superAdminItems: NavItem[] = [
+  {
+    icon: <PieChartIcon />,
+    name: "Statistics",
+    path: "/super-admin",
+  },
+  {
+    icon: <TableIcon />,
+    name: "Clinics",
+    path: "/super-admin/clinics",
+  },
+  {
+    icon: <DollarLineIcon />,
+    name: "Payments",
+    path: "/super-admin/payments",
+  },
+  {
+    icon: <BoxCubeIcon />,
+    name: "Plans",
+    path: "/super-admin/plans",
+  },
+  {
+    icon: <ListIcon />,
+    name: "Audit Logs",
+    path: "/super-admin/audit-logs",
+  },
+  {
+    icon: <GroupIcon />,
+    name: "Admins",
+    path: "/super-admin/admins",
+  },
+  {
+    icon: <PlugInIcon />,
+    name: "Settings",
+    path: "/super-admin/settings",
   },
 ];
 
@@ -147,6 +190,7 @@ const AppSidebar: React.FC = () => {
 
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const isStaff = user?.role === "branch_staff";
+  const isSuperAdmin = user?.role === "sys_admin";
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const mainItems = React.useMemo(() => {
@@ -161,6 +205,7 @@ const AppSidebar: React.FC = () => {
           case "Reports": return isOwner;
           case "Settings": return isOwner;
           case "Payment Ledger": return isOwner;
+          case "Billing": return isOwner;
           case "My Schedule": return user?.role === "doctor";
           // Shown if either sub-item would be — each is filtered individually below.
           case "Appointments": return isOwner || canAccessAppointments(user?.permissions) || canViewLabAppointments(user?.permissions);
@@ -438,22 +483,39 @@ const AppSidebar: React.FC = () => {
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
-            <div>
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Menu"
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-              {renderMenuItems(mainItems, "main")}
-            </div>
+            {(!isSuperAdmin || !mounted) && (
+              <div>
+                <h2
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                    !isExpanded && !isHovered
+                      ? "lg:justify-center"
+                      : "justify-start"
+                  }`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? (
+                    "Menu"
+                  ) : (
+                    <HorizontaLDots />
+                  )}
+                </h2>
+                {renderMenuItems(mainItems, "main")}
+              </div>
+            )}
+
+            {isSuperAdmin && mounted && (
+              <div>
+                <h2
+                  className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                    !isExpanded && !isHovered
+                      ? "lg:justify-center"
+                      : "justify-start"
+                  }`}
+                >
+                  {isExpanded || isHovered || isMobileOpen ? "Super Admin" : <HorizontaLDots />}
+                </h2>
+                {renderMenuItems(superAdminItems, "main")}
+              </div>
+            )}
 
             {showOthers && (
               <div className="">

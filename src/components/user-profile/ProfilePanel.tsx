@@ -20,7 +20,9 @@ export default function ProfilePanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await clinicsApi.list({ limit: 50 });
+      // GET /clinics/mine returns only the signed-in owner's clinics with
+      // full detail (licenses included) - unlike the public directory list.
+      const res = await clinicsApi.mine();
       setClinics(res.items);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load clinics");

@@ -14,6 +14,7 @@ import {
 import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import SubscriptionTrialWidget from "@/components/subscription/SubscriptionTrialWidget";
 import {
   Appointment,
   Branch,
@@ -266,6 +267,7 @@ export default function ClinicOverviewPanel() {
       </div>
 
       {/* Stats */}
+      <SubscriptionTrialWidget clinicId={clinic.id} />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Branches"
