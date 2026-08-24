@@ -1,4 +1,4 @@
-import type { AppointmentStatus, NotificationType, PatientRelationship, LabTestAppointmentStatus, LabTestPaymentStatus, LabTestCategory } from "@/lib/api";
+import type { AppointmentStatus, NotificationType, PatientRelationship, LabTestAppointmentStatus, LabTestPaymentStatus, LabTestCategory, SubscriptionStatus, SubscriptionPaymentStatus } from "@/lib/api";
 import type { BadgeColor as UiBadgeColor } from "@/components/ui/badge/Badge";
 
 export function formatCurrency(amount: number, currency = "INR"): string {
@@ -241,3 +241,48 @@ export const WEEKDAY_NAMES = [
   "Friday",
   "Saturday",
 ];
+
+// ---------------------------------------------------------------------------
+// Subscription utilities
+// ---------------------------------------------------------------------------
+
+export const subscriptionStatusColor = (status: SubscriptionStatus): UiBadgeColor => {
+  switch (status) {
+    case "TRIAL":
+      return "info";
+    case "ACTIVE":
+      return "success";
+    case "EXPIRING":
+      return "warning";
+    case "EXPIRED":
+      return "error";
+    case "INACTIVE":
+      return "dark";
+    default:
+      return "light";
+  }
+};
+
+export const subscriptionStatusLabel = (status: SubscriptionStatus): string => {
+  switch (status) {
+    case "TRIAL":
+      return "Free trial";
+    case "EXPIRING":
+      return "Expiring soon";
+    default:
+      return status.charAt(0) + status.slice(1).toLowerCase();
+  }
+};
+
+export const subscriptionPaymentStatusColor = (status: SubscriptionPaymentStatus): UiBadgeColor => {
+  switch (status) {
+    case "PAID":
+      return "success";
+    case "PENDING":
+      return "warning";
+    case "FAILED":
+      return "error";
+    default:
+      return "light";
+  }
+};

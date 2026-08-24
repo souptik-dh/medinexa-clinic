@@ -70,6 +70,7 @@ interface AuthContextValue {
   can: (permission: BranchStaffPermission) => boolean;
   login: (email: string, password: string) => Promise<void>;
   doctorLogin: (email: string, password: string) => Promise<void>;
+  superAdminLogin: (email: string, password: string) => Promise<void>;
   register: (input: {
     name: string;
     email: string;
@@ -108,6 +109,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
+      // Super admins sign in through their own portal, so send them back
+      // there rather than to the clinic/staff login.
+      const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
       setUser(null);
       setClinic(null);
       setStaffClinic(null);
@@ -115,7 +119,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem("medinexa.staffClinic");
       window.localStorage.removeItem("medinexa.staffBranch");
       toast.error("Session expired. Please log in again.");
-      router.push("/signin?reason=session_expired");
+      router.push(
+        wasSuperAdmin
+          ? "/super-admin-login?reason=session_expired"
+          : "/signin?reason=session_expired"
+      );
     });
     return () => setSessionExpiredHandler(null);
   }, [router, setUser, setClinic]);
@@ -283,6 +291,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await authApi.branchStaffLogin(email);
   }, []);
 
+  const superAdminLogin = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const res = await authApi.loginSuperAdmin({ email, password });
+        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+        // Super admins own no clinic - make sure stale clinic state from a
+        // previous owner session can't leak into the platform views.
+        window.localStorage.removeItem("medinexa.clinic");
+        window.localStorage.removeItem("medinexa.staffClinic");
+        window.localStorage.removeItem("medinexa.staffBranch");
+        setClinic(null);
+        setStaffClinic(null);
+        setStaffBranch(null);
+        persist(res.user);
+        toast.success("Signed in successfully.");
+      } catch (err) {
+        if (err instanceof ApiError) {
+          throw new Error(err.message);
+        }
+        throw err;
+      }
+    },
+    [persist]
+  );
+
   const verifyStaffOtp = useCallback(async (email: string, otp: string) => {
     const res = await authApi.verifyStaffOtp({ email, otp });
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
@@ -347,6 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // best-effort revocation
       }
     }
+    const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
     clearTokens();
     setStoredUser(null);
     window.localStorage.removeItem("medinexa.clinic");
@@ -357,7 +391,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStaffClinic(null);
     setStaffBranch(null);
     toast.success("Signed out.");
-    router.push("/signin");
+    router.push(wasSuperAdmin ? "/super-admin-login" : "/signin");
   }, [router]);
 
   return (
@@ -371,6 +405,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         can,
         login,
         doctorLogin,
+        superAdminLogin,
         register,
         staffLogin,
         verifyStaffOtp,

@@ -143,13 +143,13 @@ export default function SignInForm() {
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
               Sign In
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {mode === "owner"
-                ? "Enter your clinic owner email and password to sign in!"
-                : mode === "doctor"
-                  ? "Enter your doctor account email and password to sign in!"
-                  : "Sign in as branch staff using a one-time password."}
-            </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {mode === "owner"
+                  ? "Enter your clinic owner email and password to sign in!"
+                  : mode === "doctor"
+                    ? "Enter your doctor account email and password to sign in!"
+                    : "Sign in as branch staff using a one-time password."}
+              </p>
           </div>
 
           {sessionExpired && (
