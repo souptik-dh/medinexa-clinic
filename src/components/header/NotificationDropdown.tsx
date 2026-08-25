@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { Notification, notificationsApi } from "@/lib/api";
 import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
-import TruckLoader from "@/components/common/TruckLoader";
+import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 const POLL_INTERVAL_MS = 30000;
 
@@ -148,7 +148,7 @@ export default function NotificationDropdown() {
           </div>
         </div>
         {loading ? (
-          <TruckLoader label="Loading…" />
+          <ListSkeleton rows={4} />
         ) : items.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             No notifications

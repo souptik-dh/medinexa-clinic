@@ -2,13 +2,12 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
-import BranchTabs from "@/components/branches/BranchTabs";
 import { LabTestSchedule, labTestSchedulesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
 import LabScheduleWeekEditor, {
   LabScheduleEntry,
 } from "@/components/lab-tests/LabScheduleWeekEditor";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 function toEntry(item: LabTestSchedule): LabScheduleEntry {
   return {
@@ -45,9 +44,12 @@ function dedupeEntries(list: LabScheduleEntry[]): LabScheduleEntry[] {
   return Array.from(seen.values());
 }
 
-export default function BranchLabSchedulePanel() {
+export default function BranchLabSchedulePanel({
+  branchId: branchIdProp,
+}: { branchId?: string } = {}) {
   const params = useParams<{ branchId?: string }>();
-  const branchId = typeof params.branchId === "string" ? params.branchId : "";
+  const branchId =
+    branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
 
   const [original, setOriginal] = useState<LabScheduleEntry[]>([]);
   const [entries, setEntries] = useState<LabScheduleEntry[]>([]);
@@ -133,7 +135,6 @@ export default function BranchLabSchedulePanel() {
 
   return (
     <div className="space-y-4">
-      <BranchTabs />
 
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -143,7 +144,7 @@ export default function BranchLabSchedulePanel() {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         {loading ? (
-          <TruckLoader label="Loading schedule…" />
+          <DetailSkeleton rows={4} />
         ) : (
           <>
             <LabScheduleWeekEditor

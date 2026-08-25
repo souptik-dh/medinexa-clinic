@@ -35,7 +35,7 @@ import {
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
-import TruckLoader from "@/components/common/TruckLoader";
+import { StatGridSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { canDeleteClinic } from "@/lib/permissions";
 import {
   autoCreateBranchForClinic,
@@ -174,7 +174,12 @@ export default function ClinicOverviewPanel() {
   };
 
   if (loading) {
-    return <TruckLoader label="Loading clinic…" />;
+    return (
+      <div className="space-y-6">
+        <StatGridSkeleton count={4} />
+        <TableSkeleton cols={5} />
+      </div>
+    );
   }
   if (error || !clinic) {
     return (

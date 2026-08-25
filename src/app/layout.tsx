@@ -1,10 +1,10 @@
 import { Outfit } from 'next/font/google';
 import './globals.css';
-import "flatpickr/dist/flatpickr.css";
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
 import AppToaster from '@/components/common/AppToaster';
+import AppSWRConfig from '@/components/common/AppSWRConfig';
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -20,9 +20,11 @@ export default function RootLayout({
       <body className={`${outfit.className} dark:bg-gray-900`}>
         <ThemeProvider>
           <AppToaster />
-          <AuthProvider>
-            <SidebarProvider>{children}</SidebarProvider>
-          </AuthProvider>
+          <AppSWRConfig>
+            <AuthProvider>
+              <SidebarProvider>{children}</SidebarProvider>
+            </AuthProvider>
+          </AppSWRConfig>
         </ThemeProvider>
       </body>
     </html>

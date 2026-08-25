@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -14,6 +15,7 @@ import {
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
 import DoctorAssignmentEditPanel from "@/components/doctors/DoctorAssignmentEditPanel";
+import SpecializationMultiSelectFilter from "@/components/doctors/SpecializationMultiSelectFilter";
 import {
   Branch,
   BranchDoctor,
@@ -22,7 +24,8 @@ import {
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
+import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 
 const initials = (name: string): string =>
@@ -39,64 +42,54 @@ export default function ClinicDoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
 
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [allDoctors, setAllDoctors] = useState<
-    (BranchDoctor & { branchName: string })[]
-  >([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
-  const [specializationFilter, setSpecializationFilter] = useState("");
+  const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<BranchDoctor | null>(null);
 
-  const load = useCallback(async () => {
-    if (!clinicId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const branchesRes = await branchesApi.list(clinicId);
-      setBranches(branchesRes.items);
+  // Cached under the clinic id so switching tabs and coming back to Doctors
+  // shows the roster instantly instead of re-running the branch+doctor
+  // fan-out fetch every time.
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate: reload,
+  } = useSWR(clinicId ? ["clinic-doctors", clinicId] : null, async () => {
+    const branchesRes = await branchesApi.list(clinicId);
+    const perBranch = await Promise.all(
+      branchesRes.items.map(async (b) => {
+        try {
+          const res = await doctorsApi.listByBranch(b.id);
+          return res.items.map((d) => ({ ...d, branchName: b.name }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    return { branches: branchesRes.items, allDoctors: perBranch.flat() };
+  });
+  const error = swrError ? getErrorMessage(swrError, "Failed to load doctors") : null;
+  const branches: Branch[] = useMemo(() => data?.branches ?? [], [data]);
+  const allDoctors: (BranchDoctor & { branchName: string })[] = useMemo(
+    () => data?.allDoctors ?? [],
+    [data]
+  );
 
-      const perBranch = await Promise.all(
-        branchesRes.items.map(async (b) => {
-          try {
-            const res = await doctorsApi.listByBranch(b.id);
-            return res.items.map((d) => ({ ...d, branchName: b.name }));
-          } catch {
-            return [];
-          }
-        })
-      );
-      setAllDoctors(perBranch.flat());
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctors"));
-    } finally {
-      setLoading(false);
-    }
-  }, [clinicId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const specializations = useMemo(() => {
-    const set = new Set<string>();
-    allDoctors.forEach((d) => {
-      if (d.specialization) set.add(d.specialization);
-    });
-    return Array.from(set).sort();
-  }, [allDoctors]);
+  const specializations = useMemo(
+    () => getSpecializationOptions(allDoctors),
+    [allDoctors]
+  );
 
   const filtered = useMemo(() => {
     let result = allDoctors;
     if (branchFilter) {
       result = result.filter((d) => d.branch_id === branchFilter);
     }
-    if (specializationFilter) {
-      result = result.filter(
-        (d) => d.specialization === specializationFilter
+    if (specializationFilter.length > 0) {
+      result = result.filter((d) =>
+        matchesSpecializationFilter(d.specialization, specializationFilter)
       );
     }
     if (search.trim()) {
@@ -141,7 +134,7 @@ export default function ClinicDoctorsPanel() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex-1 sm:max-w-xs">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Search
@@ -169,23 +162,11 @@ export default function ClinicDoctorsPanel() {
               />
             </div>
           </div>
-          <div className="sm:w-48">
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Specialization
-            </label>
-            <select
-              value={specializationFilter}
-              onChange={(e) => setSpecializationFilter(e.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            >
-              <option value="">All specializations</option>
-              {specializations.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SpecializationMultiSelectFilter
+            options={specializations}
+            selected={specializationFilter}
+            onChange={setSpecializationFilter}
+          />
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Branch
@@ -213,10 +194,10 @@ export default function ClinicDoctorsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <TruckLoader label="Loading doctors…" />
+            <TableSkeleton cols={6} />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              {search || branchFilter || specializationFilter
+              {search || branchFilter || specializationFilter.length > 0
                 ? "No doctors match your filters."
                 : "No doctors assigned yet."}
             </p>
@@ -337,7 +318,7 @@ export default function ClinicDoctorsPanel() {
         <InviteDoctorForm
           onDone={() => {
             setInviteOpen(false);
-            load();
+            reload();
           }}
           onCancel={() => setInviteOpen(false)}
         />
@@ -355,7 +336,7 @@ export default function ClinicDoctorsPanel() {
             doctorId={editingDoctor.id}
             onDone={() => {
               setEditingDoctor(null);
-              load();
+              reload();
             }}
             onCancel={() => setEditingDoctor(null)}
           />

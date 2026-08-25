@@ -13,7 +13,7 @@ import {
   formatCurrency,
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -59,7 +59,7 @@ export default function LabTestAppointmentDetailPage() {
       />
       <div className="max-w-[600px] rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
         {loading ? (
-          <TruckLoader />
+          <DetailSkeleton rows={4} />
         ) : error ? (
           <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {error}

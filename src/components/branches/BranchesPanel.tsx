@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import TruckLoader from "@/components/common/TruckLoader";
+import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import Badge from "@/components/ui/badge/Badge";
 import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
@@ -232,7 +232,7 @@ export default function BranchesPanel() {
             <Badge color="info">{branches.length} branches</Badge>
           </div>
           {loading ? (
-            <TruckLoader label="Loading…" />
+            <ListSkeleton rows={4} />
           ) : clinics.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               No clinics yet.
@@ -302,7 +302,7 @@ export default function BranchesPanel() {
               Select a clinic to manage its branches.
             </p>
           ) : selectedLoading || branchesLoading ? (
-            <TruckLoader label="Loading branches…" />
+            <TableSkeleton rows={5} cols={4} />
           ) : !selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               Failed to load clinic details.

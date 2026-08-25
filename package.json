@@ -34,6 +34,7 @@
     "react-hot-toast": "^2.6.0",
     "server-only": "^0.0.1",
     "swiper": "^11.2.10",
+    "swr": "^2.5.1",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

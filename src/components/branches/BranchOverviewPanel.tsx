@@ -2,7 +2,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
-import BranchTabs from "@/components/branches/BranchTabs";
+import BranchOverviewHeader from "@/components/branches/BranchOverviewHeader";
+import BranchSchedulePanel from "@/components/branches/BranchSchedulePanel";
 import {
   Branch,
   BranchGalleryImage,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/api";
 
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import BranchForm from "@/components/branches/BranchForm";
 
@@ -131,7 +132,7 @@ export default function BranchOverviewPanel() {
   };
 
   if (loading) {
-    return <TruckLoader label="Loading branch…" />;
+    return <DetailSkeleton rows={5} />;
   }
   if (error || !branch) {
     return (
@@ -152,7 +153,7 @@ export default function BranchOverviewPanel() {
 
   return (
     <div className="space-y-6">
-      <BranchTabs />
+      <BranchOverviewHeader clinicId={clinicId} branchName={branch.name} />
 
       {/* Branch Header */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
@@ -234,6 +235,9 @@ export default function BranchOverviewPanel() {
           }
         />
       </div>
+
+      {/* Clinic schedule (operating days + closures) */}
+      <BranchSchedulePanel showBackButton={false} />
 
       {/* Branch Image */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">

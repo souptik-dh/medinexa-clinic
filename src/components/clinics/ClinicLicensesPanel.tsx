@@ -5,7 +5,7 @@ import { Clinic, ClinicLicenseType, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateClinic } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 interface ClinicLicensesPanelProps {
   clinicId: string;
@@ -132,7 +132,7 @@ export default function ClinicLicensesPanel({
       )}
 
       {loading ? (
-        <TruckLoader label="Loading licenses…" />
+        <DetailSkeleton rows={3} />
       ) : (
         <div className="space-y-3">
           {LICENSE_DEFS.map((def) => {

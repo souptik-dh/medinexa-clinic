@@ -11,7 +11,7 @@ import {
   BranchStaffPermission,
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function StaffPermissionsPanel() {
   const router = useRouter();
@@ -102,7 +102,7 @@ export default function StaffPermissionsPanel() {
       )}
 
       {loading ? (
-        <TruckLoader label="Loading permissions…" />
+        <DetailSkeleton rows={4} />
       ) : (
         <div className="mt-6 space-y-6">
           {BRANCH_STAFF_PERMISSION_MODULES.map((mod) => (

@@ -10,7 +10,7 @@ import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFi
 import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
 
@@ -256,7 +256,7 @@ export default function ClinicForm({
         )}
 
         {loading ? (
-          <TruckLoader label="Loading…" />
+          <DetailSkeleton rows={7} />
         ) : (
           <div className="mt-6 space-y-4">
             <Field label="Name *">

@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -11,16 +12,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
-import BranchTabs from "@/components/branches/BranchTabs";
+import SpecializationMultiSelectFilter from "@/components/doctors/SpecializationMultiSelectFilter";
 import {
   BranchDoctor,
   doctorsApi,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
 import { useAuth } from "@/context/AuthContext";
 
 const initials = (name: string): string =>
@@ -41,44 +43,33 @@ export default function BranchDoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
 
-  const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [specializationFilter, setSpecializationFilter] = useState("");
+  const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!branchId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await doctorsApi.listByBranch(branchId);
-      setDoctors(res.items);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctors"));
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId]);
+  // Cached under the branch id so switching tabs and coming back to Doctors
+  // shows the roster instantly instead of refetching every time.
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate: reload,
+  } = useSWR(branchId ? ["branch-doctors", branchId] : null, () =>
+    doctorsApi.listByBranch(branchId)
+  );
+  const error = swrError ? getErrorMessage(swrError, "Failed to load doctors") : null;
+  const doctors: BranchDoctor[] = useMemo(() => data?.items ?? [], [data]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const specializations = useMemo(() => {
-    const set = new Set<string>();
-    doctors.forEach((d) => {
-      if (d.specialization) set.add(d.specialization);
-    });
-    return Array.from(set).sort();
-  }, [doctors]);
+  const specializations = useMemo(
+    () => getSpecializationOptions(doctors),
+    [doctors]
+  );
 
   const filtered = useMemo(() => {
     let result = doctors;
-    if (specializationFilter) {
-      result = result.filter(
-        (d) => d.specialization === specializationFilter
+    if (specializationFilter.length > 0) {
+      result = result.filter((d) =>
+        matchesSpecializationFilter(d.specialization, specializationFilter)
       );
     }
     if (search.trim()) {
@@ -94,7 +85,6 @@ export default function BranchDoctorsPanel() {
 
   return (
     <div className="space-y-4">
-      <BranchTabs />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -125,7 +115,7 @@ export default function BranchDoctorsPanel() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex-1 sm:max-w-xs">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Search
@@ -153,23 +143,11 @@ export default function BranchDoctorsPanel() {
               />
             </div>
           </div>
-          <div className="sm:w-48">
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Specialization
-            </label>
-            <select
-              value={specializationFilter}
-              onChange={(e) => setSpecializationFilter(e.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            >
-              <option value="">All specializations</option>
-              {specializations.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SpecializationMultiSelectFilter
+            options={specializations}
+            selected={specializationFilter}
+            onChange={setSpecializationFilter}
+          />
         </div>
 
         {error && (
@@ -180,10 +158,10 @@ export default function BranchDoctorsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <TruckLoader label="Loading doctors…" />
+            <TableSkeleton rows={5} cols={5} />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              {search || specializationFilter
+              {search || specializationFilter.length > 0
                 ? "No doctors match your filters."
                 : "No doctors assigned to this branch yet."}
             </p>
@@ -298,7 +276,7 @@ export default function BranchDoctorsPanel() {
         <InviteDoctorForm
           onDone={() => {
             setInviteOpen(false);
-            load();
+            reload();
           }}
           onCancel={() => setInviteOpen(false)}
         />

@@ -31,7 +31,7 @@ import {
   subscriptionStatusColor,
   subscriptionStatusLabel,
 } from "@/lib/utils";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
 
 const PAYMENT_METHODS = [
@@ -313,8 +313,8 @@ export default function BillingPanel() {
 
       {/* Status card */}
       {loading && (
-        <div className="flex justify-center py-16">
-          <TruckLoader />
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+          <DetailSkeleton rows={4} />
         </div>
       )}
       {!loading && error && (

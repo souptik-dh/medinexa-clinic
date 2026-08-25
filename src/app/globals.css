@@ -334,6 +334,13 @@
 .flatpickr-calendar {
   @apply mt-2 !bg-white !rounded-xl !p-5 !border !border-gray-200 dark:!border-gray-800 !text-gray-500 dark:!bg-gray-dark dark:!text-gray-400 dark:!shadow-theme-xl 2xsm:!w-auto;
 }
+/* flatpickr's built-in disabled-day color is a light rgba tuned for a white
+   background - reads as nearly invisible on our dark surface, so give it a
+   dark-mode-aware override. */
+.dark .flatpickr-day.flatpickr-disabled,
+.dark .flatpickr-day.flatpickr-disabled:hover {
+  color: rgba(255, 255, 255, 0.2) !important;
+}
 
 .flatpickr-months .flatpickr-prev-month:hover svg,
 .flatpickr-months .flatpickr-next-month:hover svg {
@@ -363,6 +370,7 @@
 
 .flatpickr-calendar {
   @apply mt-2 !bg-white !rounded-xl !p-5 !shadow-none !border !border-gray-200 dark:!border-white/5 !text-gray-500 dark:!bg-gray-dark dark:!text-gray-400 dark:!shadow-theme-xl 2xsm:!w-auto;
+  z-index: 999999 !important;
 }
 
 @media (max-width: 525px) {

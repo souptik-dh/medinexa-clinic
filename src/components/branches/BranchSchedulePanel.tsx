@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton, ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -17,7 +17,9 @@ import { getErrorMessage } from "@/lib/errorMessage";
 
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function BranchSchedulePanel() {
+export default function BranchSchedulePanel({
+  showBackButton = true,
+}: { showBackButton?: boolean } = {}) {
   const router = useRouter();
   const params = useParams<{ branchId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -143,7 +145,7 @@ export default function BranchSchedulePanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <TruckLoader label="Loading schedule…" />
+        <DetailSkeleton rows={3} />
       </div>
     );
   }
@@ -207,7 +209,7 @@ export default function BranchSchedulePanel() {
         )}
 
         {closuresLoading ? (
-          <TruckLoader label="Loading…" />
+          <ListSkeleton rows={3} />
         ) : activeClosures.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">No closures added.</p>
         ) : (
@@ -324,14 +326,16 @@ export default function BranchSchedulePanel() {
         )}
       </div>
 
-      <div className="mt-6 flex items-center justify-end">
-        <button
-          onClick={() => router.push("/branches")}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-        >
-          Back to branches
-        </button>
-      </div>
+      {showBackButton && (
+        <div className="mt-6 flex items-center justify-end">
+          <button
+            onClick={() => router.push("/branches")}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            Back to branches
+          </button>
+        </div>
+      )}
     </div>
   );
 }

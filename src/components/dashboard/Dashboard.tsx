@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
 import {
@@ -40,51 +41,46 @@ const STATUSES = ["pending", "confirmed", "paid", "completed", "cancelled", "no_
 export default function Dashboard() {
   const { user, staffClinic, staffBranch } = useAuth();
   const isBranchStaff = user?.role === "branch_staff";
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // branch_staff has no reason to fetch the full clinics directory -
-      // their view is scoped to the single clinic/branch on their session
-      // (see staffClinic/staffBranch from GET /branch-staff/me).
-      const [clinicRes, apptRes, notifRes] = await Promise.all([
-        isBranchStaff ? Promise.resolve({ items: [] as Clinic[] }) : clinicsApi.list({ limit: 50 }),
-        appointmentsApi.list({ limit: 100 }),
-        notificationsApi.list({ limit: 20 }),
-      ]);
-      setData({
-        clinics: clinicRes.items,
-        appointments: apptRes.items,
-        notifications: notifRes.items,
-      });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load dashboard data");
-    } finally {
-      setLoading(false);
-    }
+  const fetchDashboard = useCallback(async (): Promise<DashboardData> => {
+    // branch_staff has no reason to fetch the full clinics directory -
+    // their view is scoped to the single clinic/branch on their session
+    // (see staffClinic/staffBranch from GET /branch-staff/me).
+    const [clinicRes, apptRes, notifRes] = await Promise.all([
+      isBranchStaff ? Promise.resolve({ items: [] as Clinic[] }) : clinicsApi.list({ limit: 50 }),
+      appointmentsApi.list({ limit: 100 }),
+      notificationsApi.list({ limit: 20 }),
+    ]);
+    return {
+      clinics: clinicRes.items,
+      appointments: apptRes.items,
+      notifications: notifRes.items,
+    };
   }, [isBranchStaff]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Cached by SWR under this key, so returning to the dashboard after
+  // visiting another page renders the previous result instantly while a
+  // fresh copy revalidates in the background instead of a full skeleton.
+  const { data, error, isLoading, mutate } = useSWR(
+    user ? ["dashboard", isBranchStaff] : null,
+    fetchDashboard
+  );
 
-  if (loading) {
+  if (isLoading) {
     return <DashboardSkeleton />;
   }
 
   if (error && !data) {
     return (
       <div className="rounded-2xl border border-error-500/30 bg-error-50 p-6 text-error-600 dark:bg-error-500/10 dark:text-error-400">
-        <p className="font-medium">{error}</p>
+        <p className="font-medium">
+          {error instanceof ApiError ? error.message : "Failed to load dashboard data"}
+        </p>
         <p className="mt-1 text-sm">
           Make sure the Jido Healthcare API is running at the configured base URL, then try again.
         </p>
         <button
-          onClick={load}
+          onClick={() => mutate()}
           className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
         >
           Retry

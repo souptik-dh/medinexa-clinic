@@ -27,7 +27,7 @@ import BranchForm from "@/components/branches/BranchForm";
 import RatingStars from "@/components/common/RatingStars";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import {
   canCreateBranch,
@@ -256,7 +256,7 @@ export default function ClinicBranchesPanel() {
         </div>
 
         {clinicLoading || branchesLoading ? (
-          <TruckLoader label="Loading branches…" />
+          <TableSkeleton cols={5} />
         ) : filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {search

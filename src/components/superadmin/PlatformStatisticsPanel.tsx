@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { ApiError, SuperAdminStatistics, superAdminApi } from "@/lib/api";
 import { formatCurrency, subscriptionStatusColor, subscriptionStatusLabel } from "@/lib/utils";
-import TruckLoader from "@/components/common/TruckLoader";
+import { StatGridSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function PlatformStatisticsPanel() {
   const [stats, setStats] = useState<SuperAdminStatistics | null>(null);
@@ -44,7 +44,7 @@ export default function PlatformStatisticsPanel() {
     }
   };
 
-  if (loading) return <TruckLoader label="Loading platform statistics…" />;
+  if (loading) return <StatGridSkeleton count={4} />;
   if (error || !stats) {
     return (
       <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
