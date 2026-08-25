@@ -14,6 +14,7 @@ import {
 import TruckLoader from "@/components/common/TruckLoader";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
+import SpecializationMultiSelectFilter from "@/components/doctors/SpecializationMultiSelectFilter";
 import BranchTabs from "@/components/branches/BranchTabs";
 import {
   BranchDoctor,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
 import { useAuth } from "@/context/AuthContext";
 
 const initials = (name: string): string =>
@@ -45,7 +47,7 @@ export default function BranchDoctorsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [specializationFilter, setSpecializationFilter] = useState("");
+  const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -66,19 +68,16 @@ export default function BranchDoctorsPanel() {
     load();
   }, [load]);
 
-  const specializations = useMemo(() => {
-    const set = new Set<string>();
-    doctors.forEach((d) => {
-      if (d.specialization) set.add(d.specialization);
-    });
-    return Array.from(set).sort();
-  }, [doctors]);
+  const specializations = useMemo(
+    () => getSpecializationOptions(doctors),
+    [doctors]
+  );
 
   const filtered = useMemo(() => {
     let result = doctors;
-    if (specializationFilter) {
-      result = result.filter(
-        (d) => d.specialization === specializationFilter
+    if (specializationFilter.length > 0) {
+      result = result.filter((d) =>
+        matchesSpecializationFilter(d.specialization, specializationFilter)
       );
     }
     if (search.trim()) {
@@ -125,7 +124,7 @@ export default function BranchDoctorsPanel() {
         </div>
 
         {/* Filters */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex-1 sm:max-w-xs">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Search
@@ -153,23 +152,11 @@ export default function BranchDoctorsPanel() {
               />
             </div>
           </div>
-          <div className="sm:w-48">
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Specialization
-            </label>
-            <select
-              value={specializationFilter}
-              onChange={(e) => setSpecializationFilter(e.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            >
-              <option value="">All specializations</option>
-              {specializations.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SpecializationMultiSelectFilter
+            options={specializations}
+            selected={specializationFilter}
+            onChange={setSpecializationFilter}
+          />
         </div>
 
         {error && (
@@ -183,7 +170,7 @@ export default function BranchDoctorsPanel() {
             <TruckLoader label="Loading doctors…" />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              {search || specializationFilter
+              {search || specializationFilter.length > 0
                 ? "No doctors match your filters."
                 : "No doctors assigned to this branch yet."}
             </p>

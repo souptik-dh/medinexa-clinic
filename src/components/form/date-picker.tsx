@@ -34,7 +34,7 @@ export default function DatePicker({
   useEffect(() => {
     const flatPickr = flatpickr(`#${id}`, {
       mode: isTime ? "single" : mode || "single",
-      static: true,
+      appendTo: document.body,
       monthSelectorType: "static",
       dateFormat: isTime ? "H:i" : "Y-m-d",
       noCalendar: isTime,
