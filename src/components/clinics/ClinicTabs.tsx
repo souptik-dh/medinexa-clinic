@@ -12,12 +12,12 @@ const TABS: { key: string; label: string; href: (clinicId: string) => string }[]
   { key: "overview", label: "Overview", href: (id) => `/clinics/${id}/overview` },
   { key: "branches", label: "Branches", href: (id) => `/clinics/${id}/branches` },
   { key: "doctors", label: "Doctors", href: (id) => `/clinics/${id}/doctors` },
-  { key: "staff", label: "Staff", href: (id) => `/clinics/${id}/staff` },
-  { key: "appointments", label: "Appointments", href: (id) => `/clinics/${id}/all-appointments` },
+  // { key: "staff", label: "Staff", href: (id) => `/clinics/${id}/staff` },
+  // { key: "appointments", label: "Appointments", href: (id) => `/clinics/${id}/all-appointments` },
   { key: "lab-tests", label: "Lab Tests", href: (id) => `/clinics/${id}/lab-tests` },
   { key: "lab-schedules", label: "Lab Schedules", href: (id) => `/clinics/${id}/lab-schedule` },
-  { key: "patients", label: "Patients", href: (id) => `/clinics/${id}/patients` },
-  { key: "billing", label: "Billing", href: (id) => `/clinics/${id}/billing` },
+  // { key: "patients", label: "Patients", href: (id) => `/clinics/${id}/patients` },
+  // { key: "billing", label: "Billing", href: (id) => `/clinics/${id}/billing` },
 ];
 
 export default function ClinicTabs() {

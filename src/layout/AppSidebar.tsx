@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
+import { clinicsApi } from "@/lib/api";
 import { canAccessAppointments, canViewPatients, canManageLabTests, canViewLabAppointments } from "@/lib/permissions";
 import {
   BellIcon,
@@ -193,6 +194,27 @@ const AppSidebar: React.FC = () => {
   const isSuperAdmin = user?.role === "sys_admin";
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // The Clinics menu item points straight at the owner's clinic overview.
+  // The cached login clinic is preferred; when the session has none (stale
+  // storage, super admin, etc.) resolve it from the API like /clinics does.
+  const [resolvedClinicId, setResolvedClinicId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isOwner || clinic?.id) return;
+    let active = true;
+    clinicsApi
+      .list({ limit: 1 })
+      .then((res) => {
+        if (active && res.items[0]) setResolvedClinicId(res.items[0].id);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isOwner, clinic]);
+
+  const clinicsTargetId = clinic?.id ?? resolvedClinicId;
+
   const mainItems = React.useMemo(() => {
     const filtered = navItems
       .filter((item) => {
@@ -229,12 +251,12 @@ const AppSidebar: React.FC = () => {
     // The clinic-list page is skipped — the Clinics item goes straight to the
     // owner's clinic overview section (the /clinics route itself redirects
     // there too; this just avoids the hop).
-    if (mounted && clinic?.id) {
+    if (mounted && clinicsTargetId) {
       const clinicsIndex = filtered.findIndex((i) => i.name === "Clinics");
       if (clinicsIndex !== -1) {
         filtered[clinicsIndex] = {
           ...filtered[clinicsIndex],
-          path: `/clinics/${clinic.id}/overview`,
+          path: `/clinics/${clinicsTargetId}/overview`,
         };
       }
     }
@@ -256,7 +278,7 @@ const AppSidebar: React.FC = () => {
     const appointmentsIndex = filtered.findIndex((i) => i.name === "Appointments");
     const insertIndex = appointmentsIndex === -1 ? filtered.length : appointmentsIndex + 1;
     return [...filtered.slice(0, insertIndex), ...staffLabItems, ...filtered.slice(insertIndex)];
-  }, [mounted, isOwner, isStaff, can, user, staffClinic, clinic]);
+  }, [mounted, isOwner, isStaff, can, user, staffClinic, clinicsTargetId]);
   const showOthers = isOwner || !isStaff;
 
   const renderMenuItems = (
