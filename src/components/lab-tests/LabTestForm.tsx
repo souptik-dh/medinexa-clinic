@@ -56,7 +56,10 @@ interface LabTestFormProps {
   mode: "create" | "edit";
   initial: LabTestFormValues;
   submitLabel: string;
-  cancelHref: string;
+  cancelHref?: string;
+  /** When provided, cancel hands control back to the host (e.g. a drawer)
+   * instead of navigating to cancelHref. */
+  onCancel?: () => void;
   onSubmit: (payload: {
     name?: string;
     code?: string;
@@ -67,7 +70,7 @@ interface LabTestFormProps {
   }) => Promise<void>;
 }
 
-export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onSubmit }: LabTestFormProps) {
+export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit }: LabTestFormProps) {
   const router = useRouter();
   const [form, setForm] = useState<LabTestFormValues>(initial);
   const [busy, setBusy] = useState(false);
@@ -258,7 +261,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       <div className="mt-6 flex items-center justify-end gap-3">
         <button
           type="button"
-          onClick={() => router.push(cancelHref)}
+          onClick={() => (onCancel ? onCancel() : cancelHref && router.push(cancelHref))}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           Cancel

@@ -1,5 +1,4 @@
-import ClinicsPanel from "@/components/clinics/ClinicsPanel";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import ClinicsRedirect from "@/components/clinics/ClinicsRedirect";
 import { Metadata } from "next";
 import React from "react";
 
@@ -11,8 +10,7 @@ export const metadata: Metadata = {
 export default function ClinicsPage() {
   return (
     <div>
-      <PageBreadcrumb pageTitle="Clinics" />
-      <ClinicsPanel />
+      <ClinicsRedirect />
     </div>
   );
 }

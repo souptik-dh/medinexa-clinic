@@ -2,8 +2,10 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import CompactHeader from "@/layout/compact/CompactHeader";
+import ClinicTabs from "@/components/clinics/ClinicTabs";
 
 export default function AdminCompactLayout({
   children,
@@ -12,6 +14,7 @@ export default function AdminCompactLayout({
 }) {
   const { user, isAuthReady } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (isAuthReady && !user) {
@@ -23,10 +26,19 @@ export default function AdminCompactLayout({
     return null;
   }
 
+  // Every /clinics/{clinicId}/... page shares the same horizontal tab bar so
+  // the whole section reads as one unified Clinics module.
+  const inClinicModule = /^\/clinics\/[^/]+(\/|$)/.test(pathname);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <CompactHeader />
       <main className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
+        {inClinicModule ? (
+          <Suspense fallback={null}>
+            <ClinicTabs />
+          </Suspense>
+        ) : null}
         {children}
       </main>
     </div>

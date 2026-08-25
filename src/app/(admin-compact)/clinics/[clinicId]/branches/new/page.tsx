@@ -1,16 +1,17 @@
-import BranchForm from "@/components/branches/BranchForm";
+import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "New Branch | Jido Healthcare",
-  description: "Create a new branch for a clinic",
+  title: "Branches | Jido Healthcare",
 };
 
-export default function NewBranchPage() {
-  return (
-    <div>
-      <BranchForm mode="create" />
-    </div>
-  );
+// Branch creation now happens in a drawer on the Branches tab.
+export default async function NewBranchPage({
+  params,
+}: {
+  params: Promise<{ clinicId: string }>;
+}) {
+  const { clinicId } = await params;
+  redirect(`/clinics/${clinicId}/branches`);
 }

@@ -11,9 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ClinicLicensesPanel from "@/components/clinics/ClinicLicensesPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import FormDrawer from "@/components/common/FormDrawer";
 import SubscriptionTrialWidget from "@/components/subscription/SubscriptionTrialWidget";
 import {
   Appointment,
@@ -25,8 +25,9 @@ import {
   clinicsApi,
   doctorsApi,
   labTestsApi,
-  patientsApi,
+   patientsApi,
 } from "@/lib/api";
+import ClinicForm from "@/components/clinics/ClinicForm";
 import {
   appointmentStatusColor,
   appointmentStatusLabel,
@@ -67,6 +68,7 @@ export default function ClinicOverviewPanel() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -193,8 +195,6 @@ export default function ClinicOverviewPanel() {
 
   return (
     <div className="space-y-6">
-      <ClinicTabs />
-
       {/* Clinic Header */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -247,12 +247,12 @@ export default function ClinicOverviewPanel() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href={`/clinics/${clinicId}/edit`}
+            <button
+              onClick={() => setEditOpen(true)}
               className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
             >
               Edit
-            </Link>
+            </button>
             {canDelete && (
               <button
                 onClick={() => setConfirmingDelete(true)}
@@ -457,6 +457,24 @@ export default function ClinicOverviewPanel() {
         clinicName={clinic.name}
         onLicenseUpdated={handleLicenseUpdated}
       />
+
+      {/* Edit clinic — drawer keeps the user on the overview tab */}
+      <FormDrawer
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit clinic"
+        description={clinic.name}
+      >
+        <ClinicForm
+          mode="edit"
+          clinicId={clinic.id}
+          onDone={() => {
+            setEditOpen(false);
+            load();
+          }}
+          onCancel={() => setEditOpen(false)}
+        />
+      </FormDrawer>
 
       <ConfirmDeleteModal
         isOpen={confirmingDelete}

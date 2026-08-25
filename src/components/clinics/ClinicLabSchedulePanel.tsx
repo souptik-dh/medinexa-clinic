@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import ClinicTabs from "@/components/clinics/ClinicTabs";
 import { Branch, branchesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
 import TruckLoader from "@/components/common/TruckLoader";
@@ -40,7 +39,6 @@ export default function ClinicLabSchedulePanel() {
 
   return (
     <div className="space-y-6">
-      <ClinicTabs />
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">

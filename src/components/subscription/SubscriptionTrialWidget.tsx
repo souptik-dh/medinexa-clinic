@@ -63,13 +63,15 @@ export default function SubscriptionTrialWidget({ clinicId }: { clinicId: string
             <Badge color={subscriptionStatusColor(view.subscription_status)}>
               {subscriptionStatusLabel(view.subscription_status)}
             </Badge>
-            {trial.is_trial && (
+            {view.subscription_status === "TRIAL" && (
               <Badge color="info">Free trial</Badge>
             )}
           </div>
         </div>
 
-        {(view.subscription_status === "TRIAL" || trial.is_trial) && (
+        {/* trial.* flags freeze once the clinic converts to paid (API.md:
+            "CONCLUDED") — only trust them while still on TRIAL status. */}
+        {view.subscription_status === "TRIAL" && (
           <>
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -96,7 +98,7 @@ export default function SubscriptionTrialWidget({ clinicId }: { clinicId: string
           </>
         )}
 
-        {view.subscription_status !== "TRIAL" && !trial.is_trial && (
+        {view.subscription_status !== "TRIAL" && (
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
               Plan price
@@ -109,7 +111,9 @@ export default function SubscriptionTrialWidget({ clinicId }: { clinicId: string
         )}
       </div>
 
-      {trial.expired && !view.blocked && (
+      {/* Only warn about a lapsed trial while the clinic is actually still on
+          trial status — trial.expired stays true forever after payment. */}
+      {view.subscription_status === "TRIAL" && trial.expired && !view.blocked && (
         <p className="mt-4 rounded-xl bg-warning-50 p-3 text-xs text-warning-700 dark:bg-orange-500/10 dark:text-orange-400">
           Your free trial has ended. Pay now to keep appointments, lab tests and
           prescriptions running.

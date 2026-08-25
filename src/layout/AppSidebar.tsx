@@ -186,7 +186,7 @@ const othersItems: NavItem[] = [
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
-  const { user, can, staffClinic } = useAuth();
+  const { user, can, staffClinic, clinic } = useAuth();
 
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const isStaff = user?.role === "branch_staff";
@@ -226,6 +226,19 @@ const AppSidebar: React.FC = () => {
         };
       });
 
+    // The clinic-list page is skipped — the Clinics item goes straight to the
+    // owner's clinic overview section (the /clinics route itself redirects
+    // there too; this just avoids the hop).
+    if (mounted && clinic?.id) {
+      const clinicsIndex = filtered.findIndex((i) => i.name === "Clinics");
+      if (clinicsIndex !== -1) {
+        filtered[clinicsIndex] = {
+          ...filtered[clinicsIndex],
+          path: `/clinics/${clinic.id}/overview`,
+        };
+      }
+    }
+
     // Owners manage lab tests/schedules from the Clinics/Branches pages (per
     // clinic if it has a single branch, per branch row otherwise) rather than a
     // standalone nav item. Branch staff never see those admin pages, so they
@@ -243,7 +256,7 @@ const AppSidebar: React.FC = () => {
     const appointmentsIndex = filtered.findIndex((i) => i.name === "Appointments");
     const insertIndex = appointmentsIndex === -1 ? filtered.length : appointmentsIndex + 1;
     return [...filtered.slice(0, insertIndex), ...staffLabItems, ...filtered.slice(insertIndex)];
-  }, [mounted, isOwner, isStaff, can, user, staffClinic]);
+  }, [mounted, isOwner, isStaff, can, user, staffClinic, clinic]);
   const showOthers = isOwner || !isStaff;
 
   const renderMenuItems = (

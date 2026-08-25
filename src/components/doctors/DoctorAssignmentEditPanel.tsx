@@ -41,11 +41,27 @@ function enumerateDates(from: string, to: string): string[] {
   return dates;
 }
 
-export default function DoctorAssignmentEditPanel() {
+interface DoctorAssignmentEditPanelProps {
+  /** Route-param overrides so the panel can be embedded (e.g. in a drawer)
+   * outside its /doctors/[branchId]/[doctorId]/edit route. */
+  branchId?: string;
+  doctorId?: string;
+  onDone?: () => void;
+  onCancel?: () => void;
+}
+
+export default function DoctorAssignmentEditPanel({
+  branchId: branchIdProp,
+  doctorId: doctorIdProp,
+  onDone,
+  onCancel,
+}: DoctorAssignmentEditPanelProps = {}) {
   const router = useRouter();
   const params = useParams<{ branchId?: string; doctorId?: string }>();
-  const branchId = typeof params.branchId === "string" ? params.branchId : "";
-  const doctorId = typeof params.doctorId === "string" ? params.doctorId : "";
+  const branchId =
+    branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
+  const doctorId =
+    doctorIdProp ?? (typeof params.doctorId === "string" ? params.doctorId : "");
   const { user, can } = useAuth();
   // A doctor editing their own assignment may only change slot_type/slot_template/
   // certificate — the backend rejects fee_amount from a doctor with 403
@@ -237,7 +253,11 @@ export default function DoctorAssignmentEditPanel() {
         ...(slotsDirty ? { slot_template: slots } : {}),
       });
       toast.success("Assignment updated successfully.");
-      router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
+      if (onDone) {
+        onDone();
+      } else {
+        router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
+      }
     } catch (err) {
       const message = getErrorMessage(err, "Unable to update assignment. Please try again.");
       setError(message);
@@ -270,7 +290,7 @@ export default function DoctorAssignmentEditPanel() {
           {error ?? "Doctor not found."}
         </div>
         <button
-          onClick={() => router.push("/doctors")}
+          onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
           className="mt-4 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           Back to doctors
@@ -553,7 +573,7 @@ export default function DoctorAssignmentEditPanel() {
 
       <div className="mt-6 flex items-center justify-end gap-3">
         <button
-          onClick={() => router.push("/doctors")}
+          onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           Cancel

@@ -15,6 +15,7 @@ import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import TruckLoader from "@/components/common/TruckLoader";
+import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
 import {
   Appointment,
   AppointmentDetail,
@@ -69,6 +70,8 @@ export default function AppointmentsPanel() {
   const [showDetail, setShowDetail] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  const [showBookModal, setShowBookModal] = useState(false);
 
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
@@ -205,6 +208,27 @@ export default function AppointmentsPanel() {
 
   return (
     <div>
+      {/* Book-on-behalf action */}
+      {can("appointments:create") && (
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={() => setShowBookModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Book for patient
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
         <FilterField label="Status">
@@ -585,6 +609,13 @@ export default function AppointmentsPanel() {
           </button>
         </div>
       </Modal>
+
+      {/* Book-on-behalf modal */}
+      <BookAppointmentModal
+        isOpen={showBookModal}
+        onClose={() => setShowBookModal(false)}
+        onBooked={load}
+      />
     </div>
   );
 }
