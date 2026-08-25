@@ -17,7 +17,9 @@ import { getErrorMessage } from "@/lib/errorMessage";
 
 const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function BranchSchedulePanel() {
+export default function BranchSchedulePanel({
+  showBackButton = true,
+}: { showBackButton?: boolean } = {}) {
   const router = useRouter();
   const params = useParams<{ branchId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -324,14 +326,16 @@ export default function BranchSchedulePanel() {
         )}
       </div>
 
-      <div className="mt-6 flex items-center justify-end">
-        <button
-          onClick={() => router.push("/branches")}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-        >
-          Back to branches
-        </button>
-      </div>
+      {showBackButton && (
+        <div className="mt-6 flex items-center justify-end">
+          <button
+            onClick={() => router.push("/branches")}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            Back to branches
+          </button>
+        </div>
+      )}
     </div>
   );
 }

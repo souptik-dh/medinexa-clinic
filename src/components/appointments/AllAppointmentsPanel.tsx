@@ -18,6 +18,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
+import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import {
   Appointment,
   AppointmentDetail,
@@ -303,8 +304,9 @@ export default function AllAppointmentsPanel() {
 
   return (
     <div>
-      {/* Header actions */}
-      {can("appointments:create") && (
+      {/* Header actions — books a doctor appointment or a lab test depending
+          on which tab is active. */}
+      {(activeTab === "doctor" ? can("appointments:create") : can("lab_appointments:create")) && (
         <div className="mb-4 flex justify-end">
           <button
             onClick={() => setShowBookModal(true)}
@@ -319,7 +321,7 @@ export default function AllAppointmentsPanel() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Book for patient
+            {activeTab === "doctor" ? "Book appointment for patient" : "Book lab test for patient"}
           </button>
         </div>
       )}
@@ -876,15 +878,18 @@ export default function AllAppointmentsPanel() {
         </div>
       </Modal>
 
-      {/* Book-on-behalf modal */}
+      {/* Book-on-behalf modals — only the one matching the active tab ever opens. */}
       <BookAppointmentModal
-        isOpen={showBookModal}
+        isOpen={showBookModal && activeTab === "doctor"}
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId}
-        onBooked={() => {
-          if (activeTab === "doctor") loadDoctor();
-          else loadLab();
-        }}
+        onBooked={loadDoctor}
+      />
+      <BookLabTestModal
+        isOpen={showBookModal && activeTab === "lab"}
+        onClose={() => setShowBookModal(false)}
+        initialClinicId={clinicId}
+        onBooked={loadLab}
       />
     </div>
   );

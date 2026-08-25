@@ -13,6 +13,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useClinicId } from "@/hooks/useClinicId";
+import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import {
   Branch,
   LabTestAppointment,
@@ -51,6 +52,7 @@ export default function LabTestAppointmentsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [showBookModal, setShowBookModal] = useState(false);
 
   useEffect(() => {
     if (clinicId) {
@@ -106,6 +108,27 @@ export default function LabTestAppointmentsPanel() {
 
   return (
     <div>
+      {/* Book-on-behalf action */}
+      {can("lab_appointments:create") && (
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={() => setShowBookModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Book for patient
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
         <FilterField label="Branch">
@@ -288,6 +311,14 @@ export default function LabTestAppointmentsPanel() {
           </div>
         )}
       </div>
+
+      {/* Book-on-behalf modal */}
+      <BookLabTestModal
+        isOpen={showBookModal}
+        onClose={() => setShowBookModal(false)}
+        initialClinicId={clinicId ?? undefined}
+        onBooked={load}
+      />
     </div>
   );
 }

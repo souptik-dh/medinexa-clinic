@@ -44,9 +44,12 @@ function dedupeEntries(list: LabScheduleEntry[]): LabScheduleEntry[] {
   return Array.from(seen.values());
 }
 
-export default function BranchLabSchedulePanel() {
+export default function BranchLabSchedulePanel({
+  branchId: branchIdProp,
+}: { branchId?: string } = {}) {
   const params = useParams<{ branchId?: string }>();
-  const branchId = typeof params.branchId === "string" ? params.branchId : "";
+  const branchId =
+    branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
 
   const [original, setOriginal] = useState<LabScheduleEntry[]>([]);
   const [entries, setEntries] = useState<LabScheduleEntry[]>([]);

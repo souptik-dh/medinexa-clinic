@@ -1,19 +1,22 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Branch, branchesApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
+import FormDrawer from "@/components/common/FormDrawer";
+import BranchLabSchedulePanel from "@/components/lab-tests/BranchLabSchedulePanel";
 
 export default function ClinicLabSchedulePanel() {
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
-  const router = useRouter();
 
   const [branches, setBranches] = useState<Branch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState("");
+  // Viewing a branch's schedule opens in a popup rather than navigating away,
+  // so the "Lab Schedules" tab stays the active one.
+  const [viewingBranch, setViewingBranch] = useState<Branch | null>(null);
 
   useEffect(() => {
     if (!clinicId) return;
@@ -21,20 +24,17 @@ export default function ClinicLabSchedulePanel() {
       .list(clinicId)
       .then((res) => {
         setBranches(res.items);
-        if (res.items.length === 1) {
-          router.replace(
-            `/clinics/${clinicId}/branches/${res.items[0].id}/lab-schedule`
-          );
-        } else if (res.items.length > 0) {
+        if (res.items.length > 0) {
           setSelectedBranch(res.items[0].id);
         }
       })
       .catch((err) =>
         setError(getErrorMessage(err, "Failed to load branches"))
       );
-  }, [clinicId, router]);
+  }, [clinicId]);
 
   const loading = branches === null && !error;
+  const singleBranch = branches !== null && branches.length === 1 ? branches[0] : null;
   const showPicker = branches !== null && branches.length > 1;
 
   return (
@@ -45,12 +45,15 @@ export default function ClinicLabSchedulePanel() {
             Lab Schedules
           </h3>
           {showPicker && selectedBranch && (
-            <Link
-              href={`/clinics/${clinicId}/branches/${selectedBranch}/lab-schedule`}
+            <button
+              type="button"
+              onClick={() =>
+                setViewingBranch(branches!.find((b) => b.id === selectedBranch) ?? null)
+              }
               className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
             >
               View Schedule →
-            </Link>
+            </button>
           )}
         </div>
 
@@ -60,9 +63,11 @@ export default function ClinicLabSchedulePanel() {
           </div>
         ) : loading ? (
           <ListSkeleton rows={3} />
+        ) : singleBranch ? (
+          <BranchLabSchedulePanel branchId={singleBranch.id} />
         ) : !showPicker ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            Redirecting…
+            No branches yet.
           </p>
         ) : (
           <>
@@ -88,9 +93,10 @@ export default function ClinicLabSchedulePanel() {
             <ul className="divide-y divide-gray-100 dark:divide-gray-800">
               {branches!.map((b) => (
                 <li key={b.id}>
-                  <Link
-                    href={`/clinics/${clinicId}/branches/${b.id}/lab-schedule`}
-                    className="-mx-2 flex items-center justify-between rounded-lg px-2 py-4 hover:bg-gray-50 dark:hover:bg-white/[0.03]"
+                  <button
+                    type="button"
+                    onClick={() => setViewingBranch(b)}
+                    className="-mx-2 flex w-full items-center justify-between rounded-lg px-2 py-4 text-left hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                   >
                     <span className="font-medium text-gray-800 dark:text-white/90">
                       {b.name}
@@ -98,13 +104,22 @@ export default function ClinicLabSchedulePanel() {
                     <span className="text-sm font-medium text-brand-500">
                       View schedule →
                     </span>
-                  </Link>
+                  </button>
                 </li>
               ))}
             </ul>
           </>
         )}
       </div>
+
+      <FormDrawer
+        isOpen={viewingBranch !== null}
+        onClose={() => setViewingBranch(null)}
+        title="Lab Schedule"
+        description={viewingBranch?.name}
+      >
+        {viewingBranch && <BranchLabSchedulePanel branchId={viewingBranch.id} />}
+      </FormDrawer>
     </div>
   );
 }

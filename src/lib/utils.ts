@@ -157,6 +157,20 @@ export function today(): string {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
+/** Adds `days` (can be negative) to a `YYYY-MM-DD` date string. */
+export function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return formatDateISO(d);
+}
+
+/** Formats a `Date` as a local `YYYY-MM-DD` string (no timezone conversion). */
+export function formatDateISO(d: Date): string {
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 export function formatFullAddress(details: {
   address?: string | null;
   nearby_location?: string | null;

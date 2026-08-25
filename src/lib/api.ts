@@ -914,6 +914,29 @@ export interface BranchLabTest {
   updated_at: string;
 }
 
+// Walk-in/on-behalf booking details for a lab test appointment - mirrors
+// AppointmentPatientDetailsInput. This is a PROPOSED field: the documented
+// POST /lab-test-appointments is patient-only and has no such field today: see
+// LabTestAppointmentCreateInput below for the backend contract this needs.
+export interface LabTestAppointmentPatientDetailsInput {
+  relationship?: PatientRelationship;
+  name: string;
+  phone?: string | null;
+  age?: number | null;
+  gender?: string | null;
+}
+
+export interface LabTestAvailabilitySlot {
+  start: string;
+  end: string;
+  available: boolean;
+}
+
+export interface LabTestAvailabilityResponse {
+  date: string;
+  slots: LabTestAvailabilitySlot[];
+}
+
 export interface LabTestSchedule {
   id: string;
   branch_id: string;
@@ -2733,6 +2756,18 @@ export const branchLabTestsApi = {
     );
   },
 
+  // Any authenticated user can call this (not clinic-scoped) - used by the
+  // walk-in booking flow to find an open slot for a given date.
+  async availability(
+    branchId: string,
+    branchTestId: string,
+    date: string
+  ): Promise<LabTestAvailabilityResponse> {
+    return apiFetch<LabTestAvailabilityResponse>(
+      `/branches/${branchId}/lab-tests/${branchTestId}/availability${query({ date })}`
+    );
+  },
+
   async configure(
     branchId: string,
     input: {
@@ -2841,7 +2876,36 @@ export interface LabTestAppointmentListParams {
   cursor?: string;
 }
 
+// PROPOSED contract for a staff-facing creation endpoint - does not exist on
+// the backend yet. The only documented POST /lab-test-appointments is
+// patient-only and has no patient_details-style field. This mirrors
+// AppointmentCreateInput so the backend can add a matching
+// POST /clinic/lab-test-appointments once ready.
+export interface LabTestAppointmentCreateInput {
+  branch_id: string;
+  branch_lab_test_id: string;
+  service_mode?: LabTestAppointmentServiceMode;
+  appointment_date: string;
+  start_time: string;
+  payment_method?: LabTestPaymentMethod;
+  patient_notes?: string;
+  patient_details: LabTestAppointmentPatientDetailsInput;
+}
+
 export const labTestAppointmentsApi = {
+  // PROPOSED — see LabTestAppointmentCreateInput above; POST /clinic/lab-test-appointments
+  // does not exist on the backend yet.
+  async create(
+    input: LabTestAppointmentCreateInput,
+    idempotencyKey: string
+  ): Promise<LabTestAppointment> {
+    return apiFetch<LabTestAppointment>("/clinic/lab-test-appointments", {
+      method: "POST",
+      body: JSON.stringify(input),
+      idempotencyKey,
+    });
+  },
+
   async list(
     params: LabTestAppointmentListParams = {}
   ): Promise<Paginated<LabTestAppointment>> {

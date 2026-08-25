@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import BranchOverviewHeader from "@/components/branches/BranchOverviewHeader";
+import BranchSchedulePanel from "@/components/branches/BranchSchedulePanel";
 import {
   Branch,
   BranchGalleryImage,
@@ -234,6 +235,9 @@ export default function BranchOverviewPanel() {
           }
         />
       </div>
+
+      {/* Clinic schedule (operating days + closures) */}
+      <BranchSchedulePanel showBackButton={false} />
 
       {/* Branch Image */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
