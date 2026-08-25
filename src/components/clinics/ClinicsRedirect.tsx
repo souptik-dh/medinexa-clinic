@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, clinicsApi } from "@/lib/api";
 
@@ -83,5 +83,5 @@ export default function ClinicsRedirect() {
     );
   }
 
-  return <TruckLoader label="Opening your clinic…" />;
+  return <DetailSkeleton rows={3} />;
 }

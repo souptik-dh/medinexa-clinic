@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { LabTestAppointmentDetail, labTestAppointmentsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function CancelLabTestAppointmentPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,7 +48,7 @@ export default function CancelLabTestAppointmentPage() {
         items={[{ label: "Lab Appointments", href: "/lab-test-appointments" }]}
       />
       {loading ? (
-        <TruckLoader />
+        <DetailSkeleton rows={2} />
       ) : (
         <form
           onSubmit={handleSubmit}

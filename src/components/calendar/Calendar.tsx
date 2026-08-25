@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import Badge from "@/components/ui/badge/Badge";
 import Link from "next/link";
 import { Appointment, appointmentsApi } from "@/lib/api";
-import TruckLoader from "@/components/common/TruckLoader";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import {
   appointmentStatusColor,
   appointmentStatusLabel,
@@ -78,7 +78,21 @@ const Calendar: React.FC = () => {
   return (
     <div className="rounded-2xl border  border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
       {loading ? (
-        <TruckLoader label="Loading appointments…" />
+        <div className="p-4 sm:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <Skeleton className="h-6 w-32" />
+            <div className="flex gap-2">
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-8 w-16" />
+            </div>
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: 35 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-3 p-8 text-sm text-error-600 dark:text-error-400">
           <p>{error}</p>

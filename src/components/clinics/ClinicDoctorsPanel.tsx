@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -24,7 +25,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 
 const initials = (name: string): string =>
@@ -41,47 +42,40 @@ export default function ClinicDoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
 
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [allDoctors, setAllDoctors] = useState<
-    (BranchDoctor & { branchName: string })[]
-  >([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<BranchDoctor | null>(null);
 
-  const load = useCallback(async () => {
-    if (!clinicId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const branchesRes = await branchesApi.list(clinicId);
-      setBranches(branchesRes.items);
-
-      const perBranch = await Promise.all(
-        branchesRes.items.map(async (b) => {
-          try {
-            const res = await doctorsApi.listByBranch(b.id);
-            return res.items.map((d) => ({ ...d, branchName: b.name }));
-          } catch {
-            return [];
-          }
-        })
-      );
-      setAllDoctors(perBranch.flat());
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctors"));
-    } finally {
-      setLoading(false);
-    }
-  }, [clinicId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Cached under the clinic id so switching tabs and coming back to Doctors
+  // shows the roster instantly instead of re-running the branch+doctor
+  // fan-out fetch every time.
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate: reload,
+  } = useSWR(clinicId ? ["clinic-doctors", clinicId] : null, async () => {
+    const branchesRes = await branchesApi.list(clinicId);
+    const perBranch = await Promise.all(
+      branchesRes.items.map(async (b) => {
+        try {
+          const res = await doctorsApi.listByBranch(b.id);
+          return res.items.map((d) => ({ ...d, branchName: b.name }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    return { branches: branchesRes.items, allDoctors: perBranch.flat() };
+  });
+  const error = swrError ? getErrorMessage(swrError, "Failed to load doctors") : null;
+  const branches: Branch[] = useMemo(() => data?.branches ?? [], [data]);
+  const allDoctors: (BranchDoctor & { branchName: string })[] = useMemo(
+    () => data?.allDoctors ?? [],
+    [data]
+  );
 
   const specializations = useMemo(
     () => getSpecializationOptions(allDoctors),
@@ -200,7 +194,7 @@ export default function ClinicDoctorsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <TruckLoader label="Loading doctors…" />
+            <TableSkeleton cols={6} />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || branchFilter || specializationFilter.length > 0
@@ -324,7 +318,7 @@ export default function ClinicDoctorsPanel() {
         <InviteDoctorForm
           onDone={() => {
             setInviteOpen(false);
-            load();
+            reload();
           }}
           onCancel={() => setInviteOpen(false)}
         />
@@ -342,7 +336,7 @@ export default function ClinicDoctorsPanel() {
             doctorId={editingDoctor.id}
             onDone={() => {
               setEditingDoctor(null);
-              load();
+              reload();
             }}
             onCancel={() => setEditingDoctor(null)}
           />

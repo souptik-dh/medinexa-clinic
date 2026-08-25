@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams } from "next/navigation";
@@ -11,11 +12,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
 import SpecializationMultiSelectFilter from "@/components/doctors/SpecializationMultiSelectFilter";
-import BranchTabs from "@/components/branches/BranchTabs";
 import {
   BranchDoctor,
   doctorsApi,
@@ -43,30 +43,22 @@ export default function BranchDoctorsPanel() {
   const { can } = useAuth();
   const canManage = can("doctors:manage");
 
-  const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!branchId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await doctorsApi.listByBranch(branchId);
-      setDoctors(res.items);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctors"));
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Cached under the branch id so switching tabs and coming back to Doctors
+  // shows the roster instantly instead of refetching every time.
+  const {
+    data,
+    error: swrError,
+    isLoading: loading,
+    mutate: reload,
+  } = useSWR(branchId ? ["branch-doctors", branchId] : null, () =>
+    doctorsApi.listByBranch(branchId)
+  );
+  const error = swrError ? getErrorMessage(swrError, "Failed to load doctors") : null;
+  const doctors: BranchDoctor[] = useMemo(() => data?.items ?? [], [data]);
 
   const specializations = useMemo(
     () => getSpecializationOptions(doctors),
@@ -93,7 +85,6 @@ export default function BranchDoctorsPanel() {
 
   return (
     <div className="space-y-4">
-      <BranchTabs />
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -167,7 +158,7 @@ export default function BranchDoctorsPanel() {
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
           {loading ? (
-            <TruckLoader label="Loading doctors…" />
+            <TableSkeleton rows={5} cols={5} />
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || specializationFilter.length > 0
@@ -285,7 +276,7 @@ export default function BranchDoctorsPanel() {
         <InviteDoctorForm
           onDone={() => {
             setInviteOpen(false);
-            load();
+            reload();
           }}
           onCancel={() => setInviteOpen(false)}
         />

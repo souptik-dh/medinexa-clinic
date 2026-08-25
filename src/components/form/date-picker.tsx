@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import flatpickr from 'flatpickr';
+// Imported here (not the root layout) so pages that never render a DatePicker
+// don't ship this CSS.
 import 'flatpickr/dist/flatpickr.css';
 import Label from './Label';
 import { CalenderIcon, TimeIcon } from '../../icons';

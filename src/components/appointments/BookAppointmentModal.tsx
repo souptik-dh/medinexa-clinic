@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Modal } from "@/components/ui/modal";
-import TruckLoader from "@/components/common/TruckLoader";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   ApiError,
@@ -241,7 +241,7 @@ export default function BookAppointmentModal({
                 Doctor
               </label>
               {doctorsLoading ? (
-                <TruckLoader label="Loading doctors…" />
+                <ListSkeleton rows={3} />
               ) : doctorsError ? (
                 <p className="text-sm text-error-600 dark:text-error-400">{doctorsError}</p>
               ) : (
@@ -296,7 +296,11 @@ export default function BookAppointmentModal({
                   Time slot
                 </label>
                 {availLoading ? (
-                  <TruckLoader label="Checking availability…" />
+                  <div className="flex flex-wrap gap-2">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <Skeleton key={i} className="h-8 w-16 rounded-lg" />
+                    ))}
+                  </div>
                 ) : availError ? (
                   <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
                 ) : !availability || availability.slots.length === 0 ? (
