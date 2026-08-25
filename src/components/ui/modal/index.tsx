@@ -10,6 +10,10 @@ interface ModalProps {
   isFullscreen?: boolean; // Default to false for backwards compatibility
 }
 
+// All popups open as a right-side slide-over panel (same interaction as
+// FormDrawer): the panel docks to the right edge of the viewport and slides
+// in over a dimmed backdrop. Consumer classNames still control the panel
+// width (max-w-*) and inner padding.
 export const Modal: React.FC<ModalProps> = ({
   isOpen,
   onClose,
@@ -29,41 +33,33 @@ export const Modal: React.FC<ModalProps> = ({
 
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
     }
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "unset";
     };
   }, [isOpen, onClose]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-
-    return () => {
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const contentClasses = isFullscreen
     ? "w-full h-full"
-    : "relative w-full rounded-3xl bg-white  dark:bg-gray-900";
+    : "relative flex h-full w-full flex-col bg-white shadow-2xl [animation:modal-slide-in_.25s_ease-out] dark:bg-gray-900";
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-y-auto modal z-99999">
+    <div className="fixed inset-0 z-99999 flex justify-end">
       {!isFullscreen && (
         <div
-          className="fixed inset-0 h-full w-full bg-gray-400/50 backdrop-blur-[32px]"
+          className="absolute inset-0 h-full w-full bg-gray-400/50 backdrop-blur-[32px]"
           onClick={onClose}
         ></div>
       )}
       <div
         ref={modalRef}
+        role="dialog"
+        aria-modal="true"
         className={`${contentClasses}  ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -88,8 +84,16 @@ export const Modal: React.FC<ModalProps> = ({
             </svg>
           </button>
         )}
-        <div>{children}</div>
+        <div className={isFullscreen ? "" : "min-h-0 flex-1 overflow-y-auto"}>
+          {children}
+        </div>
       </div>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `@keyframes modal-slide-in{from{transform:translateX(24px);opacity:0}to{transform:translateX(0);opacity:1}}`,
+        }}
+      />
     </div>
   );
 };

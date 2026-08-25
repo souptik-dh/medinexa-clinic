@@ -12,6 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import TruckLoader from "@/components/common/TruckLoader";
+import FormDrawer from "@/components/common/FormDrawer";
+import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
 import BranchTabs from "@/components/branches/BranchTabs";
 import {
   BranchDoctor,
@@ -36,8 +38,6 @@ export default function BranchDoctorsPanel() {
   }>();
   const branchId =
     typeof params.branchId === "string" ? params.branchId : "";
-  const clinicId =
-    typeof params.clinicId === "string" ? params.clinicId : "";
   const { can } = useAuth();
   const canManage = can("doctors:manage");
 
@@ -46,6 +46,7 @@ export default function BranchDoctorsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!branchId) return;
@@ -101,9 +102,8 @@ export default function BranchDoctorsPanel() {
             Doctors
           </h3>
           {canManage && (
-            <Link
-              href="/doctors/invite"
-              onClick={() => sessionStorage.setItem("compact-back-url", `/clinics/${clinicId}/branches/${branchId}/doctors`)}
+            <button
+              onClick={() => setInviteOpen(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
             >
               <svg
@@ -120,7 +120,7 @@ export default function BranchDoctorsPanel() {
                 />
               </svg>
               Invite Doctor
-            </Link>
+            </button>
           )}
         </div>
 
@@ -287,6 +287,22 @@ export default function BranchDoctorsPanel() {
           )}
         </div>
       </div>
+
+      {/* Invite doctor opens as a slide-over so the user stays on the tab */}
+      <FormDrawer
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite doctor"
+        description="A single-use invite code is emailed to the doctor."
+      >
+        <InviteDoctorForm
+          onDone={() => {
+            setInviteOpen(false);
+            load();
+          }}
+          onCancel={() => setInviteOpen(false)}
+        />
+      </FormDrawer>
     </div>
   );
 }

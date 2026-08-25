@@ -2,7 +2,7 @@
 import React, { useEffect } from "react";
 
 // Right-side slide-over used for all Add/Edit/Configure actions inside the
-// Clinics module. Keeps the user on the current tab â€” the action opens over
+// Clinics module. Keeps the user on the current tab — the action opens over
 // the page and closes straight back into it. Becomes a full-screen sheet on
 // small screens where a side panel would be too cramped.
 interface FormDrawerProps {
