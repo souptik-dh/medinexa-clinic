@@ -1,6 +1,5 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
@@ -20,6 +19,10 @@ import {
   labTestsApi,
 } from "@/lib/api";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
+import FormDrawer from "@/components/common/FormDrawer";
+import LabTestForm, {
+  EMPTY_LAB_TEST_FORM,
+} from "@/components/lab-tests/LabTestForm";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 
@@ -36,6 +39,8 @@ export default function LabTestsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingTest, setEditingTest] = useState<LabTest | null>(null);
 
   // Category is clinic-defined free text now, so the filter options come from
   // what this clinic has actually used rather than a fixed list.
@@ -125,12 +130,12 @@ export default function LabTestsPanel() {
         >
           Refresh
         </button>
-        <Link
-          href={`/clinics/${clinicId}/lab-tests/new`}
+        <button
+          onClick={() => setCreateOpen(true)}
           className="flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
           + New Test
-        </Link>
+        </button>
       </div>
 
       {error && (
@@ -199,12 +204,12 @@ export default function LabTestsPanel() {
                     </TableCell>
                     <TableCell className="py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Link
-                          href={`/clinics/${clinicId}/lab-tests/${item.id}/edit`}
+                        <button
+                          onClick={() => setEditingTest(item)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
                           Edit
-                        </Link>
+                        </button>
                         <button
                           onClick={() => handleToggleStatus(item)}
                           disabled={togglingId === item.id}
@@ -225,6 +230,66 @@ export default function LabTestsPanel() {
           </div>
         )}
       </div>
+
+      {/* Add / edit lab test — drawers keep the user on the current page */}
+      <FormDrawer
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Add lab test"
+      >
+        <LabTestForm
+          mode="create"
+          initial={EMPTY_LAB_TEST_FORM}
+          submitLabel="Create"
+          onCancel={() => setCreateOpen(false)}
+          onSubmit={async (payload) => {
+            try {
+              await labTestsApi.create({ ...payload, clinic_id: clinicId });
+              toast.success("Lab test created successfully.");
+              setCreateOpen(false);
+              await load();
+            } catch (err) {
+              toast.error(getErrorMessage(err, "Failed to create lab test"));
+              throw err;
+            }
+          }}
+        />
+      </FormDrawer>
+
+      <FormDrawer
+        isOpen={editingTest !== null}
+        onClose={() => setEditingTest(null)}
+        title="Edit lab test"
+        description={editingTest?.name}
+      >
+        {editingTest && (
+          <LabTestForm
+            key={editingTest.id}
+            mode="edit"
+            initial={{
+              name: editingTest.name,
+              code: editingTest.code,
+              description: editingTest.description ?? "",
+              category: editingTest.category,
+              instructions: editingTest.instructions ?? "",
+              default_precautions: (editingTest.default_precautions ?? []).join(", "),
+            }}
+            submitLabel="Update"
+            onCancel={() => setEditingTest(null)}
+            onSubmit={async (payload) => {
+              try {
+                await labTestsApi.update(editingTest.id, payload);
+                toast.success("Lab test updated successfully.");
+                setEditingTest(null);
+                await load();
+              } catch (err) {
+                toast.error(getErrorMessage(err, "Failed to update lab test"));
+                throw err;
+              }
+            }}
+          />
+        )}
+      </FormDrawer>
 
     </div>
   );

@@ -1,6 +1,5 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import BranchTabs from "@/components/branches/BranchTabs";
@@ -16,6 +15,8 @@ import {
 
 import { getErrorMessage } from "@/lib/errorMessage";
 import TruckLoader from "@/components/common/TruckLoader";
+import FormDrawer from "@/components/common/FormDrawer";
+import BranchForm from "@/components/branches/BranchForm";
 
 export default function BranchOverviewPanel() {
   const params = useParams<{ clinicId?: string; branchId?: string }>();
@@ -29,6 +30,7 @@ export default function BranchOverviewPanel() {
   const [galleryImages, setGalleryImages] = useState<BranchGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -192,12 +194,12 @@ export default function BranchOverviewPanel() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Link
-              href={`/clinics/${clinicId}/branches/${branchId}/edit`}
+            <button
+              onClick={() => setEditOpen(true)}
               className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
             >
               Edit
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -361,6 +363,25 @@ export default function BranchOverviewPanel() {
           </div>
         )}
       </div>
+
+      {/* Edit branch — drawer keeps the user on the branch overview */}
+      <FormDrawer
+        isOpen={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit branch"
+        description={branch?.name}
+      >
+        <BranchForm
+          mode="edit"
+          clinicId={clinicId}
+          branchId={branchId}
+          onDone={() => {
+            setEditOpen(false);
+            load();
+          }}
+          onCancel={() => setEditOpen(false)}
+        />
+      </FormDrawer>
     </div>
   );
 }

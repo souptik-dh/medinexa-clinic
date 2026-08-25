@@ -1,4 +1,5 @@
 export const BRANCH_STAFF_PERMISSIONS = [
+  "appointments:create",
   "appointments:confirm",
   "appointments:payment",
   "appointments:complete",
@@ -33,6 +34,7 @@ export const BRANCH_STAFF_PERMISSIONS = [
 export type BranchStaffPermission = (typeof BRANCH_STAFF_PERMISSIONS)[number];
 
 export const DEFAULT_BRANCH_STAFF_PERMISSIONS: readonly BranchStaffPermission[] = [
+  "appointments:create",
   "appointments:confirm",
   "appointments:payment",
   "appointments:complete",
@@ -45,6 +47,12 @@ export const BRANCH_STAFF_PERMISSION_META: {
   label: string;
   description: string;
 }[] = [
+  {
+    permission: "appointments:create",
+    module: "appointments",
+    label: "Book on behalf",
+    description: "Book appointments for walk-in patients at the front desk",
+  },
   {
     permission: "appointments:confirm",
     module: "appointments",
@@ -242,6 +250,7 @@ export function canAccessAppointments(
   permissions: readonly BranchStaffPermission[] | undefined
 ): boolean {
   return (
+    hasPermission(permissions, "appointments:create") ||
     hasPermission(permissions, "appointments:confirm") ||
     hasPermission(permissions, "appointments:payment") ||
     hasPermission(permissions, "appointments:complete") ||

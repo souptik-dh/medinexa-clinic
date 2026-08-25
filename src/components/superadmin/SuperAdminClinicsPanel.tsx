@@ -276,7 +276,7 @@ export default function SuperAdminClinicsPanel() {
       </div>
 
       {/* Detail modal */}
-      <Modal isOpen={detailLoading || !!detail} onClose={() => setDetail(null)} className="max-w-3xl p-6 m-4">
+      <Modal isOpen={detailLoading || !!detail} onClose={() => setDetail(null)} className="max-w-3xl p-6">
         {detailLoading && <p className="py-10 text-center text-sm text-gray-400">Loading clinic…</p>}
         {!detailLoading && detail && (
           <div className="max-h-[75vh] space-y-5 overflow-y-auto">
@@ -415,7 +415,7 @@ export default function SuperAdminClinicsPanel() {
       </Modal>
 
       {/* Deactivate modal */}
-      <Modal isOpen={deactivateOpen} onClose={() => setDeactivateOpen(false)} className="max-w-md p-6 m-4">
+      <Modal isOpen={deactivateOpen} onClose={() => setDeactivateOpen(false)} className="max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Deactivate clinic</h3>
         <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
           The clinic becomes read-only until reactivated. Reason is required (3–500 chars).
@@ -437,7 +437,7 @@ export default function SuperAdminClinicsPanel() {
       </Modal>
 
       {/* Extend modal */}
-      <Modal isOpen={extendOpen} onClose={() => setExtendOpen(false)} className="max-w-md p-6 m-4">
+      <Modal isOpen={extendOpen} onClose={() => setExtendOpen(false)} className="max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Extend subscription</h3>
         <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
           Extend paid months, or grant extra trial days (mutually exclusive).

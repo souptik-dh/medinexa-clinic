@@ -1,6 +1,5 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
@@ -19,7 +18,10 @@ import {
   branchesApi,
   labTestsApi,
 } from "@/lib/api";
-import ClinicTabs from "@/components/clinics/ClinicTabs";
+import FormDrawer from "@/components/common/FormDrawer";
+import LabTestForm, {
+  EMPTY_LAB_TEST_FORM,
+} from "@/components/lab-tests/LabTestForm";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import TruckLoader from "@/components/common/TruckLoader";
@@ -39,6 +41,8 @@ export default function ClinicLabTestsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingTest, setEditingTest] = useState<LabTest | null>(null);
 
   useEffect(() => {
     if (!clinicId) return;
@@ -101,15 +105,13 @@ export default function ClinicLabTestsPanel() {
 
   return (
     <div className="space-y-4">
-      <ClinicTabs />
-
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
             Lab Tests
           </h3>
-          <Link
-            href={`/clinics/${clinicId}/lab-tests/new`}
+          <button
+            onClick={() => setCreateOpen(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
           >
             <svg
@@ -126,7 +128,7 @@ export default function ClinicLabTestsPanel() {
               />
             </svg>
             Add Lab Test
-          </Link>
+          </button>
         </div>
 
         {/* Branch Selector */}
@@ -302,12 +304,12 @@ export default function ClinicLabTestsPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Link
-                            href={`/clinics/${clinicId}/lab-tests/${item.id}/edit`}
+                          <button
+                            onClick={() => setEditingTest(item)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                           >
                             Edit
-                          </Link>
+                          </button>
                           <button
                             onClick={() => handleToggleStatus(item)}
                             disabled={togglingId === item.id}
@@ -331,6 +333,66 @@ export default function ClinicLabTestsPanel() {
           )}
         </div>
       </div>
+
+      {/* Add / edit lab test — drawers keep the user on the Lab Tests tab */}
+      <FormDrawer
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Add lab test"
+      >
+        <LabTestForm
+          mode="create"
+          initial={EMPTY_LAB_TEST_FORM}
+          submitLabel="Create"
+          onCancel={() => setCreateOpen(false)}
+          onSubmit={async (payload) => {
+            try {
+              await labTestsApi.create({ ...payload, clinic_id: clinicId });
+              toast.success("Lab test created successfully.");
+              setCreateOpen(false);
+              await load();
+            } catch (err) {
+              toast.error(getErrorMessage(err, "Failed to create lab test"));
+              throw err;
+            }
+          }}
+        />
+      </FormDrawer>
+
+      <FormDrawer
+        isOpen={editingTest !== null}
+        onClose={() => setEditingTest(null)}
+        title="Edit lab test"
+        description={editingTest?.name}
+      >
+        {editingTest && (
+          <LabTestForm
+            key={editingTest.id}
+            mode="edit"
+            initial={{
+              name: editingTest.name,
+              code: editingTest.code,
+              description: editingTest.description ?? "",
+              category: editingTest.category,
+              instructions: editingTest.instructions ?? "",
+              default_precautions: (editingTest.default_precautions ?? []).join(", "),
+            }}
+            submitLabel="Update"
+            onCancel={() => setEditingTest(null)}
+            onSubmit={async (payload) => {
+              try {
+                await labTestsApi.update(editingTest.id, payload);
+                toast.success("Lab test updated successfully.");
+                setEditingTest(null);
+                await load();
+              } catch (err) {
+                toast.error(getErrorMessage(err, "Failed to update lab test"));
+                throw err;
+              }
+            }}
+          />
+        )}
+      </FormDrawer>
     </div>
   );
 }

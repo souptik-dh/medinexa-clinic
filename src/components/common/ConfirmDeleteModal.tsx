@@ -50,7 +50,7 @@ export default function ConfirmDeleteModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="m-4 max-w-md">
+    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-md">
       <div className="p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           Are you sure you want to delete?

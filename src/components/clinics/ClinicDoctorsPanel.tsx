@@ -11,7 +11,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import ClinicTabs from "@/components/clinics/ClinicTabs";
+import FormDrawer from "@/components/common/FormDrawer";
+import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
+import DoctorAssignmentEditPanel from "@/components/doctors/DoctorAssignmentEditPanel";
 import {
   Branch,
   BranchDoctor,
@@ -46,6 +48,8 @@ export default function ClinicDoctorsPanel() {
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<BranchDoctor | null>(null);
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -108,17 +112,14 @@ export default function ClinicDoctorsPanel() {
 
   return (
     <div className="space-y-4">
-      <ClinicTabs />
-
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
             Doctors
           </h3>
           {canManage && (
-            <Link
-              href="/doctors/invite"
-              onClick={() => sessionStorage.setItem("compact-back-url", `/clinics/${clinicId}/doctors`)}
+            <button
+              onClick={() => setInviteOpen(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
             >
               <svg
@@ -135,7 +136,7 @@ export default function ClinicDoctorsPanel() {
                 />
               </svg>
               Invite Doctor
-            </Link>
+            </button>
           )}
         </div>
 
@@ -254,6 +255,14 @@ export default function ClinicDoctorsPanel() {
                     >
                       Status
                     </TableCell>
+                    {canManage && (
+                      <TableCell
+                        isHeader
+                        className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
+                      >
+                        Actions
+                      </TableCell>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -297,6 +306,18 @@ export default function ClinicDoctorsPanel() {
                           Active
                         </Badge>
                       </TableCell>
+                      {canManage && (
+                        <TableCell className="py-3">
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => setEditingDoctor(doc)}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -305,6 +326,41 @@ export default function ClinicDoctorsPanel() {
           )}
         </div>
       </div>
+
+      {/* Invite / edit doctor — drawers keep the user on the Doctors tab */}
+      <FormDrawer
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite doctor"
+        description="A single-use invite code is emailed to the doctor."
+      >
+        <InviteDoctorForm
+          onDone={() => {
+            setInviteOpen(false);
+            load();
+          }}
+          onCancel={() => setInviteOpen(false)}
+        />
+      </FormDrawer>
+
+      <FormDrawer
+        isOpen={editingDoctor !== null}
+        onClose={() => setEditingDoctor(null)}
+        title="Edit doctor"
+        description={editingDoctor?.name}
+      >
+        {editingDoctor && (
+          <DoctorAssignmentEditPanel
+            branchId={editingDoctor.branch_id}
+            doctorId={editingDoctor.id}
+            onDone={() => {
+              setEditingDoctor(null);
+              load();
+            }}
+            onCancel={() => setEditingDoctor(null)}
+          />
+        )}
+      </FormDrawer>
     </div>
   );
 }

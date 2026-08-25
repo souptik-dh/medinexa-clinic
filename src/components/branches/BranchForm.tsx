@@ -18,6 +18,14 @@ import { canCreateBranch, canUpdateBranch } from "@/lib/permissions";
 
 interface BranchFormProps {
   mode: "create" | "edit";
+  /** Route-param overrides so the form can be embedded (e.g. in a drawer)
+   * outside its /clinics/[clinicId]/branches/... route. */
+  clinicId?: string;
+  branchId?: string;
+  /** When provided, the form is embedded: success and cancel hand control
+   * back to the host instead of navigating away. */
+  onDone?: (branchId?: string) => void;
+  onCancel?: () => void;
 }
 
 type RequiredField =
@@ -31,11 +39,19 @@ type RequiredField =
   | "pinCode"
   | "tradeLicenseNumber";
 
-export default function BranchForm({ mode }: BranchFormProps) {
+export default function BranchForm({
+  mode,
+  clinicId: clinicIdProp,
+  branchId: branchIdProp,
+  onDone,
+  onCancel,
+}: BranchFormProps) {
   const router = useRouter();
   const params = useParams<{ clinicId?: string; branchId?: string }>();
-  const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
-  const branchId = typeof params.branchId === "string" ? params.branchId : "";
+  const clinicId =
+    clinicIdProp ?? (typeof params.clinicId === "string" ? params.clinicId : "");
+  const branchId =
+    branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
   const isEdit = mode === "edit";
 
   const { user } = useAuth();
@@ -219,14 +235,21 @@ export default function BranchForm({ mode }: BranchFormProps) {
         clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
       let redirectTo = "/branches";
+      let savedBranchId: string | undefined;
       if (isEdit) {
         await branchesApi.update(branchId, input);
         toast.success("Branch updated successfully.");
+        savedBranchId = branchId;
         redirectTo = `/clinics/${clinicId}/branches/${branchId}/overview`;
       } else {
         const created = await branchesApi.create(clinicId, input);
         toast.success("Branch created successfully.");
+        savedBranchId = created.id;
         redirectTo = `/clinics/${clinicId}/branches/${created.id}/overview`;
+      }
+      if (onDone) {
+        onDone(savedBranchId);
+        return;
       }
       setTimeout(() => router.push(redirectTo), 150);
     } catch (err) {
@@ -255,24 +278,28 @@ export default function BranchForm({ mode }: BranchFormProps) {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            {isEdit ? "Edit branch" : "Create branch"}
-            {clinicName && (
-              <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                — {clinicName}
-              </span>
-            )}
-          </h3>
-          <Link href="/branches" className="text-sm font-medium text-brand-500 hover:underline">
-            View all branches
-          </Link>
-        </div>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {isEdit
-            ? "Update this branch&apos;s contact and address details."
-            : "Add a new branch to the selected clinic."}
-        </p>
+        {!onCancel && (
+          <>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+                {isEdit ? "Edit branch" : "Create branch"}
+                {clinicName && (
+                  <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                    — {clinicName}
+                  </span>
+                )}
+              </h3>
+              <Link href="/branches" className="text-sm font-medium text-brand-500 hover:underline">
+                View all branches
+              </Link>
+            </div>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {isEdit
+                ? "Update this branch&apos;s contact and address details."
+                : "Add a new branch to the selected clinic."}
+            </p>
+          </>
+        )}
 
         {loading ? (
           <TruckLoader label="Loading…" />
@@ -459,7 +486,13 @@ export default function BranchForm({ mode }: BranchFormProps) {
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
             onClick={() =>
-              router.push(isEdit ? `/clinics/${clinicId}/branches/${branchId}/overview` : "/branches")
+              onCancel
+                ? onCancel()
+                : router.push(
+                    isEdit
+                      ? `/clinics/${clinicId}/branches/${branchId}/overview`
+                      : "/branches"
+                  )
             }
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >

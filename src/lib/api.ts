@@ -794,11 +794,25 @@ export interface AppointmentDetail extends Appointment {
   patient: AppointmentPatientSummary;
 }
 
+// Walk-in/on-behalf booking details — mirrors POST /appointments'
+// patient_details. `name` is required by the API whenever patient_details is
+// sent; everything else is optional.
+export interface AppointmentPatientDetailsInput {
+  relationship?: PatientRelationship;
+  name: string;
+  phone?: string | null;
+  age?: number | null;
+  gender?: string | null;
+}
+
 export interface AppointmentCreateInput {
   doctor_id: string;
   branch_id: string;
   date: string;
-  time: string;
+  // Required for `fixed` doctors; omit for `sequential` (server assigns the
+  // next free slot in booking order).
+  time?: string;
+  patient_details?: AppointmentPatientDetailsInput;
 }
 
 export interface PaymentInput {

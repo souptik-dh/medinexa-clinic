@@ -30,7 +30,12 @@ function useBackTarget(): BackTarget {
     return { label: "Clinic Overview", href: `/clinics/${clinicId}/overview` };
   }
   if (pathname.endsWith("/overview") && pathname.match(/\/clinics\/[^/]+\/overview\/?$/)) {
-    return { label: "Clinics", href: "/clinics" };
+    // The clinic-list page is skipped, so from an overview the only way "back"
+    // is the dashboard.
+    return { label: "Dashboard", href: "/dashboard" };
+  }
+  if (pathname.match(/\/clinics\/[^/]+\/(staff|patients|billing)\/?$/)) {
+    return { label: "Clinic Overview", href: `/clinics/${clinicId}/overview` };
   }
   if (pathname.match(/\/clinics\/[^/]+\/branches\/?$/) && !pathname.includes("/branches/new")) {
     return { label: "Clinic Overview", href: `/clinics/${clinicId}/overview` };
@@ -115,6 +120,9 @@ function getPageTitle(pathname: string): string {
   if (pathname === "/clinics/new") return "Add New Clinic";
   if (pathname.endsWith("/edit") && pathname.includes("/clinics/") && !pathname.includes("/branches/")) return "Edit Clinic";
   if (pathname.endsWith("/overview") && pathname.match(/\/clinics\/[^/]+\/overview\/?$/)) return "Clinic Overview";
+  if (pathname.match(/\/clinics\/[^/]+\/staff\/?$/)) return "Clinic Staff";
+  if (pathname.match(/\/clinics\/[^/]+\/patients\/?$/)) return "Clinic Patients";
+  if (pathname.match(/\/clinics\/[^/]+\/billing\/?$/)) return "Subscription & Billing";
   if (pathname.match(/\/clinics\/[^/]+\/branches\/?$/) && !pathname.includes("/branches/new")) return "Branches";
   if (pathname.match(/\/clinics\/[^/]+\/doctors\/?$/)) return "Clinic Doctors";
   if (pathname.match(/\/clinics\/[^/]+\/lab-tests\/?$/) && !pathname.includes("/lab-tests/new")) return "Lab Tests";

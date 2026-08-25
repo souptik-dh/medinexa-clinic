@@ -564,7 +564,7 @@ export default function BillingPanel() {
       </div>
 
       {/* Pay modal */}
-      <Modal isOpen={payOpen} onClose={() => setPayOpen(false)} className="max-w-lg p-6 m-4">
+      <Modal isOpen={payOpen} onClose={() => setPayOpen(false)} className="max-w-lg p-6">
         <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
           {pendingPayment ? "Complete payment" : "Initiate payment"}
         </h3>

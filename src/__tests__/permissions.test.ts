@@ -24,8 +24,8 @@ import {
 } from "@/lib/permissions";
 
 describe("BRANCH_STAFF_PERMISSIONS", () => {
-  it("contains exactly 20 permissions", () => {
-    expect(BRANCH_STAFF_PERMISSIONS).toHaveLength(20);
+  it("contains exactly 21 permissions", () => {
+    expect(BRANCH_STAFF_PERMISSIONS).toHaveLength(21);
   });
 
   it("contains unique permissions", () => {
@@ -41,8 +41,8 @@ describe("BRANCH_STAFF_PERMISSIONS", () => {
 });
 
 describe("DEFAULT_BRANCH_STAFF_PERMISSIONS", () => {
-  it("contains 4 default permissions", () => {
-    expect(DEFAULT_BRANCH_STAFF_PERMISSIONS).toHaveLength(4);
+  it("contains 5 default permissions", () => {
+    expect(DEFAULT_BRANCH_STAFF_PERMISSIONS).toHaveLength(5);
   });
 
   it("all defaults are appointment-related", () => {
@@ -122,6 +122,7 @@ describe("hasPermission", () => {
 
 describe("canAccessAppointments", () => {
   it("returns true when any appointment permission is present", () => {
+    expect(canAccessAppointments(["appointments:create"])).toBe(true);
     expect(canAccessAppointments(["appointments:confirm"])).toBe(true);
     expect(canAccessAppointments(["appointments:payment"])).toBe(true);
     expect(canAccessAppointments(["appointments:complete"])).toBe(true);

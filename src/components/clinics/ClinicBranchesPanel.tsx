@@ -17,12 +17,13 @@ import {
   branchesApi,
   clinicsApi,
 } from "@/lib/api";
-import ClinicTabs from "@/components/clinics/ClinicTabs";
 import BranchGalleryPanel from "@/components/branches/BranchGalleryPanel";
 import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
 import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
 import BranchReviewsPanel from "@/components/branches/BranchReviewsPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import FormDrawer from "@/components/common/FormDrawer";
+import BranchForm from "@/components/branches/BranchForm";
 import RatingStars from "@/components/common/RatingStars";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
@@ -47,6 +48,8 @@ export default function ClinicBranchesPanel() {
   const [busy, setBusy] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [search, setSearch] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
   const { user } = useAuth();
   const userPermissions =
@@ -177,8 +180,6 @@ export default function ClinicBranchesPanel() {
 
   return (
     <div className="space-y-6">
-      <ClinicTabs />
-
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
@@ -205,8 +206,8 @@ export default function ClinicBranchesPanel() {
                 </button>
               )}
             {canCreate && (
-              <Link
-                href={`/clinics/${clinicId}/branches/new`}
+              <button
+                onClick={() => setCreateOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
                 <svg
@@ -223,7 +224,7 @@ export default function ClinicBranchesPanel() {
                   />
                 </svg>
                 Add Branch
-              </Link>
+              </button>
             )}
           </div>
         </div>
@@ -335,12 +336,12 @@ export default function ClinicBranchesPanel() {
                           Open
                         </Link>
                         {canUpdate && (
-                          <Link
-                            href={`/clinics/${clinicId}/branches/${b.id}/edit`}
+                          <button
+                            onClick={() => setEditingBranch(b)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.03]"
                           >
                             Edit
-                          </Link>
+                          </button>
                         )}
                         {canDelete && (
                           <button
@@ -393,6 +394,44 @@ export default function ClinicBranchesPanel() {
           <BranchReviewsPanel branchId={selectedBranch.id} />
         </div>
       )}
+
+      {/* Add / edit branch — drawers keep the user on the Branches tab */}
+      <FormDrawer
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Add branch"
+        description={clinic?.name}
+      >
+        <BranchForm
+          mode="create"
+          clinicId={clinicId}
+          onDone={() => {
+            setCreateOpen(false);
+            loadBranches();
+          }}
+          onCancel={() => setCreateOpen(false)}
+        />
+      </FormDrawer>
+
+      <FormDrawer
+        isOpen={editingBranch !== null}
+        onClose={() => setEditingBranch(null)}
+        title="Edit branch"
+        description={editingBranch?.name}
+      >
+        {editingBranch && (
+          <BranchForm
+            mode="edit"
+            clinicId={clinicId}
+            branchId={editingBranch.id}
+            onDone={() => {
+              setEditingBranch(null);
+              loadBranches();
+            }}
+            onCancel={() => setEditingBranch(null)}
+          />
+        )}
+      </FormDrawer>
 
       <ConfirmDeleteModal
         isOpen={branchToDelete !== null}

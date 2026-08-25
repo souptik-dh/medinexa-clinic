@@ -24,6 +24,8 @@ import BranchLicensesPanel from "@/components/branches/BranchLicensesPanel";
 import BranchPhotoPanel from "@/components/branches/BranchPhotoPanel";
 import BranchReviewsPanel from "@/components/branches/BranchReviewsPanel";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import FormDrawer from "@/components/common/FormDrawer";
+import BranchForm from "@/components/branches/BranchForm";
 import RatingStars from "@/components/common/RatingStars";
 import Pagination from "@/components/tables/Pagination";
 import { formatDate, formatFullAddress } from "@/lib/utils";
@@ -52,6 +54,8 @@ export default function BranchesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
@@ -284,12 +288,12 @@ export default function BranchesPanel() {
                     {busy ? "Creating…" : "Auto-create branch"}
                   </button>
                 )}
-                <Link
-                  href={`/clinics/${selected.id}/branches/new`}
+                <button
+                  onClick={() => setCreateOpen(true)}
                   className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
                 >
                   + New branch
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -392,12 +396,12 @@ export default function BranchesPanel() {
                             </Link>
                           )}
                           {canUpdate && (
-                            <Link
-                              href={`/clinics/${selected?.id}/branches/${b.id}/edit`}
+                            <button
+                              onClick={() => setEditingBranch(b)}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
                               Edit
-                            </Link>
+                            </button>
                           )}
                           {canDelete && (
                             <button
@@ -454,6 +458,46 @@ export default function BranchesPanel() {
           <BranchReviewsPanel branchId={selectedBranch.id} />
         </div>
       )}
+
+      {/* Add / edit branch — drawers keep the user on the current page */}
+      <FormDrawer
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Add branch"
+        description={selected?.name}
+      >
+        {selected && (
+          <BranchForm
+            mode="create"
+            clinicId={selected.id}
+            onDone={() => {
+              setCreateOpen(false);
+              loadBranches(selected.id);
+            }}
+            onCancel={() => setCreateOpen(false)}
+          />
+        )}
+      </FormDrawer>
+
+      <FormDrawer
+        isOpen={editingBranch !== null}
+        onClose={() => setEditingBranch(null)}
+        title="Edit branch"
+        description={editingBranch?.name}
+      >
+        {editingBranch && selected && (
+          <BranchForm
+            mode="edit"
+            clinicId={selected.id}
+            branchId={editingBranch.id}
+            onDone={() => {
+              setEditingBranch(null);
+              loadBranches(selected.id);
+            }}
+            onCancel={() => setEditingBranch(null)}
+          />
+        )}
+      </FormDrawer>
 
       <ConfirmDeleteModal
         isOpen={branchToDelete !== null}

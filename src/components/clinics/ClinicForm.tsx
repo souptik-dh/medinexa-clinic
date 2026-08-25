@@ -16,6 +16,13 @@ import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
 
 interface ClinicFormProps {
   mode: "create" | "edit";
+  /** Route-param override so the form can be embedded (e.g. in a drawer)
+   * outside its /clinics/[clinicId]/edit route. */
+  clinicId?: string;
+  /** When provided, the form is embedded: success and cancel hand control
+   * back to the host instead of navigating away. */
+  onDone?: (clinicId?: string) => void;
+  onCancel?: () => void;
 }
 
 type RequiredField =
@@ -27,10 +34,16 @@ type RequiredField =
   | "pinCode"
   | "tradeLicenseNumber";
 
-export default function ClinicForm({ mode }: ClinicFormProps) {
+export default function ClinicForm({
+  mode,
+  clinicId: clinicIdProp,
+  onDone,
+  onCancel,
+}: ClinicFormProps) {
   const router = useRouter();
   const params = useParams<{ clinicId?: string }>();
-  const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
+  const clinicId =
+    clinicIdProp ?? (typeof params.clinicId === "string" ? params.clinicId : "");
   const isEdit = mode === "edit";
 
   const { user } = useAuth();
@@ -178,14 +191,21 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
         clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
       };
       let redirectTo = "/clinics";
+      let savedClinicId: string | undefined;
       if (isEdit) {
         await clinicsApi.update(clinicId, input);
         toast.success("Clinic updated successfully.");
+        savedClinicId = clinicId;
         redirectTo = `/clinics/${clinicId}/overview`;
       } else {
         const created = await clinicsApi.create(input);
         toast.success("Clinic created successfully.");
+        savedClinicId = created.id;
         redirectTo = `/clinics/${created.id}/overview`;
+      }
+      if (onDone) {
+        onDone(savedClinicId);
+        return;
       }
       setTimeout(() => router.push(redirectTo), 150);
     } catch (err) {
@@ -214,19 +234,26 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            {isEdit ? "Edit clinic" : "Create a clinic"}
-          </h3>
-          <Link href="/clinics" className="text-sm font-medium text-brand-500 hover:underline">
-            View all clinics
-          </Link>
-        </div>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {isEdit
-            ? "Update this clinic&apos;s name, description and address details."
-            : "Add a new clinic to your organization."}
-        </p>
+        {!onCancel && (
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+              {isEdit ? "Edit clinic" : "Create a clinic"}
+            </h3>
+            <Link
+              href={isEdit && clinicId ? `/clinics/${clinicId}/overview` : "/clinics"}
+              className="text-sm font-medium text-brand-500 hover:underline"
+            >
+              {isEdit ? "Back to overview" : "View all clinics"}
+            </Link>
+          </div>
+        )}
+        {!onCancel && (
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {isEdit
+              ? "Update this clinic&apos;s name, description and address details."
+              : "Add a new clinic to your organization."}
+          </p>
+        )}
 
         {loading ? (
           <TruckLoader label="Loading…" />
@@ -389,7 +416,11 @@ export default function ClinicForm({ mode }: ClinicFormProps) {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={() => router.push(isEdit ? `/clinics/${clinicId}/overview` : "/clinics")}
+            onClick={() =>
+              onCancel
+                ? onCancel()
+                : router.push(isEdit ? `/clinics/${clinicId}/overview` : "/clinics")
+            }
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             Cancel

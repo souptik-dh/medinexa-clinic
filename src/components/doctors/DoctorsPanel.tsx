@@ -16,6 +16,8 @@ import {
 import { Modal } from "@/components/ui/modal";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
+import FormDrawer from "@/components/common/FormDrawer";
+import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
 import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
@@ -70,6 +72,7 @@ export default function DoctorsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [doctorToRemove, setDoctorToRemove] = useState<BranchDoctor | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // doctor directory search (GET /doctors/search)
   const [searchQuery, setSearchQuery] = useState("");
@@ -291,13 +294,13 @@ export default function DoctorsPanel() {
             </button>
           </div>
           {tab === "invites" && canManage && (
-            <Link
-              href="/doctors/invite"
-              onClick={() => sessionStorage.setItem("compact-back-url", "/doctors")}
+            <button
+              onClick={() => setInviteOpen(true)}
+              disabled={!branch}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
               + New invite
-            </Link>
+            </button>
           )}
         </div>
 
@@ -679,6 +682,22 @@ export default function DoctorsPanel() {
         impactItems={["The doctor's upcoming schedule at this branch"]}
         confirmLabel="Remove doctor"
       />
+
+      {/* New invite opens as a slide-over so the user stays on the Invites tab */}
+      <FormDrawer
+        isOpen={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite doctor"
+        description="A single-use invite code is emailed to the doctor."
+      >
+        <InviteDoctorForm
+          onDone={() => {
+            setInviteOpen(false);
+            if (branch) load(branch, "invites");
+          }}
+          onCancel={() => setInviteOpen(false)}
+        />
+      </FormDrawer>
     </div>
   );
 }

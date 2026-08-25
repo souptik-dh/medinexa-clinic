@@ -58,7 +58,14 @@ export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null 
   return null;
 }
 
-export default function InviteDoctorForm() {
+interface InviteDoctorFormProps {
+  /** When provided, the form is embedded (e.g. inside a drawer): success and
+   * cancel hand control back to the host instead of navigating away. */
+  onDone?: () => void;
+  onCancel?: () => void;
+}
+
+export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormProps = {}) {
   const router = useRouter();
   const { can } = useAuth();
   const canManage = can("doctors:manage");
@@ -169,7 +176,11 @@ export default function InviteDoctorForm() {
         slot_template: slots,
       });
       toast.success("Doctor invite sent successfully.");
-      router.push("/doctors");
+      if (onDone) {
+        onDone();
+      } else {
+        router.push("/doctors");
+      }
     } catch (err) {
       const message = getErrorMessage(err, "Unable to send invite. Please try again.");
       setError(message);
@@ -398,7 +409,7 @@ export default function InviteDoctorForm() {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
-            onClick={() => router.push("/doctors")}
+            onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             Cancel
