@@ -24,15 +24,12 @@ export default function RootLayout({
           <AppToaster />
           <AuthProvider>
             <AiChatProvider>
-              <SidebarProvider>{children}</SidebarProvider>
+              <AppSWRConfig>
+                <SidebarProvider>{children}</SidebarProvider>
+              </AppSWRConfig>
               <AiAssistant />
             </AiChatProvider>
           </AuthProvider>
-          <AppSWRConfig>
-            <AuthProvider>
-              <SidebarProvider>{children}</SidebarProvider>
-            </AuthProvider>
-          </AppSWRConfig>
         </ThemeProvider>
       </body>
     </html>
