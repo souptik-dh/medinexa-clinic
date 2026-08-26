@@ -6,6 +6,7 @@ import { branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateBranch } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface BranchPhotoPanelProps {
   branchId: string;
@@ -20,6 +21,7 @@ export default function BranchPhotoPanel({
   photoUrl,
   onPhotoUpdated,
 }: BranchPhotoPanelProps) {
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -33,7 +35,7 @@ export default function BranchPhotoPanel({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!canUpload) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
 
@@ -42,9 +44,9 @@ export default function BranchPhotoPanel({
     try {
       const res = await branchesApi.uploadPhoto(branchId, file);
       onPhotoUpdated(res.photo_url);
-      toast.success("Branch photo updated successfully.");
+      toast.success(t("gallery.photoUpdateSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Photo upload failed");
+      const message = getErrorMessage(err, t("gallery.photoUploadFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -55,7 +57,7 @@ export default function BranchPhotoPanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Branch photo</h3>
+      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("gallery.branchPhotoTitle")}</h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{branchName}</p>
 
       {error && (
@@ -68,7 +70,7 @@ export default function BranchPhotoPanel({
         {photoUrl ? (
           <Image
             src={photoUrl}
-            alt={`${branchName} photo`}
+            alt={t("gallery.photoAlt", { branchName })}
             width={112}
             height={112}
             unoptimized
@@ -76,7 +78,7 @@ export default function BranchPhotoPanel({
           />
         ) : (
           <div className="flex h-28 w-28 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-            No photo
+            {t("gallery.noPhoto")}
           </div>
         )}
 
@@ -91,7 +93,7 @@ export default function BranchPhotoPanel({
               className="block w-full max-w-xs text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
             />
             {uploading && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">Uploading…</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{t("doctors.uploading")}</span>
             )}
           </div>
         )}

@@ -11,6 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 import {
   Appointment,
   ApiError,
@@ -22,7 +23,6 @@ import {
 } from "@/lib/api";
 import {
   appointmentStatusColor,
-  appointmentStatusLabel,
   formatCurrency,
   notificationTypeLabel,
   timeAgo,
@@ -38,9 +38,13 @@ interface DashboardData {
 
 const STATUSES = ["pending", "confirmed", "paid", "completed", "cancelled", "no_show"] as const;
 
+const STATUS_KEY: Record<string, string> = { no_show: "noShow" };
+
 export default function Dashboard() {
   const { user, staffClinic, staffBranch } = useAuth();
+  const { t } = useTranslation();
   const isBranchStaff = user?.role === "branch_staff";
+  const statusLabel = (status: string) => t(`status.${STATUS_KEY[status] ?? status}`);
 
   const fetchDashboard = useCallback(async (): Promise<DashboardData> => {
     // branch_staff has no reason to fetch the full clinics directory -
@@ -74,16 +78,16 @@ export default function Dashboard() {
     return (
       <div className="rounded-2xl border border-error-500/30 bg-error-50 p-6 text-error-600 dark:bg-error-500/10 dark:text-error-400">
         <p className="font-medium">
-          {error instanceof ApiError ? error.message : "Failed to load dashboard data"}
+          {error instanceof ApiError ? error.message : t("dashboard.failedToLoad")}
         </p>
         <p className="mt-1 text-sm">
-          Make sure the Jido Healthcare API is running at the configured base URL, then try again.
+          {t("dashboard.apiHint")}
         </p>
         <button
           onClick={() => mutate()}
           className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
         >
-          Retry
+          {t("dashboard.retry")}
         </button>
       </div>
     );
@@ -110,11 +114,11 @@ export default function Dashboard() {
       <div className="col-span-12 grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6 xl:col-span-7">
         {isBranchStaff ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6 sm:col-span-2">
-            <p className="text-theme-xs text-gray-400 dark:text-gray-500">Clinic</p>
+            <p className="text-theme-xs text-gray-400 dark:text-gray-500">{t("dashboard.clinic")}</p>
             <h4 className="font-semibold text-gray-800 dark:text-white/90">
               {staffClinic?.name ?? "—"}
             </h4>
-            <p className="mt-3 text-theme-xs text-gray-400 dark:text-gray-500">Branch</p>
+            <p className="mt-3 text-theme-xs text-gray-400 dark:text-gray-500">{t("appointments.branch")}</p>
             <h4 className="font-semibold text-gray-800 dark:text-white/90">
               {staffBranch?.name ?? "—"}
             </h4>
@@ -123,24 +127,24 @@ export default function Dashboard() {
           <>
             <MetricCard
               icon={<BoxCubeIcon className="text-gray-800 size-6 dark:text-white/90" />}
-              label="Clinics"
+              label={t("dashboard.clinics")}
               value={String(clinics.length)}
             />
             <MetricCard
               icon={<BoxIconLine className="text-gray-800 size-6 dark:text-white/90" />}
-              label="Branches"
+              label={t("dashboard.branches")}
               value={String(branchCount)}
             />
           </>
         )}
         <MetricCard
           icon={<CalenderIcon className="text-gray-800 size-6 dark:text-white/90" />}
-          label="Appointments today"
+          label={t("dashboard.appointmentsToday")}
           value={String(todays.length)}
         />
         <MetricCard
           icon={<DollarLineIcon className="text-gray-800 size-6 dark:text-white/90" />}
-          label="Collected"
+          label={t("dashboard.collected")}
           value={formatCurrency(collected, currency)}
         />
       </div>
@@ -148,7 +152,7 @@ export default function Dashboard() {
       {/* Status breakdown */}
       <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] xl:col-span-5">
         <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white/90">
-          Appointments by status
+          {t("dashboard.appointmentsByStatus")}
         </h3>
         <div className="space-y-3">
           {STATUSES.map((status) => {
@@ -158,7 +162,7 @@ export default function Dashboard() {
               <div key={status}>
                 <div className="mb-1.5 flex items-center justify-between text-sm">
                   <span className="font-medium text-gray-700 dark:text-gray-300">
-                    {appointmentStatusLabel(status)}
+                    {statusLabel(status)}
                   </span>
                   <span className="text-gray-500 dark:text-gray-400">{count}</span>
                 </div>
@@ -174,13 +178,13 @@ export default function Dashboard() {
         </div>
         <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4 dark:border-gray-800">
           <span className="text-sm text-gray-500 dark:text-gray-400">
-            {appointments.length} total
+            {t("dashboard.total", { count: appointments.length })}
           </span>
           <Link
             href="/appointments"
             className="text-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
           >
-            View all →
+            {t("dashboard.viewAll")} →
           </Link>
         </div>
       </div>
@@ -190,34 +194,34 @@ export default function Dashboard() {
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Recent Appointments
+              {t("dashboard.recentAppointments")}
             </h3>
           </div>
           <Link
             href="/appointments"
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-theme-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200"
           >
-            See all
+            {t("dashboard.seeAll")}
           </Link>
         </div>
         {recent.length === 0 ? (
-          <EmptyState message="No appointments yet." />
+          <EmptyState message={t("dashboard.noAppointments")} />
         ) : (
           <div className="max-w-full overflow-x-auto">
             <Table>
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Scheduled
+                    {t("dashboard.scheduled")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Doctor
+                    {t("dashboard.doctor")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Fee
+                    {t("dashboard.fee")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("dashboard.status")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -240,7 +244,7 @@ export default function Dashboard() {
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={appointmentStatusColor(appt.status)}>
-                        {appointmentStatusLabel(appt.status)}
+                        {statusLabel(appt.status)}
                       </Badge>
                     </TableCell>
                   </TableRow>
@@ -255,12 +259,12 @@ export default function Dashboard() {
       <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] xl:col-span-5">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Notifications
+            {t("dashboard.notifications")}
           </h3>
-          <Badge color="info">{notifications.filter((n) => !n.read_at).length} new</Badge>
+          <Badge color="info">{notifications.filter((n) => !n.read_at).length} {t("notifications.new")}</Badge>
         </div>
         {notifications.length === 0 ? (
-          <EmptyState message="No notifications." />
+          <EmptyState message={t("dashboard.noNotifications")} />
         ) : (
           <ul className="space-y-2">
             {notifications.slice(0, 6).map((n) => (

@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface Props {
   isOpen: boolean;
@@ -7,10 +8,11 @@ interface Props {
 }
 
 export default function FloatingAIButton({ isOpen, onClick }: Props) {
+  const { t } = useTranslation();
   return (
     <button
       onClick={onClick}
-      aria-label={isOpen ? "Close AI assistant" : "Open AI assistant"}
+      aria-label={isOpen ? t("aiAssistant.closeAssistant") : t("aiAssistant.openAssistant")}
       className={`
         fixed bottom-6 right-6 z-[99999] flex h-14 w-14 items-center justify-center
         rounded-full shadow-theme-lg transition-all duration-300

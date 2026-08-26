@@ -8,10 +8,12 @@ import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic } from "@/lib/permissions";
 import Pagination from "@/components/tables/Pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type ClinicRow = Clinic & { doctorCount: number | null };
 
 export default function ClinicsPanel() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const canCreate =
@@ -25,7 +27,9 @@ export default function ClinicsPanel() {
     error: swrError,
     isLoading: loading,
   } = useSWR(isAdmin ? "clinics" : null, () => clinicsApi.list({ limit: 50 }));
-  const error = swrError ? getErrorMessage(swrError, "Failed to load clinics") : null;
+  const error = swrError
+    ? getErrorMessage(swrError, t("clinicsPage.failedToLoad"))
+    : null;
 
   const [doctorCounts, setDoctorCounts] = useState<Record<string, number | null>>({});
   const [search, setSearch] = useState("");
@@ -82,7 +86,7 @@ export default function ClinicsPanel() {
   if (!isAdmin) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Only clinic owners can view the clinic directory.
+        {t("clinicsListPage.ownerOnlyNotice")}
       </div>
     );
   }
@@ -108,7 +112,7 @@ export default function ClinicsPanel() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search clinics..."
+            placeholder={t("clinicsListPage.searchPlaceholder")}
             className="h-11 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
@@ -130,7 +134,7 @@ export default function ClinicsPanel() {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            Add Clinic
+            {t("clinicsPage.addClinic")}
           </Link>
         )}
       </div>
@@ -169,8 +173,8 @@ export default function ClinicsPanel() {
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {search
-              ? "No clinics match your search."
-              : "No clinics yet. Create your first clinic."}
+              ? t("clinicsListPage.noClinicsMatchSearch")
+              : t("clinicsListPage.noClinicsYetCreateFirst")}
           </p>
         </div>
       ) : (
@@ -211,7 +215,9 @@ export default function ClinicsPanel() {
                         : "bg-warning-500"
                     }`}
                   />
-                  {c.trade_license_validated ? "Active" : "Pending"}
+                  {c.trade_license_validated
+                    ? t("status.active")
+                    : t("status.pending")}
                 </span>
               </div>
 
@@ -243,7 +249,9 @@ export default function ClinicsPanel() {
                     {c.branch_count ?? 0}
                   </span>
                   <span className="text-sm text-gray-400 dark:text-gray-500">
-                    {(c.branch_count ?? 0) === 1 ? "Branch" : "Branches"}
+                    {(c.branch_count ?? 0) === 1
+                      ? t("appointments.branch")
+                      : t("branches.title")}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -264,14 +272,14 @@ export default function ClinicsPanel() {
                     {c.doctorCount === null ? "…" : c.doctorCount}
                   </span>
                   <span className="text-sm text-gray-400 dark:text-gray-500">
-                    Doctors
+                    {t("doctors.title")}
                   </span>
                 </div>
               </div>
 
               <div className="mt-4">
                 <span className="text-sm font-medium text-brand-500 group-hover:underline">
-                  Open →
+                  {t("branches.open")} →
                 </span>
               </div>
             </Link>

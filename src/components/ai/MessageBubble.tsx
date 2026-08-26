@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import type { ChatMessage } from "@/lib/ai/types";
 import ToolExecutionDisplay from "./ToolExecutionDisplay";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface Props {
   message: ChatMessage;
@@ -57,6 +58,7 @@ function renderMarkdown(text: string): string {
 }
 
 export default function MessageBubble({ message }: Props) {
+  const { t } = useTranslation();
   const isUser = message.role === "user";
   const [showSteps, setShowSteps] = useState(false);
 
@@ -127,7 +129,7 @@ export default function MessageBubble({ message }: Props) {
               >
                 <path d="m9 18 6-6-6-6" />
               </svg>
-              {showSteps ? "Hide" : "Show"} agent steps
+              {showSteps ? t("aiAssistant.hideSteps") : t("aiAssistant.showSteps")}
             </button>
           )}
 

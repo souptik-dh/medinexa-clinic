@@ -24,6 +24,7 @@ import FieldError from "@/components/form/FieldError";
 import { getInputClass } from "@/components/form/fieldStyles";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField =
   | "branch"
@@ -55,6 +56,7 @@ export default function AddExistingDoctorForm({
   const router = useRouter();
   const { can } = useAuth();
   const canManage = can("doctors:manage");
+  const { t } = useTranslation();
 
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [roster, setRoster] = useState<ClinicDoctorSummary[]>([]);
@@ -101,7 +103,7 @@ export default function AddExistingDoctorForm({
         if (active) setRoster(res.items);
       })
       .catch((err) => {
-        if (active) setRosterError(getErrorMessage(err, "Failed to load this clinic's doctors"));
+        if (active) setRosterError(getErrorMessage(err, t("doctors.failedToLoad")));
       })
       .finally(() => {
         if (active) setRosterLoading(false);
@@ -109,6 +111,7 @@ export default function AddExistingDoctorForm({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
 
   const filteredRoster = roster.filter((d) => {
@@ -136,7 +139,7 @@ export default function AddExistingDoctorForm({
 
   const addToBranch = async () => {
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setSubmitted(true);
@@ -150,7 +153,7 @@ export default function AddExistingDoctorForm({
       !currency.trim() ||
       specializations.length === 0
     ) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     const slotError = validateSlotTemplates(slots);
@@ -170,14 +173,14 @@ export default function AddExistingDoctorForm({
         slot_type: slotType,
         slot_template: slots,
       });
-      toast.success("Doctor added to this branch successfully.");
+      toast.success(t("doctors.doctorAddedSuccess"));
       if (onDone) {
         onDone();
       } else {
         router.push("/doctors");
       }
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to add doctor. Please try again.");
+      const message = getErrorMessage(err, t("doctors.unableToAddDoctor"));
       setError(message);
       toast.error(message);
     } finally {
@@ -188,7 +191,7 @@ export default function AddExistingDoctorForm({
   if (!canManage) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        You do not have permission to add doctors.
+        {t("doctors.noPermissionAdd")}
       </div>
     );
   }
@@ -197,12 +200,10 @@ export default function AddExistingDoctorForm({
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Add existing doctor to a branch
+          {t("doctors.addExistingDoctorHeading")}
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Pick a doctor who already has an account and is already associated with this
-          clinic at another branch. No invite or new account is created — they keep using
-          their existing login and just get an acknowledgement email once added.
+          {t("doctors.addExistingDoctorIntro")}
         </p>
         <BranchSelect
           value={branch?.id ?? ""}
@@ -222,17 +223,18 @@ export default function AddExistingDoctorForm({
       {branch && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Doctor *
+            {t("appointments.doctor")} *
           </label>
           {rosterError && (
             <p className="mb-3 text-sm text-error-600 dark:text-error-400">{rosterError}</p>
           )}
           {rosterLoading ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Loading this clinic&apos;s doctors…</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {t("doctors.loadingClinicDoctors")}
+            </p>
           ) : roster.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No other doctors are currently active at this clinic. Use &ldquo;Invite
-              Doctor&rdquo; instead to onboard someone new.
+              {t("doctors.noOtherDoctorsAtClinic", { inviteDoctor: t("doctors.inviteDoctor") })}
             </p>
           ) : (
             <>
@@ -240,7 +242,7 @@ export default function AddExistingDoctorForm({
                 type="text"
                 value={doctorSearch}
                 onChange={(e) => setDoctorSearch(e.target.value)}
-                placeholder="Search doctor by name or specialization…"
+                placeholder={t("doctors.searchDoctorByNameOrSpec")}
                 className={getInputClass(false)}
               />
               <div
@@ -252,7 +254,7 @@ export default function AddExistingDoctorForm({
               >
                 {filteredRoster.length === 0 ? (
                   <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
-                    No doctors match your search.
+                    {t("doctors.noDoctorsMatchSearch")}
                   </p>
                 ) : (
                   filteredRoster.map((doctor) => (
@@ -283,12 +285,18 @@ export default function AddExistingDoctorForm({
                           {doctor.name}
                         </p>
                         <p className="truncate text-theme-xs text-gray-500 dark:text-gray-400">
-                          {doctor.specialization ?? "—"} · already at{" "}
-                          {doctor.branches.map((b) => b.branch_name).join(", ") || "this clinic"}
+                          {doctor.specialization ?? "—"} ·{" "}
+                          {t("doctors.alreadyAtBranches", {
+                            branches:
+                              doctor.branches.map((b) => b.branch_name).join(", ") ||
+                              t("doctors.thisClinic"),
+                          })}
                         </p>
                       </div>
                       {selectedDoctor?.id === doctor.id && (
-                        <span className="shrink-0 text-xs font-medium text-brand-500">Selected</span>
+                        <span className="shrink-0 text-xs font-medium text-brand-500">
+                          {t("doctors.selected")}
+                        </span>
                       )}
                     </button>
                   ))
@@ -306,7 +314,7 @@ export default function AddExistingDoctorForm({
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Fee amount *">
+              <Field label={t("doctors.feeAmountRequired")}>
                 <input
                   type="number"
                   min="0"
@@ -321,7 +329,7 @@ export default function AddExistingDoctorForm({
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
                 )}
               </Field>
-              <Field label="Currency *">
+              <Field label={t("doctors.currencyRequired")}>
                 <input
                   type="text"
                   value={currency}
@@ -334,7 +342,7 @@ export default function AddExistingDoctorForm({
                 )}
               </Field>
             </div>
-            <Field label="Specialization *">
+            <Field label={t("doctors.specializationRequired")}>
               <SpecializationPicker
                 value={specializations}
                 onChange={setSpecializations}
@@ -351,18 +359,18 @@ export default function AddExistingDoctorForm({
 
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Booking type *
+                {t("doctors.bookingTypeRequired")}
               </label>
               <div className="flex gap-3">
                 <SlotTypeOption
-                  label="Fixed"
-                  description="Patients pick a specific time slot."
+                  label={t("doctors.fixed")}
+                  description={t("doctors.fixedDesc")}
                   selected={slotType === "fixed"}
                   onClick={() => setSlotType("fixed")}
                 />
                 <SlotTypeOption
-                  label="Sequential"
-                  description="As per bookings — patients get the next free slot in the range, no time picker."
+                  label={t("doctors.sequential")}
+                  description={t("doctors.sequentialDesc")}
                   selected={slotType === "sequential"}
                   onClick={() => setSlotType("sequential")}
                 />
@@ -371,10 +379,12 @@ export default function AddExistingDoctorForm({
 
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
+                {slotType === "sequential"
+                  ? t("doctors.bookingRangesRequired")
+                  : t("doctors.slotTemplateRequired")}
               </label>
               <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-                Click a day to add a slot for it.
+                {t("doctors.clickDayToAddSlot")}
               </p>
               <SlotWeekEditor
                 slots={slots}
@@ -396,14 +406,14 @@ export default function AddExistingDoctorForm({
               onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               onClick={addToBranch}
               disabled={busy}
               className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
-              {busy ? "Adding…" : "Add to branch"}
+              {busy ? t("doctors.adding") : t("doctors.addToBranch")}
             </button>
           </div>
         </div>

@@ -3,12 +3,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ApiError, BranchReview, RatingSummary, reviewsApi } from "@/lib/api";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import RatingStars from "@/components/common/RatingStars";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface BranchReviewsPanelProps {
   branchId: string;
 }
 
 export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps) {
+  const { t } = useTranslation();
   const [rating, setRating] = useState<RatingSummary | null>(null);
   const [reviews, setReviews] = useState<BranchReview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,12 +24,12 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
       setRating(res.rating);
       setReviews(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load reviews");
+      setError(err instanceof ApiError ? err.message : t("reviews.failedToLoad"));
       setReviews([]);
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   useEffect(() => {
     load();
@@ -37,7 +39,7 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Patient reviews
+          {t("reviews.title")}
         </h3>
         {rating && <RatingStars average={rating.average} count={rating.count} />}
       </div>
@@ -48,7 +50,7 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
         <p className="mt-4 text-sm text-error-600 dark:text-error-400">{error}</p>
       ) : reviews.length === 0 ? (
         <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-          No reviews yet for doctors at this branch.
+          {t("reviews.noReviews")}
         </p>
       ) : (
         <ul className="mt-4 space-y-3">

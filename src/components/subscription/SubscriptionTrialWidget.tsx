@@ -3,17 +3,24 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Badge from "@/components/ui/badge/Badge";
 import { ApiError, SubscriptionTrialView, subscriptionsApi } from "@/lib/api";
-import {
-  formatDate,
-  subscriptionStatusColor,
-  subscriptionStatusLabel,
-} from "@/lib/utils";
+import { formatDate, subscriptionStatusColor } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
+
+const SUBSCRIPTION_STATUS_KEY: Record<string, string> = {
+  TRIAL: "trial",
+  ACTIVE: "active",
+  EXPIRING: "expiring",
+  EXPIRED: "expired",
+  INACTIVE: "inactive",
+};
 
 // Trial/subscription summary shown on the clinic overview page, powered by
 // GET /clinics/:id/subscription/trial.
 export default function SubscriptionTrialWidget({ clinicId }: { clinicId: string }) {
+  const { t } = useTranslation();
   const [view, setView] = useState<SubscriptionTrialView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const statusLabel = (status: string) => t(`status.${SUBSCRIPTION_STATUS_KEY[status] ?? status}`);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,27 +51,27 @@ export default function SubscriptionTrialWidget({ clinicId }: { clinicId: string
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Subscription
+          {t("billing.subscription")}
         </h3>
         <Link
           href="/billing"
           className="rounded-lg border border-brand-500/40 px-3 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
         >
-          Manage billing →
+          {t("subscription.manageBilling")} →
         </Link>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Status
+            {t("dashboard.status")}
           </p>
           <div className="mt-1 flex items-center gap-2">
             <Badge color={subscriptionStatusColor(view.subscription_status)}>
-              {subscriptionStatusLabel(view.subscription_status)}
+              {statusLabel(view.subscription_status)}
             </Badge>
             {view.subscription_status === "TRIAL" && (
-              <Badge color="info">Free trial</Badge>
+              <Badge color="info">{t("status.freeTrial")}</Badge>
             )}
           </div>
         </div>

@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { canUpdateClinic } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface ClinicLicensesPanelProps {
   clinicId: string;
@@ -15,7 +16,7 @@ interface ClinicLicensesPanelProps {
 
 interface LicenseDef {
   type: ClinicLicenseType;
-  label: string;
+  labelKey: string;
   required: boolean;
   numberField: "trade_license_number" | "drug_license_number" | "clinical_establishment_reg_number";
   urlField: "trade_license_url" | "drug_license_url" | "clinical_establishment_reg_url";
@@ -24,21 +25,21 @@ interface LicenseDef {
 const LICENSE_DEFS: LicenseDef[] = [
   {
     type: "trade-license",
-    label: "Trade license",
+    labelKey: "branches.tradeLicense",
     required: true,
     numberField: "trade_license_number",
     urlField: "trade_license_url",
   },
   {
     type: "drug-license",
-    label: "Drug license",
+    labelKey: "licenses.drugLicense",
     required: false,
     numberField: "drug_license_number",
     urlField: "drug_license_url",
   },
   {
     type: "clinical-establishment-registration",
-    label: "Clinical establishment registration",
+    labelKey: "licenses.clinicalEstablishmentRegistration",
     required: false,
     numberField: "clinical_establishment_reg_number",
     urlField: "clinical_establishment_reg_url",
@@ -61,6 +62,7 @@ export default function ClinicLicensesPanel({
     "clinical-establishment-registration": null,
   });
 
+  const { t } = useTranslation();
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
   const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
@@ -73,10 +75,11 @@ export default function ClinicLicensesPanel({
       const c = await clinicsApi.get(clinicId);
       setClinic(c);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load licenses"));
+      setError(getErrorMessage(err, t("licenses.failedToLoad")));
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
 
   useEffect(() => {
@@ -90,7 +93,7 @@ export default function ClinicLicensesPanel({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!canUpload) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setUploadingType(type);
@@ -100,10 +103,10 @@ export default function ClinicLicensesPanel({
       const res = await clinicsApi.uploadLicense(clinicId, type, file);
       await load();
       onLicenseUpdated?.(res.type, res.url);
-      setOk("Document uploaded.");
-      toast.success("Document uploaded successfully.");
+      setOk(t("licenses.documentUploaded"));
+      toast.success(t("licenses.uploadSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Upload failed");
+      const message = getErrorMessage(err, t("licenses.uploadFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -116,7 +119,7 @@ export default function ClinicLicensesPanel({
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Licenses</h3>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("licenses.title")}</h3>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{clinicName}</p>
       </div>
 
@@ -146,11 +149,11 @@ export default function ClinicLicensesPanel({
               >
                 <div>
                   <p className="font-medium text-gray-800 dark:text-white/90">
-                    {def.label}
+                    {t(def.labelKey)}
                     {def.required && <span className="text-error-500"> *</span>}
                   </p>
                   <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                    {number || "No license number set"}
+                    {number || t("licenses.noLicenseNumberSet")}
                   </p>
                   {url ? (
                     <a
@@ -159,11 +162,11 @@ export default function ClinicLicensesPanel({
                       rel="noopener noreferrer"
                       className="mt-1 inline-block text-sm text-brand-500 hover:underline"
                     >
-                      View uploaded document
+                      {t("licenses.viewUploadedDocument")}
                     </a>
                   ) : (
                     <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">
-                      No document uploaded
+                      {t("branches.noDocumentUploaded")}
                     </p>
                   )}
                 </div>
@@ -184,7 +187,11 @@ export default function ClinicLicensesPanel({
                       disabled={uploading}
                       className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
                     >
-                      {uploading ? "Uploading…" : url ? "Replace document" : "Upload document"}
+                      {uploading
+                        ? t("doctors.uploading")
+                        : url
+                        ? t("licenses.replaceDocument")
+                        : t("licenses.uploadDocument")}
                     </button>
                   </div>
                 )}

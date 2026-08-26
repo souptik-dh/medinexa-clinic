@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, clinicsApi } from "@/lib/api";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // /clinics used to be the clinic-list page. Owners now land directly on their
 // clinic's overview section instead — this panel resolves which clinic that is
@@ -14,6 +15,7 @@ import { ApiError, clinicsApi } from "@/lib/api";
 export default function ClinicsRedirect() {
   const router = useRouter();
   const { user, clinic, isAuthReady } = useAuth();
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [noClinics, setNoClinics] = useState(false);
 
@@ -48,11 +50,14 @@ export default function ClinicsRedirect() {
           router.replace(`/clinics/${clinic.id}/overview`);
           return;
         }
-        setError(err instanceof ApiError ? err.message : "Failed to load your clinics.");
+        setError(
+          err instanceof ApiError ? err.message : t("clinicsPage.failedToLoadYourClinics")
+        );
       });
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthReady, user, clinic, router]);
 
   if (error) {
@@ -67,17 +72,16 @@ export default function ClinicsRedirect() {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center dark:border-gray-800 dark:bg-white/[0.03]">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          No clinic yet
+          {t("clinicsPage.noClinicYet")}
         </h3>
         <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
-          Your account doesn&apos;t have a clinic. Create one to start managing
-          branches, doctors, and appointments.
+          {t("clinicsPage.noClinicDesc")}
         </p>
         <Link
           href="/clinics/new"
           className="mt-5 inline-block rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
         >
-          Create clinic
+          {t("clinicsPage.createClinic")}
         </Link>
       </div>
     );

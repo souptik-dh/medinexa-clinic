@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState, useCallback } from "react";
 import { useAiChat } from "@/context/AiChatContext";
 import MessageBubble from "./MessageBubble";
 import ConfirmationDialog from "./ConfirmationDialog";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const QUICK_ACTIONS = [
   "Show today's appointments",
@@ -25,6 +26,7 @@ export default function ChatPanel() {
     respondConfirmation,
     clearMessages,
   } = useAiChat();
+  const { t } = useTranslation();
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -76,10 +78,10 @@ export default function ChatPanel() {
         </div>
         <div>
           <h3 className="text-sm font-semibold text-white">
-            Jido Assistant
+            {t("aiAssistant.title")}
           </h3>
           <p className="text-[11px] text-brand-100">
-            AI-powered healthcare assistant
+            {t("aiAssistant.subtitle")}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -87,7 +89,7 @@ export default function ChatPanel() {
             <button
               onClick={clearMessages}
               className="rounded-md p-1.5 text-white/70 transition hover:bg-white/20 hover:text-white"
-              title="New chat"
+              title={t("aiAssistant.newChat")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 5v14M5 12h14" />
@@ -118,10 +120,10 @@ export default function ChatPanel() {
               </svg>
             </div>
             <h4 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white/90">
-              How can I help you?
+              {t("aiAssistant.howCanIHelp")}
             </h4>
             <p className="mb-4 text-xs text-gray-400 dark:text-gray-500">
-              I can search data, manage appointments, and more.
+              {t("aiAssistant.canSearchAndManage")}
             </p>
             <div className="flex flex-wrap justify-center gap-1.5">
               {QUICK_ACTIONS.map((action) => (
@@ -157,7 +159,7 @@ export default function ChatPanel() {
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.15s]" />
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-400" />
                 </div>
-                <span>Thinking...</span>
+                <span>{t("aiAssistant.thinking")}</span>
               </div>
             )}
 
@@ -175,7 +177,7 @@ export default function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me anything..."
+            placeholder={t("aiAssistant.placeholder")}
             disabled={isLoading || !!pendingConfirmation}
             className="flex-1 rounded-lg border border-brand-200 bg-brand-50/50 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:border-brand-400 focus:ring-1 focus:ring-brand-400 disabled:opacity-50 dark:border-brand-800 dark:bg-brand-950/50 dark:text-white dark:placeholder-gray-500 dark:focus:border-brand-500"
           />
@@ -200,7 +202,7 @@ export default function ChatPanel() {
           </button>
         </div>
         <p className="mt-1.5 text-center text-[10px] text-brand-300 dark:text-brand-700">
-          Jido AI Assistant. Actions are permission-checked.
+          {t("aiAssistant.footerDisclaimer")}
         </p>
       </div>
     </div>

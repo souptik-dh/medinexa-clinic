@@ -25,6 +25,7 @@ import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const initials = (name: string): string =>
   name
@@ -43,6 +44,7 @@ export default function BranchDoctorsPanel() {
     typeof params.branchId === "string" ? params.branchId : "";
   const { can } = useAuth();
   const canManage = can("doctors:manage");
+  const { t } = useTranslation();
 
   const [search, setSearch] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
@@ -59,7 +61,7 @@ export default function BranchDoctorsPanel() {
   } = useSWR(branchId ? ["branch-doctors", branchId] : null, () =>
     doctorsApi.listByBranch(branchId)
   );
-  const error = swrError ? getErrorMessage(swrError, "Failed to load doctors") : null;
+  const error = swrError ? getErrorMessage(swrError, t("doctors.failedToLoad")) : null;
   const doctors: BranchDoctor[] = useMemo(() => data?.items ?? [], [data]);
 
   const specializations = useMemo(
@@ -91,7 +93,7 @@ export default function BranchDoctorsPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Doctors
+            {t("doctors.title")}
           </h3>
           {canManage && (
             <div className="flex flex-wrap gap-2">
@@ -99,7 +101,7 @@ export default function BranchDoctorsPanel() {
                 onClick={() => setAddExistingOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
               >
-                Add Existing Doctor
+                {t("doctors.addExistingDoctor")}
               </button>
               <button
                 onClick={() => setInviteOpen(true)}
@@ -118,7 +120,7 @@ export default function BranchDoctorsPanel() {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                Invite Doctor
+                {t("doctors.inviteDoctor")}
               </button>
             </div>
           )}
@@ -128,7 +130,7 @@ export default function BranchDoctorsPanel() {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex-1 sm:max-w-xs">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Search
+              {t("common.search")}
             </label>
             <div className="relative">
               <svg
@@ -148,7 +150,7 @@ export default function BranchDoctorsPanel() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search doctor..."
+                placeholder={t("doctors.search")}
                 className="h-10 w-full rounded-lg border border-gray-300 bg-transparent pl-10 pr-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
             </div>
@@ -172,8 +174,8 @@ export default function BranchDoctorsPanel() {
           ) : filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || specializationFilter.length > 0
-                ? "No doctors match your filters."
-                : "No doctors assigned to this branch yet."}
+                ? t("doctors.noDoctorsMatchFilters")
+                : t("doctors.noDoctorsAssignedToBranch")}
             </p>
           ) : (
             <div className="max-w-full overflow-x-auto">
@@ -184,31 +186,31 @@ export default function BranchDoctorsPanel() {
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Doctor
+                      {t("appointments.doctor")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Specialization
+                      {t("doctors.specialization")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Fee
+                      {t("appointments.fee")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Status
+                      {t("doctors.status")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
                     >
-                      Actions
+                      {t("common.actions")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -252,7 +254,7 @@ export default function BranchDoctorsPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <Badge size="sm" color="success">
-                          Active
+                          {t("status.active")}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3">
@@ -262,7 +264,7 @@ export default function BranchDoctorsPanel() {
                               href={`/doctors/${branchId}/${doc.id}/edit`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
-                              Edit
+                              {t("common.edit")}
                             </Link>
                           )}
                         </div>
@@ -280,8 +282,8 @@ export default function BranchDoctorsPanel() {
       <FormDrawer
         isOpen={inviteOpen}
         onClose={() => setInviteOpen(false)}
-        title="Invite doctor"
-        description="A single-use invite code is emailed to the doctor."
+        title={t("doctors.inviteDoctor")}
+        description={t("doctors.inviteDoctorDesc")}
       >
         <InviteDoctorForm
           onDone={() => {
@@ -297,8 +299,8 @@ export default function BranchDoctorsPanel() {
       <FormDrawer
         isOpen={addExistingOpen}
         onClose={() => setAddExistingOpen(false)}
-        title="Add existing doctor"
-        description="Adds a doctor already associated with this clinic to this branch."
+        title={t("doctors.addExistingDoctor")}
+        description={t("doctors.addExistingDoctorDesc")}
       >
         <AddExistingDoctorForm
           onDone={() => {

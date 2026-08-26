@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface Props {
   toolName: string;
@@ -14,6 +15,7 @@ export default function ConfirmationDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <div className="mt-3 rounded-lg border border-warning-200 bg-warning-25 p-3 dark:border-warning-800/30 dark:bg-warning-950/20">
       <div className="mb-2 flex items-center gap-2">
@@ -31,7 +33,7 @@ export default function ConfirmationDialog({
           <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
         </svg>
         <span className="text-xs font-medium text-warning-700 dark:text-warning-400">
-          Confirmation Required
+          {t("aiAssistant.confirmationRequired")}
         </span>
       </div>
       <p className="mb-1 text-xs text-gray-600 dark:text-gray-400">
@@ -45,13 +47,13 @@ export default function ConfirmationDialog({
           onClick={onConfirm}
           className="rounded-md bg-success-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-success-600"
         >
-          Confirm
+          {t("common.confirm")}
         </button>
         <button
           onClick={onCancel}
           className="rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </div>

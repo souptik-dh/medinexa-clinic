@@ -25,6 +25,7 @@ import PhoneNumberField from "@/components/form/input/PhoneNumberField";
 import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField =
   | "branch"
@@ -69,6 +70,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
   const router = useRouter();
   const { can } = useAuth();
   const canManage = can("doctors:manage");
+  const { t } = useTranslation();
 
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [inviteName, setInviteName] = useState("");
@@ -111,7 +113,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
       const res = await doctorInvitesApi.uploadCertificate(file);
       setCertificate(res.certificate_url);
     } catch (err) {
-      setError(getErrorMessage(err, "Certificate upload failed"));
+      setError(getErrorMessage(err, t("doctors.certificateUploadFailed")));
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -130,7 +132,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
   const createInvite = async () => {
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setSubmitted(true);
@@ -145,7 +147,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
       !currency.trim() ||
       specializations.length === 0
     ) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (phone.trim() !== "" && !isValidPhone(phone)) {
@@ -177,9 +179,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
       });
       const isDirect = result.type === "direct_assignment";
       toast.success(
-        isDirect
-          ? "Doctor added to this branch successfully."
-          : "Doctor invite sent successfully.",
+        isDirect ? t("doctors.doctorAddedSuccess") : t("doctors.inviteSent"),
       );
       if (onDone) {
         onDone();
@@ -187,7 +187,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
         router.push("/doctors");
       }
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to send invite. Please try again.");
+      const message = getErrorMessage(err, t("doctors.unableToSendInvite"));
       setError(message);
       toast.error(message);
     } finally {
@@ -198,7 +198,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
   if (!canManage) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        You do not have permission to invite doctors.
+        {t("doctors.noPermissionInvite")}
       </div>
     );
   }
@@ -207,10 +207,10 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Invite a doctor
+          {t("doctors.inviteDoctorHeading")}
         </h3>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          A single-use invite code is emailed to the doctor. The code is never shown here.
+          {t("doctors.inviteCodeNotice")}
         </p>
         <BranchSelect
           value={branch?.id ?? ""}
@@ -234,7 +234,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
             <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm dark:bg-success-500/10">
               <div>
                 <p className="font-medium text-success-700 dark:text-success-500">
-                  Verified in NMC registry
+                  {t("doctors.verifiedNmc")}
                 </p>
                 <p className="text-theme-xs text-gray-600 dark:text-gray-300">
                   {verified.name} · Reg. {verified.registrationNo} · {verified.council}
@@ -245,7 +245,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 onClick={() => setVerified(null)}
                 className="shrink-0 text-theme-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
               >
-                Clear
+                {t("common.clear")}
               </button>
             </div>
           )}
@@ -253,13 +253,13 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Name *">
+            <Field label={t("doctors.nameRequired")}>
               <input type="text" value={inviteName} disabled className={inputClass} />
               {showError("inviteName", !inviteName.trim()) && (
                 <FieldError message={REQUIRED_FIELD_MESSAGE} />
               )}
             </Field>
-            <Field label="Email *">
+            <Field label={t("doctors.emailRequired")}>
               <input
                 type="email"
                 value={inviteEmail}
@@ -271,7 +271,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 <FieldError message={REQUIRED_FIELD_MESSAGE} />
               )}
             </Field>
-            <Field label="Phone">
+            <Field label={t("doctors.phone")}>
               <PhoneNumberField
                 value={phone}
                 onChange={setPhone}
@@ -279,16 +279,16 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
               />
             </Field>
-            <Field label="Registration no.">
+            <Field label={t("doctors.regNoLabel")}>
               <input type="text" value={regNo} disabled className={inputClass} />
             </Field>
-            <Field label="State medical council">
+            <Field label={t("doctors.stateMedicalCouncil")}>
               <input type="text" value={smcName} disabled className={inputClass} />
             </Field>
-            <Field label="Degree / qualification">
+            <Field label={t("doctors.degreeQualification")}>
               <input type="text" value={doctorDegree} disabled className={inputClass} />
             </Field>
-            <Field label="Fee amount *">
+            <Field label={t("doctors.feeAmountRequired")}>
               <input
                 type="number"
                 min="0"
@@ -303,7 +303,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 <FieldError message={REQUIRED_FIELD_MESSAGE} />
               )}
             </Field>
-            <Field label="Currency *">
+            <Field label={t("doctors.currencyRequired")}>
               <input
                 type="text"
                 value={currency}
@@ -316,7 +316,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
               )}
             </Field>
           </div>
-          <Field label="Specialization *">
+          <Field label={t("doctors.specializationRequired")}>
             <SpecializationPicker
               value={specializations}
               onChange={setSpecializations}
@@ -331,7 +331,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
             />
           </Field>
 
-          <Field label="Certificate">
+          <Field label={t("doctors.certificateLabel")}>
             <div className="flex items-center gap-3">
               <input
                 ref={certificateFileRef}
@@ -347,10 +347,10 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
                 {uploadingCertificate
-                  ? "Uploading…"
+                  ? t("doctors.uploading")
                   : certificate
-                    ? "Replace certificate"
-                    : "Upload certificate"}
+                    ? t("doctors.replaceCertificate")
+                    : t("doctors.uploadCertificate")}
               </button>
               {certificate ? (
                 <a
@@ -359,11 +359,11 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                   rel="noopener noreferrer"
                   className="text-sm text-brand-500 hover:underline"
                 >
-                  View certificate
+                  {t("doctors.viewCertificate")}
                 </a>
               ) : (
                 <span className="text-sm text-gray-400 dark:text-gray-500">
-                  No certificate uploaded
+                  {t("doctors.noCertificateUploaded")}
                 </span>
               )}
             </div>
@@ -371,18 +371,18 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Booking type *
+              {t("doctors.bookingTypeRequired")}
             </label>
             <div className="flex gap-3">
               <SlotTypeOption
-                label="Fixed"
-                description="Patients pick a specific time slot."
+                label={t("doctors.fixed")}
+                description={t("doctors.fixedDesc")}
                 selected={slotType === "fixed"}
                 onClick={() => setSlotType("fixed")}
               />
               <SlotTypeOption
-                label="Sequential"
-                description="As per bookings — patients get the next free slot in the range, no time picker."
+                label={t("doctors.sequential")}
+                description={t("doctors.sequentialDesc")}
                 selected={slotType === "sequential"}
                 onClick={() => setSlotType("sequential")}
               />
@@ -391,11 +391,13 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              {slotType === "sequential" ? "Booking range(s) *" : "Slot template *"}
+              {slotType === "sequential"
+                ? t("doctors.bookingRangesRequired")
+                : t("doctors.slotTemplateRequired")}
             </label>
             <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-              Click a day to add a slot for it.
-              {!branch && " Select a branch above to see its closed days."}
+              {t("doctors.clickDayToAddSlot")}
+              {!branch && ` ${t("doctors.selectBranchToSeeClosedDays")}`}
             </p>
             <SlotWeekEditor
               slots={slots}
@@ -417,14 +419,14 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
             onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={createInvite}
             disabled={busy}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Sending…" : "Send invite"}
+            {busy ? t("doctors.sending") : t("doctors.sendInvite")}
           </button>
         </div>
       </div>

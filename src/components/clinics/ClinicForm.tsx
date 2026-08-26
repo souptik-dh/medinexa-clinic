@@ -13,6 +13,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface ClinicFormProps {
   mode: "create" | "edit";
@@ -40,6 +41,7 @@ export default function ClinicForm({
   onDone,
   onCancel,
 }: ClinicFormProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams<{ clinicId?: string }>();
   const clinicId =
@@ -97,11 +99,13 @@ export default function ClinicForm({
         setDrugLicenseNumber(c.drug_license_number ?? "");
         setClinicalEstablishmentRegNumber(c.clinical_establishment_reg_number ?? "");
         if (!c.trade_license_url) {
-          toast("Trade license: No document uploaded.", { icon: "⚠️" });
+          toast(`${t("branches.tradeLicense")}: ${t("branches.noDocumentUploaded")}`, {
+            icon: "⚠️",
+          });
         }
       })
       .catch((err) => {
-        if (active) setError(getErrorMessage(err, "Failed to load clinic"));
+        if (active) setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -109,6 +113,7 @@ export default function ClinicForm({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, clinicId]);
 
   const onTradeLicenseNumberChange = (value: string) => {
@@ -124,7 +129,7 @@ export default function ClinicForm({
   const validateTradeLicense = async () => {
     const number = tradeLicenseNumber.trim();
     if (!number) {
-      setError("Enter a trade license number first.");
+      setError(t("clinicForm.enterTradeLicenseNumberFirst"));
       return;
     }
     setValidating(true);
@@ -136,7 +141,7 @@ export default function ClinicForm({
     } catch (err) {
       setTradeLicenseValidationStatus("PENDING");
       setTradeLicenseMessage(
-        getErrorMessage(err, "Unable to validate Trade License Number at this time. Please try again.")
+        getErrorMessage(err, t("clinicForm.unableToValidateTradeLicense"))
       );
     } finally {
       setValidating(false);
@@ -152,7 +157,7 @@ export default function ClinicForm({
 
   const submit = async () => {
     if (!canSubmit) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setSubmitted(true);
@@ -165,11 +170,11 @@ export default function ClinicForm({
       !pinCode.trim() ||
       !tradeLicenseNumber.trim()
     ) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
-      setError("Validate the Trade License Number before creating the clinic.");
+      setError(t("clinicForm.validateTradeLicenseBeforeCreate"));
       return;
     }
     if (busy) return;
@@ -194,12 +199,12 @@ export default function ClinicForm({
       let savedClinicId: string | undefined;
       if (isEdit) {
         await clinicsApi.update(clinicId, input);
-        toast.success("Clinic updated successfully.");
+        toast.success(t("common.updateSuccess"));
         savedClinicId = clinicId;
         redirectTo = `/clinics/${clinicId}/overview`;
       } else {
         const created = await clinicsApi.create(input);
-        toast.success("Clinic created successfully.");
+        toast.success(t("common.createSuccess"));
         savedClinicId = created.id;
         redirectTo = `/clinics/${created.id}/overview`;
       }
@@ -209,7 +214,7 @@ export default function ClinicForm({
       }
       setTimeout(() => router.push(redirectTo), 150);
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to save clinic. Please try again.");
+      const message = getErrorMessage(err, t("clinicForm.unableToSaveClinic"));
       setError(message);
       toast.error(message);
     } finally {
@@ -220,7 +225,9 @@ export default function ClinicForm({
   if (!canSubmit) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        You do not have permission to {isEdit ? "edit" : "create"} clinics.
+        {isEdit
+          ? t("clinicForm.noPermissionToEditClinics")
+          : t("clinicForm.noPermissionToCreateClinics")}
       </div>
     );
   }
@@ -237,21 +244,21 @@ export default function ClinicForm({
         {!onCancel && (
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              {isEdit ? "Edit clinic" : "Create a clinic"}
+              {isEdit ? t("clinicsPage.editClinic") : t("clinicsPage.createClinic")}
             </h3>
             <Link
               href={isEdit && clinicId ? `/clinics/${clinicId}/overview` : "/clinics"}
               className="text-sm font-medium text-brand-500 hover:underline"
             >
-              {isEdit ? "Back to overview" : "View all clinics"}
+              {isEdit ? t("clinicForm.backToOverview") : t("clinicForm.viewAllClinics")}
             </Link>
           </div>
         )}
         {!onCancel && (
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             {isEdit
-              ? "Update this clinic&apos;s name, description and address details."
-              : "Add a new clinic to your organization."}
+              ? t("clinicForm.editClinicDesc")
+              : t("clinicForm.createClinicDesc")}
           </p>
         )}
 
@@ -259,7 +266,7 @@ export default function ClinicForm({
           <DetailSkeleton rows={7} />
         ) : (
           <div className="mt-6 space-y-4">
-            <Field label="Name *">
+            <Field label={t("doctors.nameRequired")}>
               <input
                 type="text"
                 value={name}
@@ -269,7 +276,7 @@ export default function ClinicForm({
               />
               {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
             </Field>
-            <Field label="Description">
+            <Field label={t("labTests.description")}>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -277,7 +284,7 @@ export default function ClinicForm({
                 className={textareaClass}
               />
             </Field>
-            <Field label="Pincode *">
+            <Field label={`${t("common.pincode")} *`}>
               <PincodeField
                 value={pinCode}
                 onChange={setPinCode}
@@ -289,7 +296,7 @@ export default function ClinicForm({
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Nearby location">
+              <Field label={t("common.nearbyLocation")}>
                 <input
                   type="text"
                   value={nearbyLocation}
@@ -297,7 +304,7 @@ export default function ClinicForm({
                   className={inputClass}
                 />
               </Field>
-              <Field label="City *">
+              <Field label={`${t("common.city")} *`}>
                 <input
                   type="text"
                   value={city}
@@ -307,7 +314,7 @@ export default function ClinicForm({
                 />
                 {showError("city", !city.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
-              <Field label="District *">
+              <Field label={`${t("common.district")} *`}>
                 <input
                   type="text"
                   value={district}
@@ -321,7 +328,7 @@ export default function ClinicForm({
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="State *">
+              <Field label={`${t("common.state")} *`}>
                 <input
                   type="text"
                   value={stateField}
@@ -333,7 +340,7 @@ export default function ClinicForm({
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
                 )}
               </Field>
-              <Field label="Post office *">
+              <Field label={`${t("common.postOffice")} *`}>
                 <input
                   type="text"
                   value={postOffice}
@@ -347,7 +354,7 @@ export default function ClinicForm({
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Trade license number *">
+              <Field label={`${t("clinicForm.tradeLicenseNumber")} *`}>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -370,31 +377,31 @@ export default function ClinicForm({
                     }`}
                   >
                     {validating
-                      ? "Validating…"
+                      ? t("clinicForm.validating")
                       : tradeLicenseValidationStatus === "VALID"
-                        ? "✓ Validated"
-                        : "Validate"}
+                        ? `✓ ${t("clinicForm.validated")}`
+                        : t("clinicForm.validate")}
                   </button>
                 </div>
                 {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ? (
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
                 ) : tradeLicenseValidationStatus === "VALID" ? (
                   <p className="mt-1.5 text-theme-xs text-success-600 dark:text-success-500">
-                    ✓ {tradeLicenseMessage ?? "Trade License Number validated successfully."}
+                    ✓ {tradeLicenseMessage ?? t("clinicForm.tradeLicenseValidatedSuccessfully")}
                   </p>
                 ) : tradeLicenseValidationStatus === "INVALID" ? (
                   <p className="mt-1.5 text-theme-xs text-error-600 dark:text-error-400">
-                    ✕ {tradeLicenseMessage ?? "Trade License Number could not be validated."}
-                    {!isEdit && " This clinic can't be created until it validates."}
+                    ✕ {tradeLicenseMessage ?? t("clinicForm.tradeLicenseCouldNotBeValidated")}
+                    {!isEdit && ` ${t("clinicForm.cantCreateUntilValidates")}`}
                   </p>
                 ) : (
                   <p className="mt-1.5 text-theme-xs text-warning-600 dark:text-orange-400">
-                    ⚠ Trade License Number validation pending
-                    {!isEdit && " — required before this clinic can be created"}
+                    ⚠ {t("clinicForm.tradeLicenseValidationPending")}
+                    {!isEdit && ` — ${t("clinicForm.requiredBeforeCreate")}`}
                   </p>
                 )}
               </Field>
-              <Field label="Drug license number">
+              <Field label={t("clinicForm.drugLicenseNumber")}>
                 <input
                   type="text"
                   value={drugLicenseNumber}
@@ -402,7 +409,7 @@ export default function ClinicForm({
                   className={inputClass}
                 />
               </Field>
-              <Field label="Clinical establishment reg. number">
+              <Field label={t("clinicForm.clinicalEstablishmentRegNumber")}>
                 <input
                   type="text"
                   value={clinicalEstablishmentRegNumber}
@@ -423,14 +430,14 @@ export default function ClinicForm({
             }
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={submit}
             disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create clinic"}
+            {busy ? t("auth.saving") : isEdit ? t("clinicForm.saveChanges") : t("clinicsPage.createClinic")}
           </button>
         </div>
       </div>

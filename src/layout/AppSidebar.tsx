@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 import { clinicsApi } from "@/lib/api";
 import { canAccessAppointments, canViewPatients, canManageLabTests, canViewLabAppointments } from "@/lib/permissions";
 import {
@@ -162,6 +163,38 @@ const superAdminItems: NavItem[] = [
   },
 ];
 
+// Nav item `name` values are stable identifiers used for filtering/keys
+// throughout this file — this maps each one to its sidebar.* translation key
+// so the displayed label can be localized without touching that logic.
+const NAV_LABEL_KEYS: Record<string, string> = {
+  Dashboard: "sidebar.dashboard",
+  "AI Assistant": "sidebar.aiAssistant",
+  Clinics: "sidebar.clinics",
+  Appointments: "sidebar.appointments",
+  "Doctor Appointment": "sidebar.doctorAppointment",
+  "Lab Test Appointments": "sidebar.labTestAppointments",
+  Patients: "sidebar.patients",
+  Doctors: "sidebar.doctors",
+  Staff: "sidebar.staff",
+  Reports: "sidebar.reports",
+  Settings: "sidebar.settings",
+  Calendar: "sidebar.calendar",
+  "Payment Ledger": "sidebar.paymentLedger",
+  Billing: "sidebar.billing",
+  "My Schedule": "sidebar.mySchedule",
+  Prescriptions: "sidebar.prescriptions",
+  Profile: "sidebar.profile",
+  Notifications: "sidebar.notifications",
+  "Lab Tests": "sidebar.labTests",
+  "Branch Tests": "sidebar.branchTests",
+  "Lab Schedule": "sidebar.labSchedule",
+  Statistics: "sidebar.statistics",
+  Payments: "sidebar.payments",
+  Plans: "sidebar.plans",
+  "Audit Logs": "sidebar.auditLogs",
+  Admins: "sidebar.admins",
+};
+
 const othersItems: NavItem[] = [
   {
     icon: <PieChartIcon />,
@@ -197,6 +230,8 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const { user, can, staffClinic, clinic } = useAuth();
+  const { t } = useTranslation();
+  const navLabel = (name: string) => t(NAV_LABEL_KEYS[name] ?? name);
 
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const isStaff = user?.role === "branch_staff";
@@ -321,7 +356,7 @@ const AppSidebar: React.FC = () => {
                 {nav.icon}
               </span>
               {(isExpanded || isHovered || isMobileOpen) && (
-                <span className={`menu-item-text`}>{nav.name}</span>
+                <span className={`menu-item-text`}>{navLabel(nav.name)}</span>
               )}
               {(isExpanded || isHovered || isMobileOpen) && (
                 <ChevronDownIcon
@@ -352,7 +387,7 @@ const AppSidebar: React.FC = () => {
                   {nav.icon}
                 </span>
                 {(isExpanded || isHovered || isMobileOpen) && (
-                  <span className={`menu-item-text`}>{nav.name}</span>
+                  <span className={`menu-item-text`}>{navLabel(nav.name)}</span>
                 )}
               </Link>
             )
@@ -381,7 +416,7 @@ const AppSidebar: React.FC = () => {
                           : "menu-dropdown-item-inactive"
                       }`}
                     >
-                      {subItem.name}
+                      {navLabel(subItem.name)}
                       <span className="flex items-center gap-1 ml-auto">
                         {subItem.new && (
                           <span
@@ -537,7 +572,7 @@ const AppSidebar: React.FC = () => {
                   }`}
                 >
                   {isExpanded || isHovered || isMobileOpen ? (
-                    "Menu"
+                    t("sidebar.menu")
                   ) : (
                     <HorizontaLDots />
                   )}
@@ -555,7 +590,7 @@ const AppSidebar: React.FC = () => {
                       : "justify-start"
                   }`}
                 >
-                  {isExpanded || isHovered || isMobileOpen ? "Super Admin" : <HorizontaLDots />}
+                  {isExpanded || isHovered || isMobileOpen ? t("sidebar.superAdmin") : <HorizontaLDots />}
                 </h2>
                 {renderMenuItems(superAdminItems, "main")}
               </div>

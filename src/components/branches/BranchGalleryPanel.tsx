@@ -9,6 +9,7 @@ import {
   canDeleteBranch,
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface BranchGalleryPanelProps {
   branchId: string;
@@ -16,6 +17,7 @@ interface BranchGalleryPanelProps {
 }
 
 export default function BranchGalleryPanel({ branchId, branchName }: BranchGalleryPanelProps) {
+  const { t } = useTranslation();
   const [images, setImages] = useState<BranchGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -37,12 +39,12 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       const res = await branchesApi.listGallery(branchId);
       setImages(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load gallery"));
+      setError(getErrorMessage(err, t("gallery.failedToLoad")));
       setImages([]);
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   useEffect(() => {
     loadGallery();
@@ -52,7 +54,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
     const file = e.target.files?.[0];
     if (!file) return;
     if (!canUpload) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
 
@@ -64,9 +66,9 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-      toast.success("Image uploaded successfully.");
+      toast.success(t("gallery.uploadSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Upload failed");
+      const message = getErrorMessage(err, t("gallery.uploadFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -76,18 +78,18 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
 
   const deleteImage = async (imageId: string) => {
     if (!canDelete) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
-    if (!window.confirm("Delete this image?")) return;
+    if (!window.confirm(t("gallery.deleteConfirm"))) return;
     setDeleting(imageId);
     setError(null);
     try {
       await branchesApi.removeGalleryImage(branchId, imageId);
       await loadGallery();
-      toast.success("Image deleted successfully.");
+      toast.success(t("gallery.deleteSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to delete image. Please try again.");
+      const message = getErrorMessage(err, t("gallery.deleteFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -99,7 +101,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Gallery</h3>
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("gallery.title")}</h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{branchName}</p>
         </div>
         {canUpload && (
@@ -108,7 +110,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
             disabled={uploading}
             className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {uploading ? "Uploading…" : "+ Add image"}
+            {uploading ? t("doctors.uploading") : `+ ${t("gallery.addImage")}`}
           </button>
         )}
         <input
@@ -143,10 +145,10 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
               d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
             />
           </svg>
-          <p className="text-sm text-gray-500 dark:text-gray-400">No images yet</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t("gallery.noImages")}</p>
           {canUpload && (
             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              Click "Add image" to get started
+              {t("gallery.addImageHint", { addImage: t("gallery.addImage") })}
             </p>
           )}
         </div>
@@ -159,7 +161,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
             >
               <img
                 src={img.image_url}
-                alt="Gallery"
+                alt={t("gallery.imageAlt")}
                 className="aspect-square w-full object-cover"
               />
               {canDelete && (
@@ -169,7 +171,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
                     disabled={deleting === img.id}
                     className="flex items-center gap-2 rounded-lg bg-error-600 px-3 py-2 text-sm font-medium text-white hover:bg-error-700 disabled:bg-error-400"
                   >
-                    {deleting === img.id ? "Deleting…" : "Delete"}
+                    {deleting === img.id ? t("gallery.deleting") : t("common.delete")}
                   </button>
                 </div>
               )}

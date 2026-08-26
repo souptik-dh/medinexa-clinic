@@ -18,8 +18,10 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import BranchForm from "@/components/branches/BranchForm";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function BranchOverviewPanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string; branchId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -58,7 +60,7 @@ export default function BranchOverviewPanel() {
         ]);
       const found = branchesRes.items.find((b) => b.id === branchId) ?? null;
       if (!found) {
-        setError("Branch not found.");
+        setError(t("branchOverview.branchNotFound"));
         return;
       }
       setBranch(found);
@@ -67,11 +69,11 @@ export default function BranchOverviewPanel() {
       setScheduleCount(scheduleRes.items.length);
       setGalleryImages(galleryRes.items ?? []);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load branch overview"));
+      setError(getErrorMessage(err, t("branchOverview.failedToLoadOverview")));
     } finally {
       setLoading(false);
     }
-  }, [clinicId, branchId]);
+  }, [clinicId, branchId, t]);
 
   useEffect(() => {
     load();
@@ -84,9 +86,9 @@ export default function BranchOverviewPanel() {
     try {
       const res = await branchesApi.uploadPhoto(branchId, file);
       setBranch({ ...branch, photo_url: res.photo_url });
-      toast.success("Branch photo updated.");
+      toast.success(t("branchOverview.photoUpdated"));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to upload photo"));
+      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadPhoto")));
     } finally {
       setUploadingPhoto(false);
       if (photoInputRef.current) photoInputRef.current.value = "";
@@ -100,9 +102,9 @@ export default function BranchOverviewPanel() {
     try {
       const img = await branchesApi.uploadGalleryImage(branchId, file);
       setGalleryImages((prev) => [img, ...prev]);
-      toast.success("Image uploaded to gallery.");
+      toast.success(t("branchOverview.imageUploadedToGallery"));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to upload image"));
+      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadImage")));
     } finally {
       setUploadingGallery(false);
       if (galleryInputRef.current) galleryInputRef.current.value = "";
@@ -122,9 +124,9 @@ export default function BranchOverviewPanel() {
         ...branch,
         [`${type.replace(/-/g, "_")}_url`]: res.url,
       });
-      toast.success("Document uploaded.");
+      toast.success(t("branchOverview.documentUploaded"));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to upload document"));
+      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadDocument")));
     } finally {
       setUploadingDoc(null);
       e.target.value = "";
@@ -137,7 +139,7 @@ export default function BranchOverviewPanel() {
   if (error || !branch) {
     return (
       <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-        {error ?? "Branch not found."}
+        {error ?? t("branchOverview.branchNotFound")}
       </div>
     );
   }
@@ -181,7 +183,7 @@ export default function BranchOverviewPanel() {
                 </h3>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-2.5 py-0.5 text-xs font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
-                  Active
+                  {t("status.active")}
                 </span>
               </div>
               {addressLine && (
@@ -199,7 +201,7 @@ export default function BranchOverviewPanel() {
               onClick={() => setEditOpen(true)}
               className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
             >
-              Edit
+              {t("common.edit")}
             </button>
           </div>
         </div>
@@ -208,7 +210,7 @@ export default function BranchOverviewPanel() {
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
-          label="Doctors"
+          label={t("doctors.title")}
           value={doctorCount ?? "—"}
           icon={
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -217,7 +219,7 @@ export default function BranchOverviewPanel() {
           }
         />
         <StatCard
-          label="Lab Tests"
+          label={t("labTests.title")}
           value={labTestCount ?? "—"}
           icon={
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -226,7 +228,7 @@ export default function BranchOverviewPanel() {
           }
         />
         <StatCard
-          label="Schedules"
+          label={t("branchOverview.schedules")}
           value={scheduleCount ?? "—"}
           icon={
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -243,14 +245,14 @@ export default function BranchOverviewPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-3 flex items-center justify-between">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Branch Image
+            {t("branchOverview.branchImage")}
           </h4>
           <button
             onClick={() => photoInputRef.current?.click()}
             disabled={uploadingPhoto}
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
           >
-            {uploadingPhoto ? "Uploading…" : "Upload Photo"}
+            {uploadingPhoto ? t("doctors.uploading") : t("branchOverview.uploadPhoto")}
           </button>
           <input
             ref={photoInputRef}
@@ -263,12 +265,12 @@ export default function BranchOverviewPanel() {
         {branch.photo_url ? (
           <img
             src={branch.photo_url}
-            alt={`${branch.name} photo`}
+            alt={t("branchOverview.photoAlt", { name: branch.name })}
             className="h-48 w-full rounded-xl object-cover"
           />
         ) : (
           <div className="flex h-48 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-white/[0.02]">
-            <p className="text-sm text-gray-400 dark:text-gray-500">No photo uploaded</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">{t("branchOverview.noPhotoUploaded")}</p>
           </div>
         )}
       </div>
@@ -276,11 +278,11 @@ export default function BranchOverviewPanel() {
       {/* Documents */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <h4 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
-          Documents
+          {t("branchOverview.documents")}
         </h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <DocumentCard
-            label="Trade License"
+            label={t("branches.tradeLicense")}
             number={branch.trade_license_number}
             url={branch.trade_license_url}
             status={branch.trade_license_validation_status}
@@ -288,14 +290,14 @@ export default function BranchOverviewPanel() {
             onUpload={() => tradeInputRef.current?.click()}
           />
           <DocumentCard
-            label="Drug License"
+            label={t("branchOverview.drugLicense")}
             number={branch.drug_license_number}
             url={branch.drug_license_url}
             uploading={uploadingDoc === "drug-license"}
             onUpload={() => drugInputRef.current?.click()}
           />
           <DocumentCard
-            label="Clinical Establishment"
+            label={t("branchOverview.clinicalEstablishment")}
             number={branch.clinical_establishment_reg_number}
             url={branch.clinical_establishment_reg_url}
             uploading={uploadingDoc === "clinical-establishment-registration"}
@@ -311,7 +313,7 @@ export default function BranchOverviewPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="mb-3 flex items-center justify-between">
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Gallery
+            {t("branchOverview.gallery")}
           </h4>
           <button
             onClick={() => galleryInputRef.current?.click()}
@@ -321,7 +323,7 @@ export default function BranchOverviewPanel() {
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            {uploadingGallery ? "Uploading…" : "Add Image"}
+            {uploadingGallery ? t("doctors.uploading") : t("branchOverview.addImage")}
           </button>
           <input
             ref={galleryInputRef}
@@ -333,7 +335,7 @@ export default function BranchOverviewPanel() {
         </div>
         {galleryImages.length === 0 ? (
           <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-white/[0.02]">
-            <p className="text-sm text-gray-400 dark:text-gray-500">No images uploaded yet</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">{t("branchOverview.noImagesUploaded")}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -341,7 +343,7 @@ export default function BranchOverviewPanel() {
               <div key={img.id} className="group relative">
                 <img
                   src={img.image_url}
-                  alt="Gallery"
+                  alt={t("branchOverview.gallery")}
                   className="h-32 w-full rounded-xl object-cover"
                 />
                 <button
@@ -351,7 +353,7 @@ export default function BranchOverviewPanel() {
                       setGalleryImages((prev) =>
                         prev.filter((g) => g.id !== img.id)
                       );
-                      toast.success("Image removed.");
+                      toast.success(t("branchOverview.imageRemoved"));
                     } catch {
                       /* silent */
                     }
@@ -372,7 +374,7 @@ export default function BranchOverviewPanel() {
       <FormDrawer
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit branch"
+        title={t("branches.editBranch")}
         description={branch?.name}
       >
         <BranchForm
@@ -429,6 +431,7 @@ function DocumentCard({
   uploading?: boolean;
   onUpload?: () => void;
 }) {
+  const { t } = useTranslation();
   const hasFile = Boolean(url);
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-white/[0.02]">
@@ -451,11 +454,11 @@ function DocumentCard({
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
             </svg>
-            View
+            {t("common.view")}
           </a>
         ) : (
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            Not uploaded
+            {t("branchOverview.notUploaded")}
           </span>
         )}
         <button
@@ -463,7 +466,7 @@ function DocumentCard({
           disabled={uploading}
           className="ml-auto inline-flex items-center gap-1 rounded-md bg-brand-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-brand-600 disabled:opacity-50"
         >
-          {uploading ? "Uploading…" : hasFile ? "Replace" : "Upload"}
+          {uploading ? t("doctors.uploading") : hasFile ? t("branchOverview.replace") : t("branchOverview.upload")}
         </button>
       </div>
       {status && (

@@ -34,10 +34,12 @@ import {
   canDeleteBranch,
   canUpdateBranch,
 } from "@/lib/permissions";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function ClinicBranchesPanel() {
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
+  const { t } = useTranslation();
 
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [clinicLoading, setClinicLoading] = useState(true);
@@ -69,10 +71,11 @@ export default function ClinicBranchesPanel() {
       setBranches(res.items);
     } catch (err) {
       setBranches([]);
-      setError(getErrorMessage(err, "Failed to load branches"));
+      setError(getErrorMessage(err, t("branches.failedToLoad")));
     } finally {
       setBranchesLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
 
   useEffect(() => {
@@ -82,10 +85,11 @@ export default function ClinicBranchesPanel() {
       .get(clinicId)
       .then(setClinic)
       .catch((err) =>
-        setError(getErrorMessage(err, "Failed to load clinic details"))
+        setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")))
       )
       .finally(() => setClinicLoading(false));
     loadBranches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId, loadBranches]);
 
   const handlePhotoUpdated = (photoUrl: string) => {
@@ -120,17 +124,17 @@ export default function ClinicBranchesPanel() {
   const autoCreateBranch = async () => {
     if (!clinic) return;
     if (!canCreate) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setBusy(true);
     setError(null);
     try {
       await autoCreateBranchForClinic(clinic, user?.phone);
-      toast.success("Branch created automatically.");
+      toast.success(t("branches.branchCreatedAuto"));
       await loadBranches();
     } catch (err) {
-      const message = getErrorMessage(err, "Auto-create failed");
+      const message = getErrorMessage(err, t("branches.autoCreateFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -142,7 +146,7 @@ export default function ClinicBranchesPanel() {
     const branch = branchToDelete;
     if (!branch) return;
     if (!canDelete) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setError(null);
@@ -150,12 +154,10 @@ export default function ClinicBranchesPanel() {
       await branchesApi.remove(branch.id, true);
       if (selectedBranch?.id === branch.id) setSelectedBranch(null);
       await loadBranches();
-      toast.success("Branch deleted successfully.");
+      toast.success(t("branches.branchDeletedSuccess"));
       setBranchToDelete(null);
     } catch (err) {
-      toast.error(
-        getErrorMessage(err, "Unable to delete branch. Please try again.")
-      );
+      toast.error(getErrorMessage(err, t("branches.unableToDeleteBranch")));
     }
   };
 
@@ -172,8 +174,7 @@ export default function ClinicBranchesPanel() {
   if (!isAdmin) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Only clinic owners can view branches. Branch staff can manage their own
-        branch under Staff, Doctors, and Patients.
+        {t("branches.ownerOnlyNotice")}
       </div>
     );
   }
@@ -189,7 +190,7 @@ export default function ClinicBranchesPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Branches
+            {t("branches.title")}
           </h3>
           <div className="flex items-center gap-2">
             {!branchesLoading &&
@@ -199,10 +200,10 @@ export default function ClinicBranchesPanel() {
                 <button
                   onClick={autoCreateBranch}
                   disabled={busy}
-                  title="Create a branch automatically using this clinic's own details"
+                  title={t("branches.autoCreateBranchTitle")}
                   className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                 >
-                  {busy ? "Creating…" : "Auto-create branch"}
+                  {busy ? t("branches.creating") : t("branches.autoCreateBranch")}
                 </button>
               )}
             {canCreate && (
@@ -223,7 +224,7 @@ export default function ClinicBranchesPanel() {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                Add Branch
+                {t("branches.addBranch")}
               </button>
             )}
           </div>
@@ -249,7 +250,7 @@ export default function ClinicBranchesPanel() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search branches..."
+              placeholder={t("branches.search")}
               className="h-10 w-full rounded-lg border border-gray-300 bg-transparent pl-10 pr-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </div>
@@ -260,8 +261,8 @@ export default function ClinicBranchesPanel() {
         ) : filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {search
-              ? "No branches match your search."
-              : "No branches for this clinic."}
+              ? t("branches.noBranchesMatchSearch")
+              : t("branches.noBranchesForClinic")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -272,31 +273,31 @@ export default function ClinicBranchesPanel() {
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Branch Name
+                    {t("branches.branchNameColumn")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Location
+                    {t("branches.location")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Rating
+                    {t("branches.rating")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Status
+                    {t("doctors.status")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
                   >
-                    Actions
+                    {t("common.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -324,7 +325,7 @@ export default function ClinicBranchesPanel() {
                     <TableCell className="py-3">
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
                         <span className="h-1.5 w-1.5 rounded-full bg-success-500" />
-                        Active
+                        {t("status.active")}
                       </span>
                     </TableCell>
                     <TableCell className="py-3">
@@ -333,14 +334,14 @@ export default function ClinicBranchesPanel() {
                           href={`/clinics/${clinicId}/branches/${b.id}/overview`}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
-                          Open
+                          {t("branches.open")}
                         </Link>
                         {canUpdate && (
                           <button
                             onClick={() => setEditingBranch(b)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.03]"
                           >
-                            Edit
+                            {t("common.edit")}
                           </button>
                         )}
                         {canDelete && (
@@ -349,7 +350,7 @@ export default function ClinicBranchesPanel() {
                             disabled={busy}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            Delete
+                            {t("common.delete")}
                           </button>
                         )}
                       </div>
@@ -377,11 +378,11 @@ export default function ClinicBranchesPanel() {
           {!selectedBranch.trade_license_url && (
             <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
               <p className="font-medium text-gray-800 dark:text-white/90">
-                Trade license{" "}
+                {t("branches.tradeLicense")}{" "}
                 <span className="text-error-500">*</span>
               </p>
               <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
-                ⚠ No document uploaded.
+                ⚠ {t("branches.noDocumentUploaded")}
               </p>
             </div>
           )}
@@ -399,7 +400,7 @@ export default function ClinicBranchesPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Add branch"
+        title={t("branches.addBranch")}
         description={clinic?.name}
       >
         <BranchForm
@@ -416,7 +417,7 @@ export default function ClinicBranchesPanel() {
       <FormDrawer
         isOpen={editingBranch !== null}
         onClose={() => setEditingBranch(null)}
-        title="Edit branch"
+        title={t("branches.editBranch")}
         description={editingBranch?.name}
       >
         {editingBranch && (
@@ -438,15 +439,17 @@ export default function ClinicBranchesPanel() {
         onClose={() => setBranchToDelete(null)}
         onConfirm={confirmDeleteBranch}
         title={
-          branchToDelete ? `Branch "${branchToDelete.name}"` : ""
+          branchToDelete
+            ? t("branches.deleteBranchTitle", { name: branchToDelete.name })
+            : ""
         }
-        description="This branch and its records will be permanently removed."
+        description={t("branches.deleteBranchDesc")}
         impactItems={[
-          "Doctors and staff assigned to this branch",
-          "Schedules and availability for this branch",
-          "Any active appointments (they'll be cancelled automatically)",
+          t("branches.deleteBranchImpactDoctorsStaff"),
+          t("branches.deleteBranchImpactSchedules"),
+          t("branches.deleteBranchImpactAppointments"),
         ]}
-        confirmLabel="Delete branch"
+        confirmLabel={t("branches.deleteBranch")}
       />
     </div>
   );

@@ -35,6 +35,7 @@ import {
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 import { StatGridSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { canDeleteClinic } from "@/lib/permissions";
 import {
@@ -44,6 +45,7 @@ import {
 } from "@/lib/autoCreateBranch";
 
 export default function ClinicOverviewPanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const router = useRouter();
@@ -108,11 +110,11 @@ export default function ClinicOverviewPanel() {
       );
       setPatientCount(perBranchPatients.reduce((sum, n) => sum + n, 0));
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load clinic overview"));
+      setError(getErrorMessage(err, t("clinicOverview.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, [clinicId]);
+  }, [clinicId, t]);
 
   useEffect(() => {
     load();
@@ -120,9 +122,12 @@ export default function ClinicOverviewPanel() {
 
   useEffect(() => {
     if (clinic && !clinic.trade_license_url) {
-      toast("Trade license: No document uploaded.", { icon: "⚠️" });
+      toast(
+        `${t("branches.tradeLicense")}: ${t("branches.noDocumentUploaded")}`,
+        { icon: "⚠️" }
+      );
     }
-  }, [clinic]);
+  }, [clinic, t]);
 
   useEffect(() => {
     if (
@@ -137,13 +142,13 @@ export default function ClinicOverviewPanel() {
     autoCreateBranchForClinic(clinic, user?.phone)
       .then(() => {
         clearAutoBranchPending(clinic.id);
-        toast.success("Your first branch was created automatically.");
+        toast.success(t("clinicOverview.firstBranchCreatedAuto"));
         load();
       })
       .catch((err) => {
-        toast.error(getErrorMessage(err, "Auto-create failed"));
+        toast.error(getErrorMessage(err, t("branches.autoCreateFailed")));
       });
-  }, [clinic, branches, loading, user?.phone, load]);
+  }, [clinic, branches, loading, user?.phone, load, t]);
 
   const LICENSE_URL_FIELD: Record<ClinicLicenseType, keyof Clinic> = {
     "trade-license": "trade_license_url",
@@ -161,11 +166,11 @@ export default function ClinicOverviewPanel() {
     setDeleting(true);
     try {
       await clinicsApi.remove(clinic.id, true);
-      toast.success("Clinic deleted successfully.");
+      toast.success(t("clinicOverview.clinicDeletedSuccess"));
       router.replace("/clinics");
     } catch (err) {
       toast.error(
-        getErrorMessage(err, "Unable to delete clinic. Please try again.")
+        getErrorMessage(err, t("clinicOverview.unableToDeleteClinic"))
       );
     } finally {
       setDeleting(false);
@@ -184,7 +189,7 @@ export default function ClinicOverviewPanel() {
   if (error || !clinic) {
     return (
       <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-        {error ?? "Clinic not found."}
+        {error ?? t("clinicOverview.clinicNotFound")}
       </div>
     );
   }
@@ -238,7 +243,9 @@ export default function ClinicOverviewPanel() {
                         : "bg-warning-500"
                     }`}
                   />
-                  {clinic.trade_license_validated ? "Active" : "Pending"}
+                  {clinic.trade_license_validated
+                    ? t("status.active")
+                    : t("status.pending")}
                 </span>
               </div>
               {addressLine && (
@@ -247,7 +254,9 @@ export default function ClinicOverviewPanel() {
                 </p>
               )}
               <p className="mt-0.5 text-theme-xs text-gray-400 dark:text-gray-500">
-                Created {formatDate(clinic.created_at)}
+                {t("clinicOverview.createdOn", {
+                  date: formatDate(clinic.created_at),
+                })}
               </p>
             </div>
           </div>
@@ -256,7 +265,7 @@ export default function ClinicOverviewPanel() {
               onClick={() => setEditOpen(true)}
               className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
             >
-              Edit
+              {t("common.edit")}
             </button>
             {canDelete && (
               <button
@@ -275,7 +284,7 @@ export default function ClinicOverviewPanel() {
       <SubscriptionTrialWidget clinicId={clinic.id} />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
-          label="Branches"
+          label={t("dashboard.branches")}
           value={branches.length}
           icon={
             <svg
@@ -294,7 +303,7 @@ export default function ClinicOverviewPanel() {
           }
         />
         <StatCard
-          label="Doctors"
+          label={t("doctors.title")}
           value={doctorCount ?? "—"}
           icon={
             <svg
@@ -313,7 +322,7 @@ export default function ClinicOverviewPanel() {
           }
         />
         <StatCard
-          label="Patients"
+          label={t("patients.title")}
           value={patientCount === null ? "—" : patientCount.toLocaleString()}
           icon={
             <svg
@@ -332,7 +341,7 @@ export default function ClinicOverviewPanel() {
           }
         />
         <StatCard
-          label="Lab Tests"
+          label={t("labTests.title")}
           value={
             labTestCount === null
               ? "—"
@@ -362,18 +371,18 @@ export default function ClinicOverviewPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Recent Appointments
+            {t("dashboard.recentAppointments")}
           </h3>
           <Link
             href={`/clinics/${clinicId}/all-appointments`}
             className="text-sm font-medium text-brand-500 hover:underline"
           >
-            View all →
+            {t("clinicOverview.viewAll")} →
           </Link>
         </div>
         {recentAppointments.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No appointments yet.
+            {t("dashboard.noAppointments")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -384,31 +393,31 @@ export default function ClinicOverviewPanel() {
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Patient
+                    {t("appointments.patient")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Doctor
+                    {t("appointments.doctor")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Branch
+                    {t("appointments.branch")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Date
+                    {t("billing.date")}
                   </TableCell>
                   <TableCell
                     isHeader
                     className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                   >
-                    Status
+                    {t("appointments.status")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -448,11 +457,11 @@ export default function ClinicOverviewPanel() {
       {!clinic.trade_license_url && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
           <p className="font-medium text-gray-800 dark:text-white/90">
-            Trade license{" "}
+            {t("branches.tradeLicense")}{" "}
             <span className="text-error-500">*</span>
           </p>
           <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
-            ⚠ No document uploaded.
+            ⚠ {t("branches.noDocumentUploaded")}
           </p>
         </div>
       )}
@@ -467,7 +476,7 @@ export default function ClinicOverviewPanel() {
       <FormDrawer
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit clinic"
+        title={t("clinicsPage.editClinic")}
         description={clinic.name}
       >
         <ClinicForm
@@ -485,14 +494,14 @@ export default function ClinicOverviewPanel() {
         isOpen={confirmingDelete}
         onClose={() => setConfirmingDelete(false)}
         onConfirm={confirmDeleteClinic}
-        title={`Clinic "${clinic.name}"`}
-        description="This clinic and its records will be permanently removed."
+        title={t("clinicOverview.deleteClinicTitle", { name: clinic.name })}
+        description={t("clinicOverview.deleteClinicDesc")}
         impactItems={[
-          "All branches under this clinic",
-          "All doctors and staff assigned to those branches",
-          "Any active appointments (they'll be cancelled automatically)",
+          t("clinicOverview.deleteClinicImpactBranches"),
+          t("clinicOverview.deleteClinicImpactDoctorsStaff"),
+          t("branches.deleteBranchImpactAppointments"),
         ]}
-        confirmLabel="Delete clinic"
+        confirmLabel={t("clinicOverview.deleteClinicButton")}
       />
     </div>
   );

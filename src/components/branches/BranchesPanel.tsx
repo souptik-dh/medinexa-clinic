@@ -32,6 +32,7 @@ import { formatDate, formatFullAddress } from "@/lib/utils";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { usePagination } from "@/hooks/usePagination";
+import { useTranslation } from "@/hooks/useTranslation";
 
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -43,6 +44,7 @@ import {
 } from "@/lib/permissions";
 
 export default function BranchesPanel() {
+  const { t } = useTranslation();
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Clinic | null>(null);
@@ -79,10 +81,11 @@ export default function BranchesPanel() {
       setClinics(res.items);
       setSelectedId((prev) => prev ?? res.items[0]?.id ?? null);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load clinics"));
+      setError(getErrorMessage(err, t("clinicsPage.failedToLoad")));
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -105,7 +108,8 @@ export default function BranchesPanel() {
         if (active) setSelected(c);
       })
       .catch((err) => {
-        if (active) setError(getErrorMessage(err, "Failed to load clinic details"));
+        if (active)
+          setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
       })
       .finally(() => {
         if (active) setSelectedLoading(false);
@@ -113,6 +117,7 @@ export default function BranchesPanel() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   const loadBranches = useCallback(async (clinicId: string) => {
@@ -122,10 +127,11 @@ export default function BranchesPanel() {
       setBranches(res.items);
     } catch (err) {
       setBranches([]);
-      setError(getErrorMessage(err, "Failed to load branches"));
+      setError(getErrorMessage(err, t("branches.failedToLoad")));
     } finally {
       setBranchesLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -141,8 +147,11 @@ export default function BranchesPanel() {
 
   useEffect(() => {
     if (selectedBranch && !selectedBranch.trade_license_url) {
-      toast("Trade license: No document uploaded.", { icon: "⚠️" });
+      toast(`${t("branches.tradeLicense")}: ${t("branches.noDocumentUploaded")}`, {
+        icon: "⚠️",
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch]);
 
   const handlePhotoUpdated = (photoUrl: string) => {
@@ -169,17 +178,17 @@ export default function BranchesPanel() {
   const autoCreateBranch = async () => {
     if (!selected) return;
     if (!canCreate) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setBusy(true);
     setError(null);
     try {
       await autoCreateBranchForClinic(selected, user?.phone);
-      toast.success("Branch created automatically.");
+      toast.success(t("branches.branchCreatedAuto"));
       await loadBranches(selected.id);
     } catch (err) {
-      const message = getErrorMessage(err, "Auto-create failed");
+      const message = getErrorMessage(err, t("branches.autoCreateFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -191,25 +200,24 @@ export default function BranchesPanel() {
     const branch = branchToDelete;
     if (!branch) return;
     if (!canDelete) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setError(null);
     try {
       await branchesApi.remove(branch.id, true);
       if (selected) await loadBranches(selected.id);
-      toast.success("Branch deleted successfully.");
+      toast.success(t("branches.branchDeletedSuccess"));
       setBranchToDelete(null);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Unable to delete branch. Please try again."));
+      toast.error(getErrorMessage(err, t("branches.unableToDeleteBranch")));
     }
   };
 
   if (!isAdmin) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Only clinic owners can view the clinic/branch directory. Branch staff
-        can manage their own branch under Staff, Doctors, and Patients.
+        {t("branches.ownerOnlyNotice")}
       </div>
     );
   }
@@ -227,15 +235,17 @@ export default function BranchesPanel() {
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Clinics
+              {t("clinicsPage.title")}
             </h3>
-            <Badge color="info">{branches.length} branches</Badge>
+            <Badge color="info">
+              {t("branchesListPage.branchesCountBadge", { count: branches.length })}
+            </Badge>
           </div>
           {loading ? (
             <ListSkeleton rows={4} />
           ) : clinics.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              No clinics yet.
+              {t("branchesListPage.noClinicsYet")}
             </p>
           ) : (
             <ul className="space-y-2">
@@ -253,10 +263,12 @@ export default function BranchesPanel() {
                       {c.name}
                     </span>
                     <p className="mt-1 line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
-                      {c.description ?? "No description"}
+                      {c.description ?? t("branchesListPage.noDescription")}
                     </p>
                     <p className="mt-2 text-theme-xs text-gray-400 dark:text-gray-500">
-                      Created {formatDate(c.created_at)}
+                      {t("branchesListPage.createdOn", {
+                        date: formatDate(c.created_at),
+                      })}
                     </p>
                   </button>
                 </li>
@@ -269,7 +281,7 @@ export default function BranchesPanel() {
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-7">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Branches
+              {t("branches.title")}
               {selected && (
                 <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                   — {selected.name}
@@ -282,34 +294,34 @@ export default function BranchesPanel() {
                   <button
                     onClick={autoCreateBranch}
                     disabled={busy}
-                    title="Create a branch automatically using this clinic's own details"
+                    title={t("branches.autoCreateBranchTitle")}
                     className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                   >
-                    {busy ? "Creating…" : "Auto-create branch"}
+                    {busy ? t("branches.creating") : t("branches.autoCreateBranch")}
                   </button>
                 )}
                 <button
                   onClick={() => setCreateOpen(true)}
                   className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
                 >
-                  + New branch
+                  {t("branchesListPage.newBranchButton")}
                 </button>
               </div>
             )}
           </div>
           {!selectedId ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              Select a clinic to manage its branches.
+              {t("branchesListPage.selectClinicPrompt")}
             </p>
           ) : selectedLoading || branchesLoading ? (
             <TableSkeleton rows={5} cols={4} />
           ) : !selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              Failed to load clinic details.
+              {t("clinicsPage.failedToLoadDetails")}
             </p>
           ) : branches.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-              No branches for this clinic.
+              {t("branches.noBranchesForClinic")}
             </p>
           ) : (
             <>
@@ -318,19 +330,19 @@ export default function BranchesPanel() {
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                   <TableRow>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Name
+                      {t("appointments.name")}
                     </TableCell>
                     {/* <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Address
                     </TableCell> */}
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Phone
+                      {t("appointments.phone")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Rating
+                      {t("branches.rating")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                      Actions
+                      {t("common.actions")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -369,14 +381,14 @@ export default function BranchesPanel() {
                             href={`/clinics/${selected?.id}/branches/${b.id}/overview`}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                           >
-                            Overview
+                            {t("branches.overview")}
                           </Link>
                           {canManageLab && (
                             <Link
                               href={`/clinics/${selected?.id}/branches/${b.id}/lab-tests`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
-                              Lab Tests
+                              {t("branches.labTests")}
                             </Link>
                           )}
                           {canManageLab && (
@@ -384,7 +396,7 @@ export default function BranchesPanel() {
                               href={`/clinics/${selected?.id}/branches/${b.id}/lab-schedule`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
-                              Lab Schedule
+                              {t("branches.labSchedule")}
                             </Link>
                           )}
                           {canSchedule && (
@@ -392,7 +404,7 @@ export default function BranchesPanel() {
                               href={`/clinics/${selected?.id}/branches/${b.id}/schedule`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
-                              Schedule
+                              {t("branches.schedule")}
                             </Link>
                           )}
                           {canUpdate && (
@@ -400,7 +412,7 @@ export default function BranchesPanel() {
                               onClick={() => setEditingBranch(b)}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
-                              Edit
+                              {t("common.edit")}
                             </button>
                           )}
                           {canDelete && (
@@ -409,7 +421,7 @@ export default function BranchesPanel() {
                               disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
-                              Delete
+                              {t("common.delete")}
                             </button>
                           )}
                         </div>
@@ -442,10 +454,10 @@ export default function BranchesPanel() {
           {!selectedBranch.trade_license_url && (
             <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
               <p className="font-medium text-gray-800 dark:text-white/90">
-                Trade license <span className="text-error-500">*</span>
+                {t("branches.tradeLicense")} <span className="text-error-500">*</span>
               </p>
               <p className="mt-1 text-sm text-warning-600 dark:text-orange-400">
-                ⚠ No document uploaded.
+                ⚠ {t("branches.noDocumentUploaded")}
               </p>
             </div>
           )}
@@ -463,7 +475,7 @@ export default function BranchesPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Add branch"
+        title={t("branches.addBranch")}
         description={selected?.name}
       >
         {selected && (
@@ -482,7 +494,7 @@ export default function BranchesPanel() {
       <FormDrawer
         isOpen={editingBranch !== null}
         onClose={() => setEditingBranch(null)}
-        title="Edit branch"
+        title={t("branches.editBranch")}
         description={editingBranch?.name}
       >
         {editingBranch && selected && (
@@ -503,14 +515,18 @@ export default function BranchesPanel() {
         isOpen={branchToDelete !== null}
         onClose={() => setBranchToDelete(null)}
         onConfirm={confirmDeleteBranch}
-        title={branchToDelete ? `Branch "${branchToDelete.name}"` : ""}
-        description="This branch and its records will be permanently removed."
+        title={
+          branchToDelete
+            ? t("branches.deleteBranchTitle", { name: branchToDelete.name })
+            : ""
+        }
+        description={t("branches.deleteBranchDesc")}
         impactItems={[
-          "Doctors and staff assigned to this branch",
-          "Schedules and availability for this branch",
-          "Any active appointments (they'll be cancelled automatically)",
+          t("branches.deleteBranchImpactDoctorsStaff"),
+          t("branches.deleteBranchImpactSchedules"),
+          t("branches.deleteBranchImpactAppointments"),
         ]}
-        confirmLabel="Delete branch"
+        confirmLabel={t("branches.deleteBranch")}
       />
     </div>
   );

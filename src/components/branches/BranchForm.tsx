@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateBranch, canUpdateBranch } from "@/lib/permissions";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface BranchFormProps {
   mode: "create" | "edit";
@@ -53,6 +54,7 @@ export default function BranchForm({
   const branchId =
     branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
   const isEdit = mode === "edit";
+  const { t } = useTranslation();
 
   const { user } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
@@ -105,7 +107,7 @@ export default function BranchForm({
           if (!active) return;
           const b = res.items.find((x) => x.id === branchId);
           if (!b) {
-            setError("Branch not found.");
+            setError(t("branchForm.branchNotFound"));
             return;
           }
           setName(b.name);
@@ -128,7 +130,7 @@ export default function BranchForm({
         .catch((err) => {
           if (active)
             setError(
-              err instanceof ApiError ? err.message : "Failed to load branch"
+              err instanceof ApiError ? err.message : t("branchForm.failedToLoadBranch")
             );
         })
         .finally(() => {
@@ -141,6 +143,7 @@ export default function BranchForm({
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit, clinicId, branchId]);
 
   const onSelectPostOffice = (po: PostOffice) => {
@@ -164,7 +167,7 @@ export default function BranchForm({
   const validateTradeLicense = async () => {
     const number = tradeLicenseNumber.trim();
     if (!number) {
-      setError("Enter a trade license number first.");
+      setError(t("branchForm.enterTradeLicenseFirst"));
       return;
     }
     setValidating(true);
@@ -178,7 +181,7 @@ export default function BranchForm({
       setTradeLicenseMessage(
         err instanceof ApiError
           ? err.message
-          : "Unable to validate Trade License Number at this time. Please try again."
+          : t("branchForm.unableToValidateTradeLicense")
       );
     } finally {
       setValidating(false);
@@ -187,7 +190,7 @@ export default function BranchForm({
 
   const submit = async () => {
     if (!canSubmit) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setSubmitted(true);
@@ -201,7 +204,7 @@ export default function BranchForm({
       !pinCode.trim() ||
       !tradeLicenseNumber.trim()
     ) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (!isValidPhone(phone)) {
@@ -209,7 +212,7 @@ export default function BranchForm({
       return;
     }
     if (!isEdit && tradeLicenseValidationStatus !== "VALID") {
-      setError("Validate the Trade License Number before creating the branch.");
+      setError(t("branchForm.validateTradeLicenseBeforeCreate"));
       return;
     }
     if (busy) return;
@@ -238,12 +241,12 @@ export default function BranchForm({
       let savedBranchId: string | undefined;
       if (isEdit) {
         await branchesApi.update(branchId, input);
-        toast.success("Branch updated successfully.");
+        toast.success(t("branchForm.branchUpdatedSuccess"));
         savedBranchId = branchId;
         redirectTo = `/clinics/${clinicId}/branches/${branchId}/overview`;
       } else {
         const created = await branchesApi.create(clinicId, input);
-        toast.success("Branch created successfully.");
+        toast.success(t("branchForm.branchCreatedSuccess"));
         savedBranchId = created.id;
         redirectTo = `/clinics/${clinicId}/branches/${created.id}/overview`;
       }
@@ -253,7 +256,7 @@ export default function BranchForm({
       }
       setTimeout(() => router.push(redirectTo), 150);
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to save branch. Please try again.");
+      const message = getErrorMessage(err, t("branchForm.unableToSaveBranch"));
       setError(message);
       toast.error(message);
     } finally {
@@ -264,7 +267,7 @@ export default function BranchForm({
   if (!canSubmit) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        You do not have permission to {isEdit ? "edit" : "create"} branches.
+        {isEdit ? t("branchForm.noPermissionEditBranches") : t("branchForm.noPermissionCreateBranches")}
       </div>
     );
   }
@@ -282,7 +285,7 @@ export default function BranchForm({
           <>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                {isEdit ? "Edit branch" : "Create branch"}
+                {isEdit ? t("branches.editBranch") : t("branches.addBranch")}
                 {clinicName && (
                   <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                     — {clinicName}
@@ -290,13 +293,13 @@ export default function BranchForm({
                 )}
               </h3>
               <Link href="/branches" className="text-sm font-medium text-brand-500 hover:underline">
-                View all branches
+                {t("branchForm.viewAllBranches")}
               </Link>
             </div>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {isEdit
-                ? "Update this branch&apos;s contact and address details."
-                : "Add a new branch to the selected clinic."}
+                ? t("branchForm.editBranchDesc")
+                : t("branchForm.createBranchDesc")}
             </p>
           </>
         )}
@@ -306,7 +309,7 @@ export default function BranchForm({
         ) : (
           <div className="mt-6 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Name *">
+              <Field label={t("doctors.nameRequired")}>
                 <input
                   type="text"
                   value={name}
@@ -316,7 +319,7 @@ export default function BranchForm({
                 />
                 {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
-              <Field label="Phone *">
+              <Field label={`${t("auth.phone")} *`}>
                 <PhoneNumberField
                   value={phone}
                   onChange={setPhone}
@@ -325,7 +328,7 @@ export default function BranchForm({
                 />
               </Field>
             </div>
-            <Field label="Address *">
+            <Field label={`${t("common.address")} *`}>
               <input
                 type="text"
                 value={address}
@@ -337,7 +340,7 @@ export default function BranchForm({
                 <FieldError message={REQUIRED_FIELD_MESSAGE} />
               )}
             </Field>
-            <Field label="Pincode *">
+            <Field label={`${t("common.pincode")} *`}>
               <PincodeField
                 value={pinCode}
                 onChange={setPinCode}
@@ -349,7 +352,7 @@ export default function BranchForm({
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Nearby location">
+              <Field label={t("common.nearbyLocation")}>
                 <input
                   type="text"
                   value={nearbyLocation}
@@ -357,7 +360,7 @@ export default function BranchForm({
                   className={inputClass}
                 />
               </Field>
-              <Field label="City *">
+              <Field label={`${t("common.city")} *`}>
                 <input
                   type="text"
                   value={city}
@@ -367,7 +370,7 @@ export default function BranchForm({
                 />
                 {showError("city", !city.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
               </Field>
-              <Field label="District *">
+              <Field label={`${t("common.district")} *`}>
                 <input
                   type="text"
                   value={district}
@@ -381,7 +384,7 @@ export default function BranchForm({
               </Field>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="State *">
+              <Field label={`${t("common.state")} *`}>
                 <input
                   type="text"
                   value={stateField}
@@ -393,7 +396,7 @@ export default function BranchForm({
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
                 )}
               </Field>
-              <Field label="Post office *">
+              <Field label={`${t("common.postOffice")} *`}>
                 <input
                   type="text"
                   value={postOffice}
@@ -406,7 +409,7 @@ export default function BranchForm({
                 )}
               </Field>
             </div>
-            <Field label="Timezone *">
+            <Field label={`${t("branchForm.timezone")} *`}>
               <input
                 type="text"
                 value={timezone}
@@ -416,7 +419,7 @@ export default function BranchForm({
               />
             </Field>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Field label="Trade license number *">
+              <Field label={`${t("branchForm.tradeLicenseNumber")} *`}>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -439,31 +442,31 @@ export default function BranchForm({
                     }`}
                   >
                     {validating
-                      ? "Validating…"
+                      ? t("branchForm.validating")
                       : tradeLicenseValidationStatus === "VALID"
-                        ? "✓ Validated"
-                        : "Validate"}
+                        ? `✓ ${t("branchForm.validated")}`
+                        : t("branchForm.validate")}
                   </button>
                 </div>
                 {showError("tradeLicenseNumber", !tradeLicenseNumber.trim()) ? (
                   <FieldError message={REQUIRED_FIELD_MESSAGE} />
                 ) : tradeLicenseValidationStatus === "VALID" ? (
                   <p className="mt-1.5 text-theme-xs text-success-600 dark:text-success-500">
-                    ✓ {tradeLicenseMessage ?? "Trade License Number validated successfully."}
+                    ✓ {tradeLicenseMessage ?? t("branchForm.tradeLicenseValidatedDefault")}
                   </p>
                 ) : tradeLicenseValidationStatus === "INVALID" ? (
                   <p className="mt-1.5 text-theme-xs text-error-600 dark:text-error-400">
-                    ✕ {tradeLicenseMessage ?? "Trade License Number could not be validated."}
-                    {!isEdit && " This branch can't be created until it validates."}
+                    ✕ {tradeLicenseMessage ?? t("branchForm.tradeLicenseInvalidDefault")}
+                    {!isEdit && ` ${t("branchForm.cannotCreateUntilValidated")}`}
                   </p>
                 ) : (
                   <p className="mt-1.5 text-theme-xs text-warning-600 dark:text-orange-400">
-                    ⚠ Trade License Number validation pending
-                    {!isEdit && " — required before this branch can be created"}
+                    ⚠ {t("branchForm.tradeLicensePending")}
+                    {!isEdit && ` — ${t("branchForm.requiredBeforeCreate")}`}
                   </p>
                 )}
               </Field>
-              <Field label="Drug license number">
+              <Field label={t("branchForm.drugLicenseNumber")}>
                 <input
                   type="text"
                   value={drugLicenseNumber}
@@ -471,7 +474,7 @@ export default function BranchForm({
                   className={inputClass}
                 />
               </Field>
-              <Field label="Clinical establishment reg. number">
+              <Field label={t("branchForm.clinicalEstablishmentRegNumber")}>
                 <input
                   type="text"
                   value={clinicalEstablishmentRegNumber}
@@ -496,14 +499,14 @@ export default function BranchForm({
             }
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={submit}
             disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create branch"}
+            {busy ? t("auth.saving") : isEdit ? t("settings.saveChanges") : t("branches.addBranch")}
           </button>
         </div>
       </div>

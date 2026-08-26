@@ -2,28 +2,30 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname, useParams, useSearchParams } from "next/navigation";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // Unified horizontal navigation for the whole Clinics module. Rendered once
 // by the compact layout for every /clinics/{clinicId}/... page so the section
 // feels like a single application with tabs, not disconnected pages. Falls
 // back to the ?clinic_id= query param for the standalone /doctors and
 // /lab-tests pages that reuse this bar outside the clinics routes.
-const TABS: { key: string; label: string; href: (clinicId: string) => string }[] = [
-  { key: "overview", label: "Overview", href: (id) => `/clinics/${id}/overview` },
-  { key: "branches", label: "Branches", href: (id) => `/clinics/${id}/branches` },
-  { key: "doctors", label: "Doctors", href: (id) => `/clinics/${id}/doctors` },
-  // { key: "staff", label: "Staff", href: (id) => `/clinics/${id}/staff` },
-  // { key: "appointments", label: "Appointments", href: (id) => `/clinics/${id}/all-appointments` },
-  { key: "lab-tests", label: "Lab Tests", href: (id) => `/clinics/${id}/lab-tests` },
-  { key: "lab-schedules", label: "Lab Schedules", href: (id) => `/clinics/${id}/lab-schedule` },
-  // { key: "patients", label: "Patients", href: (id) => `/clinics/${id}/patients` },
-  // { key: "billing", label: "Billing", href: (id) => `/clinics/${id}/billing` },
+const TABS: { key: string; labelKey: string; href: (clinicId: string) => string }[] = [
+  { key: "overview", labelKey: "clinicsPage.overview", href: (id) => `/clinics/${id}/overview` },
+  { key: "branches", labelKey: "clinicsPage.branches", href: (id) => `/clinics/${id}/branches` },
+  { key: "doctors", labelKey: "clinicsPage.doctors", href: (id) => `/clinics/${id}/doctors` },
+  // { key: "staff", labelKey: "clinicsPage.staff", href: (id) => `/clinics/${id}/staff` },
+  // { key: "appointments", labelKey: "appointments.title", href: (id) => `/clinics/${id}/all-appointments` },
+  { key: "lab-tests", labelKey: "clinicsPage.labTests", href: (id) => `/clinics/${id}/lab-tests` },
+  { key: "lab-schedules", labelKey: "clinicsPage.labSchedule", href: (id) => `/clinics/${id}/lab-schedule` },
+  // { key: "patients", labelKey: "clinicsPage.patients", href: (id) => `/clinics/${id}/patients` },
+  // { key: "billing", labelKey: "clinicsPage.billing", href: (id) => `/clinics/${id}/billing` },
 ];
 
 export default function ClinicTabs() {
   const pathname = usePathname();
   const params = useParams<{ clinicId?: string }>();
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const routeClinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const clinicId = routeClinicId || searchParams.get("clinic_id") || "";
 
@@ -54,7 +56,7 @@ export default function ClinicTabs() {
                   : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </Link>
           );
         })}

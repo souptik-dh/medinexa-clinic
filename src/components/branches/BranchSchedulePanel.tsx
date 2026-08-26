@@ -14,12 +14,22 @@ import DatePicker from "@/components/form/date-picker";
 import { formatDate, today } from "@/lib/utils";
 import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
-const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAY_KEYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
 
 export default function BranchSchedulePanel({
   showBackButton = true,
 }: { showBackButton?: boolean } = {}) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams<{ branchId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -55,11 +65,11 @@ export default function BranchSchedulePanel({
       const res = await branchScheduleApi.get(branchId);
       setOperatingDays(res.operating_days);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load branch schedule"));
+      setError(getErrorMessage(err, t("schedule.failedToLoadSchedule")));
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   const loadClosures = useCallback(async () => {
     if (!branchId) return;
@@ -70,11 +80,11 @@ export default function BranchSchedulePanel({
       setClosures(res.items);
     } catch (err) {
       setClosures([]);
-      setClosuresError(getErrorMessage(err, "Failed to load closures"));
+      setClosuresError(getErrorMessage(err, t("schedule.failedToLoadClosures")));
     } finally {
       setClosuresLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   useEffect(() => {
     loadSchedule();
@@ -91,9 +101,9 @@ export default function BranchSchedulePanel({
         { weekday, is_open: !current },
       ]);
       setOperatingDays(res.operating_days);
-      toast.success("Schedule updated successfully.");
+      toast.success(t("schedule.updateSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not update that day");
+      const message = getErrorMessage(err, t("schedule.updateDayFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -115,9 +125,9 @@ export default function BranchSchedulePanel({
       });
       setReason("");
       await loadClosures();
-      toast.success("Closure added successfully.");
+      toast.success(t("schedule.closureAddedSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not add closure");
+      const message = getErrorMessage(err, t("schedule.addClosureFailed"));
       setClosuresError(message);
       toast.error(message);
     } finally {
@@ -132,9 +142,9 @@ export default function BranchSchedulePanel({
     try {
       await branchScheduleApi.removeClosure(branchId, closure.id);
       await loadClosures();
-      toast.success("Closure removed successfully.");
+      toast.success(t("schedule.closureRemovedSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not remove closure");
+      const message = getErrorMessage(err, t("schedule.removeClosureFailed"));
       setClosuresError(message);
       toast.error(message);
     } finally {
@@ -154,11 +164,9 @@ export default function BranchSchedulePanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Clinic schedule</h3>
+      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("schedule.heading")}</h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        This sits above every doctor&apos;s own schedule — a day the branch is closed, or a
-        branch-wide closure, blocks booking for every doctor here regardless of their own
-        weekly pattern or leaves.
+        {t("schedule.headingDesc")}
       </p>
 
       {error && (
@@ -169,24 +177,28 @@ export default function BranchSchedulePanel({
 
       <div className="mt-6">
         <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-          Operating days
+          {t("schedule.operatingDays")}
         </label>
         <div className="flex gap-2">
-          {DAY_SHORT.map((name, weekday) => {
+          {WEEKDAY_KEYS.map((dayKey, weekday) => {
+            const dayName = t(`weekdays.${dayKey}`);
             const isOpen = operatingDays.find((d) => d.weekday === weekday)?.is_open ?? true;
             return (
               <button
                 key={weekday}
                 onClick={() => toggleDay(weekday)}
                 disabled={!canEdit || dayBusy}
+                title={dayName}
                 className={`flex-1 rounded-lg border px-2 py-2.5 text-center text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   isOpen
                     ? "border-brand-500/40 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400"
                     : "border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500"
                 }`}
               >
-                {name}
-                <div className="mt-1 text-[10px] font-normal">{isOpen ? "Open" : "Closed"}</div>
+                <span className="block truncate">{dayName}</span>
+                <div className="mt-1 text-[10px] font-normal">
+                  {isOpen ? t("schedule.open") : t("schedule.closed")}
+                </div>
               </button>
             );
           })}
@@ -195,11 +207,10 @@ export default function BranchSchedulePanel({
 
       <div className="mt-6">
         <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-400">
-          Branch closures
+          {t("schedule.branchClosures")}
         </label>
         <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-          Mark a date or date range unavailable for every doctor at this branch (holidays,
-          maintenance, etc).
+          {t("schedule.branchClosuresDesc")}
         </p>
 
         {closuresError && (
@@ -211,7 +222,7 @@ export default function BranchSchedulePanel({
         {closuresLoading ? (
           <ListSkeleton rows={3} />
         ) : activeClosures.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400">No closures added.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t("schedule.noClosures")}</p>
         ) : (
           <ul className="mb-4 space-y-2">
             {activeClosures.map((closure) => (
@@ -235,7 +246,7 @@ export default function BranchSchedulePanel({
                     disabled={closureBusy}
                     className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
                   >
-                    Remove
+                    {t("schedule.remove")}
                   </button>
                 )}
               </li>
@@ -247,14 +258,14 @@ export default function BranchSchedulePanel({
           <>
             <div className="mb-3 flex gap-3">
               <SlotTypeOption
-                label="Single date"
-                description="Close one date."
+                label={t("schedule.singleDate")}
+                description={t("schedule.singleDateDesc")}
                 selected={closureMode === "single"}
                 onClick={() => setClosureMode("single")}
               />
               <SlotTypeOption
-                label="Date range"
-                description="Close every date in a range."
+                label={t("schedule.dateRange")}
+                description={t("schedule.dateRangeDesc")}
                 selected={closureMode === "range"}
                 onClick={() => setClosureMode("range")}
               />
@@ -265,8 +276,8 @@ export default function BranchSchedulePanel({
                 <div>
                   <DatePicker
                     id="closure-date"
-                    label="Date"
-                    placeholder="Select a date"
+                    label={t("schedule.date")}
+                    placeholder={t("schedule.selectDate")}
                     defaultDate={singleDate || undefined}
                     onChange={(_, dateStr) => {
                       if (dateStr) setSingleDate(dateStr);
@@ -278,8 +289,8 @@ export default function BranchSchedulePanel({
                   <div>
                     <DatePicker
                       id="closure-range-from"
-                      label="From"
-                      placeholder="Select a date"
+                      label={t("schedule.from")}
+                      placeholder={t("schedule.selectDate")}
                       defaultDate={rangeFrom || undefined}
                       onChange={(_, dateStr) => {
                         if (dateStr) {
@@ -292,8 +303,8 @@ export default function BranchSchedulePanel({
                   <div>
                     <DatePicker
                       id="closure-range-to"
-                      label="To"
-                      placeholder="Select a date"
+                      label={t("schedule.to")}
+                      placeholder={t("schedule.selectDate")}
                       defaultDate={rangeTo || undefined}
                       onChange={(_, dateStr) => {
                         if (dateStr) setRangeTo(dateStr);
@@ -304,13 +315,13 @@ export default function BranchSchedulePanel({
               )}
               <div className="flex-1">
                 <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Reason (optional)
+                  {t("schedule.reasonOptional")}
                 </label>
                 <input
                   type="text"
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  placeholder="Public holiday"
+                  placeholder={t("schedule.reasonPlaceholder")}
                   className={inputClass}
                 />
               </div>
@@ -319,7 +330,7 @@ export default function BranchSchedulePanel({
                 disabled={closureBusy}
                 className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {closureBusy ? "Adding…" : "Add"}
+                {closureBusy ? t("schedule.adding") : t("common.add")}
               </button>
             </div>
           </>
@@ -332,7 +343,7 @@ export default function BranchSchedulePanel({
             onClick={() => router.push("/branches")}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Back to branches
+            {t("schedule.backToBranches")}
           </button>
         </div>
       )}

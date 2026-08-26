@@ -25,10 +25,12 @@ import LabTestForm, {
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const STATUS_OPTIONS: (LabTestStatus | "")[] = ["", "active", "inactive"];
 
 export default function ClinicLabTestsPanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const [items, setItems] = useState<LabTest[]>([]);
@@ -75,11 +77,11 @@ export default function ClinicLabTestsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load lab tests"));
+      setError(getErrorMessage(err, t("labTests.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, [clinicId, statusFilter, categoryFilter, search]);
+  }, [clinicId, statusFilter, categoryFilter, search, t]);
 
   useEffect(() => {
     load();
@@ -93,10 +95,10 @@ export default function ClinicLabTestsPanel() {
         item.status === "active" ? "inactive" : "active"
       );
       await load();
-      toast.success("Lab test status updated.");
+      toast.success(t("labTestsPage.statusUpdated"));
     } catch (err) {
       toast.error(
-        getErrorMessage(err, "Failed to update lab test status")
+        getErrorMessage(err, t("labTestsPage.failedToUpdateStatus"))
       );
     } finally {
       setTogglingId(null);
@@ -108,7 +110,7 @@ export default function ClinicLabTestsPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Lab Tests
+            {t("labTests.title")}
           </h3>
           <button
             onClick={() => setCreateOpen(true)}
@@ -127,7 +129,7 @@ export default function ClinicLabTestsPanel() {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            Add Lab Test
+            {t("labTests.addLabTest")}
           </button>
         </div>
 
@@ -135,7 +137,7 @@ export default function ClinicLabTestsPanel() {
         {branches.length > 1 && (
           <div className="mb-4">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Branch
+              {t("labTestsPage.branch")}
             </label>
             <select
               value={selectedBranch}
@@ -155,7 +157,7 @@ export default function ClinicLabTestsPanel() {
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 sm:max-w-xs">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Search
+              {t("common.search")}
             </label>
             <div className="relative">
               <svg
@@ -175,21 +177,21 @@ export default function ClinicLabTestsPanel() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search test..."
+                placeholder={t("labTestsPage.searchPlaceholder")}
                 className="h-10 w-full rounded-lg border border-gray-300 bg-transparent pl-10 pr-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
             </div>
           </div>
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Category
+              {t("labTests.category")}
             </label>
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
-              <option value="">All categories</option>
+              <option value="">{t("labTestsPage.allCategories")}</option>
               {categoryOptions.map((c) => (
                 <option key={c.id ?? c.name} value={c.name}>
                   {c.name}
@@ -199,7 +201,7 @@ export default function ClinicLabTestsPanel() {
           </div>
           <div className="sm:w-40">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Status
+              {t("labTestsPage.status")}
             </label>
             <select
               value={statusFilter}
@@ -211,8 +213,8 @@ export default function ClinicLabTestsPanel() {
               {STATUS_OPTIONS.map((s) => (
                 <option key={s || "all"} value={s}>
                   {s === ""
-                    ? "All statuses"
-                    : s.charAt(0).toUpperCase() + s.slice(1)}
+                    ? t("labTestsPage.allStatuses")
+                    : t(`status.${s}`)}
                 </option>
               ))}
             </select>
@@ -230,7 +232,7 @@ export default function ClinicLabTestsPanel() {
             <TableSkeleton cols={5} />
           ) : items.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              No lab tests found.
+              {t("labTests.noLabTests")}
             </p>
           ) : (
             <div className="max-w-full overflow-x-auto">
@@ -241,31 +243,31 @@ export default function ClinicLabTestsPanel() {
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Test Name
+                      {t("labTests.testName")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Category
+                      {t("labTests.category")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Code
+                      {t("labTestsPage.code")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Status
+                      {t("labTestsPage.status")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
                     >
-                      Actions
+                      {t("common.actions")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -298,8 +300,8 @@ export default function ClinicLabTestsPanel() {
                           }
                         >
                           {item.status === "active"
-                            ? "Active"
-                            : "Inactive"}
+                            ? t("status.active")
+                            : t("status.inactive")}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3">
@@ -308,7 +310,7 @@ export default function ClinicLabTestsPanel() {
                             onClick={() => setEditingTest(item)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                           >
-                            Edit
+                            {t("common.edit")}
                           </button>
                           <button
                             onClick={() => handleToggleStatus(item)}
@@ -320,8 +322,8 @@ export default function ClinicLabTestsPanel() {
                             }`}
                           >
                             {item.status === "active"
-                              ? "Deactivate"
-                              : "Activate"}
+                              ? t("labTestsPage.deactivate")
+                              : t("labTestsPage.activate")}
                           </button>
                         </div>
                       </TableCell>
@@ -338,21 +340,21 @@ export default function ClinicLabTestsPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Add lab test"
+        title={t("labTests.addLabTest")}
       >
         <LabTestForm
           mode="create"
           initial={EMPTY_LAB_TEST_FORM}
-          submitLabel="Create"
+          submitLabel={t("labTestsPage.create")}
           onCancel={() => setCreateOpen(false)}
           onSubmit={async (payload) => {
             try {
               await labTestsApi.create({ ...payload, clinic_id: clinicId });
-              toast.success("Lab test created successfully.");
+              toast.success(t("labTestsPage.createdSuccess"));
               setCreateOpen(false);
               await load();
             } catch (err) {
-              toast.error(getErrorMessage(err, "Failed to create lab test"));
+              toast.error(getErrorMessage(err, t("labTestsPage.failedToCreate")));
               throw err;
             }
           }}
@@ -362,7 +364,7 @@ export default function ClinicLabTestsPanel() {
       <FormDrawer
         isOpen={editingTest !== null}
         onClose={() => setEditingTest(null)}
-        title="Edit lab test"
+        title={t("labTests.editLabTest")}
         description={editingTest?.name}
       >
         {editingTest && (
@@ -377,16 +379,16 @@ export default function ClinicLabTestsPanel() {
               instructions: editingTest.instructions ?? "",
               default_precautions: (editingTest.default_precautions ?? []).join(", "),
             }}
-            submitLabel="Update"
+            submitLabel={t("labTestsPage.update")}
             onCancel={() => setEditingTest(null)}
             onSubmit={async (payload) => {
               try {
                 await labTestsApi.update(editingTest.id, payload);
-                toast.success("Lab test updated successfully.");
+                toast.success(t("labTestsPage.updatedSuccess"));
                 setEditingTest(null);
                 await load();
               } catch (err) {
-                toast.error(getErrorMessage(err, "Failed to update lab test"));
+                toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdate")));
                 throw err;
               }
             }}

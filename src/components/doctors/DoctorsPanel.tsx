@@ -23,6 +23,7 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 import {
   BranchDoctor,
   DoctorInvite,
@@ -53,6 +54,7 @@ const initials = (name: string): string =>
     .toUpperCase();
 
 export default function DoctorsPanel() {
+  const { t } = useTranslation();
   const { can } = useAuth();
   const canManage = can("doctors:manage");
   const searchParams = useSearchParams();
@@ -141,10 +143,10 @@ export default function DoctorsPanel() {
     load(b, tab);
   };
 
-  const onTabChange = (t: Tab) => {
-    setTab(t);
-    sessionStorage.setItem("doctors-panel-tab", t);
-    if (t !== "search") load(branch, t);
+  const onTabChange = (tabKey: Tab) => {
+    setTab(tabKey);
+    sessionStorage.setItem("doctors-panel-tab", tabKey);
+    if (tabKey !== "search") load(branch, tabKey);
   };
 
   const runSearch = async () => {
@@ -254,9 +256,9 @@ export default function DoctorsPanel() {
     return next.reason ? `${range} (${next.reason})` : range;
   };
 
-  const tabClass = (t: Tab) =>
+  const tabClass = (tabKey: Tab) =>
     `px-4 py-2.5 text-sm font-medium transition ${
-      tab === t
+      tab === tabKey
         ? "border-b-2 border-brand-500 text-brand-500"
         : "border-b-2 border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
     }`;
@@ -266,7 +268,7 @@ export default function DoctorsPanel() {
       <ClinicTabs />
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Branch doctors
+          {t("doctors.title")}
         </h3>
         <BranchSelect
           value={branch?.id ?? ""}
@@ -286,13 +288,13 @@ export default function DoctorsPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-6">
             <button onClick={() => onTabChange("doctors")} className={tabClass("doctors")}>
-              Doctors
+              {t("doctors.doctors")}
             </button>
             <button onClick={() => onTabChange("invites")} className={tabClass("invites")}>
-              Invites
+              {t("doctors.invites")}
             </button>
             <button onClick={() => onTabChange("search")} className={tabClass("search")}>
-              Search
+              {t("common.search")}
             </button>
           </div>
           {tab === "invites" && canManage && (
@@ -302,14 +304,14 @@ export default function DoctorsPanel() {
                 disabled={!branch}
                 className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:border-gray-300 disabled:text-gray-400 dark:hover:bg-brand-500/10"
               >
-                Add Existing Doctor
+                {t("doctors.addExistingDoctor")}
               </button>
               <button
                 onClick={() => setInviteOpen(true)}
                 disabled={!branch}
                 className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                + New invite
+                + {t("doctors.invite")}
               </button>
             </div>
           )}
@@ -323,7 +325,7 @@ export default function DoctorsPanel() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
-                placeholder="Search by name, specialization, or registration no."
+                placeholder={t("doctors.search")}
                 className={inputClass}
               />
               <button
@@ -331,7 +333,7 @@ export default function DoctorsPanel() {
                 disabled={searchLoading || !searchQuery.trim()}
                 className="h-11 shrink-0 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {searchLoading ? "Searching…" : "Search"}
+                {searchLoading ? t("common.loading") : t("common.search")}
               </button>
             </div>
 
@@ -349,7 +351,7 @@ export default function DoctorsPanel() {
               <ListSkeleton rows={3} />
             ) : searchResults.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-                No doctors found for &quot;{searchQuery}&quot;.
+                {t("doctors.noDoctors")}
               </p>
             ) : (
               <div className="mt-4 max-w-full overflow-x-auto">
@@ -360,13 +362,13 @@ export default function DoctorsPanel() {
                         Doctor
                       </TableCell>
                       <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                        Specialization
+                        {t("doctors.specialization")}
                       </TableCell>
                       <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                        Reg. no
+                        {t("doctors.registrationNo")}
                       </TableCell>
                       <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                        Phone
+                        {t("doctors.phone")}
                       </TableCell>
                       <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
                         Clinics
@@ -413,8 +415,8 @@ export default function DoctorsPanel() {
           <TableSkeleton rows={5} cols={tab === "doctors" ? 7 : 5} />
         ) : tab === "doctors" ? (
           doctors.length === 0 ? (
-            <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              No doctors assigned to this branch yet. Invite one from the Invites tab.
+              <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+              {t("doctors.noDoctors")}
             </p>
           ) : (
             <>
@@ -426,7 +428,7 @@ export default function DoctorsPanel() {
                       Doctor
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Specialization
+                      {t("doctors.specialization")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       Fee
@@ -510,7 +512,7 @@ export default function DoctorsPanel() {
                               href={`/doctors/${branch.id}/${doc.id}/edit`}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                             >
-                              Edit
+                              {t("common.edit")}
                             </Link>
                           )}
                           {canManage && (
@@ -519,7 +521,7 @@ export default function DoctorsPanel() {
                               disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
-                              Remove
+                              {t("common.delete")}
                             </button>
                           )}
                         </div>
@@ -542,7 +544,7 @@ export default function DoctorsPanel() {
           )
         ) : invites.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No invites for this branch yet.
+            {t("doctors.noDoctors")}
           </p>
         ) : (
           <>
@@ -554,10 +556,10 @@ export default function DoctorsPanel() {
                     Doctor
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Reg. no
+                    {t("doctors.registrationNo")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("doctors.status")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Expires
@@ -602,7 +604,7 @@ export default function DoctorsPanel() {
                             disabled={busy}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            Revoke
+                            {t("doctors.revokeInvite")}
                           </button>
                         )}
                       </div>
@@ -678,7 +680,7 @@ export default function DoctorsPanel() {
               onClick={closePhotoModal}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
-              {photoUrl ? "Done" : "Cancel"}
+              {photoUrl ? t("common.close") : t("common.cancel")}
             </button>
           </div>
         </div>
@@ -689,17 +691,17 @@ export default function DoctorsPanel() {
         onClose={() => setDoctorToRemove(null)}
         onConfirm={confirmRemoveDoctor}
         title={doctorToRemove ? `Remove ${doctorToRemove.name} from this branch?` : ""}
-        description="This does not delete the doctor's account — they can be re-invited later."
+        description={t("common.deleteConfirmation")}
         impactItems={["The doctor's upcoming schedule at this branch"]}
-        confirmLabel="Remove doctor"
+        confirmLabel={t("common.delete")}
       />
 
       {/* New invite opens as a slide-over so the user stays on the Invites tab */}
       <FormDrawer
         isOpen={inviteOpen}
         onClose={() => setInviteOpen(false)}
-        title="Invite doctor"
-        description="A single-use invite code is emailed to the doctor."
+        title={t("doctors.inviteDoctor")}
+        description={t("doctors.inviteDoctorDesc")}
       >
         <InviteDoctorForm
           onDone={() => {
@@ -715,8 +717,8 @@ export default function DoctorsPanel() {
       <FormDrawer
         isOpen={addExistingOpen}
         onClose={() => setAddExistingOpen(false)}
-        title="Add existing doctor"
-        description="Adds a doctor already associated with a clinic to another branch."
+        title={t("doctors.addExistingDoctor")}
+        description={t("doctors.addExistingDoctorDesc")}
       >
         <AddExistingDoctorForm
           onDone={() => {

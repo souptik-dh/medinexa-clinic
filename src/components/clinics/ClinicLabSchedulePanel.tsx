@@ -6,8 +6,10 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import BranchLabSchedulePanel from "@/components/lab-tests/BranchLabSchedulePanel";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function ClinicLabSchedulePanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
 
@@ -29,9 +31,9 @@ export default function ClinicLabSchedulePanel() {
         }
       })
       .catch((err) =>
-        setError(getErrorMessage(err, "Failed to load branches"))
+        setError(getErrorMessage(err, t("branches.failedToLoad")))
       );
-  }, [clinicId]);
+  }, [clinicId, t]);
 
   const loading = branches === null && !error;
   const singleBranch = branches !== null && branches.length === 1 ? branches[0] : null;
@@ -42,7 +44,7 @@ export default function ClinicLabSchedulePanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Lab Schedules
+            {t("labTestsPage.labSchedules")}
           </h3>
           {showPicker && selectedBranch && (
             <button
@@ -52,7 +54,7 @@ export default function ClinicLabSchedulePanel() {
               }
               className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
             >
-              View Schedule →
+              {t("labTestsPage.viewSchedule")}
             </button>
           )}
         </div>
@@ -67,14 +69,14 @@ export default function ClinicLabSchedulePanel() {
           <BranchLabSchedulePanel branchId={singleBranch.id} />
         ) : !showPicker ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No branches yet.
+            {t("labTestsPage.noBranchesYet")}
           </p>
         ) : (
           <>
             {/* Branch Selector */}
             <div className="mb-4">
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Branch
+                {t("labTestsPage.branch")}
               </label>
               <select
                 value={selectedBranch}
@@ -102,7 +104,7 @@ export default function ClinicLabSchedulePanel() {
                       {b.name}
                     </span>
                     <span className="text-sm font-medium text-brand-500">
-                      View schedule →
+                      {t("labTestsPage.viewScheduleList")}
                     </span>
                   </button>
                 </li>
@@ -115,7 +117,7 @@ export default function ClinicLabSchedulePanel() {
       <FormDrawer
         isOpen={viewingBranch !== null}
         onClose={() => setViewingBranch(null)}
-        title="Lab Schedule"
+        title={t("clinicsPage.labSchedule")}
         description={viewingBranch?.name}
       >
         {viewingBranch && <BranchLabSchedulePanel branchId={viewingBranch.id} />}
