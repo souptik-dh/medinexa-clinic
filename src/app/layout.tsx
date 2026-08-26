@@ -3,6 +3,8 @@ import './globals.css';
 import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { AiChatProvider } from '@/context/AiChatContext';
+import AiAssistant from '@/components/ai/AiAssistant';
 import AppToaster from '@/components/common/AppToaster';
 import AppSWRConfig from '@/components/common/AppSWRConfig';
 
@@ -20,6 +22,12 @@ export default function RootLayout({
       <body className={`${outfit.className} dark:bg-gray-900`}>
         <ThemeProvider>
           <AppToaster />
+          <AuthProvider>
+            <AiChatProvider>
+              <SidebarProvider>{children}</SidebarProvider>
+              <AiAssistant />
+            </AiChatProvider>
+          </AuthProvider>
           <AppSWRConfig>
             <AuthProvider>
               <SidebarProvider>{children}</SidebarProvider>
