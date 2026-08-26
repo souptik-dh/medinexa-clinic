@@ -6,10 +6,12 @@ import ConfirmationDialog from "./ConfirmationDialog";
 
 const QUICK_ACTIONS = [
   "Show today's appointments",
+  "Show monthly revenue",
   "List my patients",
   "Check notifications",
   "Subscription status",
   "Find a doctor",
+  "Give me a daily summary",
   "What can you do?",
 ];
 
@@ -21,6 +23,7 @@ export default function ChatPanel() {
     pendingConfirmation,
     sendMessage,
     respondConfirmation,
+    clearMessages,
   } = useAiChat();
 
   const [input, setInput] = useState("");
@@ -57,8 +60,8 @@ export default function ChatPanel() {
   return (
     <div className="fixed bottom-24 right-6 z-[99998] flex h-[500px] max-h-[calc(100vh-8rem)] w-[380px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50 shadow-theme-xl dark:border-gray-800 dark:bg-gray-900 sm:w-[420px]">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-500/20">
+      <div className="flex items-center gap-3 border-b border-brand-600 bg-brand-500 px-4 py-3 dark:bg-brand-600">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
           <svg
             width="16"
             height="16"
@@ -66,28 +69,39 @@ export default function ChatPanel() {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            className="text-brand-500"
+            className="text-white"
           >
             <path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z" />
           </svg>
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+          <h3 className="text-sm font-semibold text-white">
             Jido Assistant
           </h3>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          <p className="text-[11px] text-brand-100">
             AI-powered healthcare assistant
           </p>
         </div>
-        <div className="ml-auto">
-          <span className="flex h-2 w-2 rounded-full bg-success-500">
-            <span className="absolute h-2 w-2 animate-ping rounded-full bg-success-400 opacity-75" />
+        <div className="ml-auto flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={clearMessages}
+              className="rounded-md p-1.5 text-white/70 transition hover:bg-white/20 hover:text-white"
+              title="New chat"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
+          <span className="flex h-2 w-2 rounded-full bg-white">
+            <span className="absolute h-2 w-2 animate-ping rounded-full bg-white opacity-75" />
           </span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="custom-scrollbar flex-1 overflow-y-auto px-4 py-3" style={{ backgroundColor: "rgba(122, 90, 248, 0.08)" }}>
+      <div className="custom-scrollbar flex-1 overflow-y-auto px-4 py-3" style={{ backgroundColor: "rgba(70, 95, 255, 0.06)" }}>
         {showWelcome ? (
           <div className="flex flex-col items-center py-6 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-500/20">
@@ -153,7 +167,7 @@ export default function ChatPanel() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 bg-white px-3 py-3 dark:border-gray-800 dark:bg-gray-900">
+      <div className="border-t border-brand-100 bg-white px-3 py-3 dark:border-brand-900 dark:bg-gray-900">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -163,7 +177,7 @@ export default function ChatPanel() {
             onKeyDown={handleKeyDown}
             placeholder="Ask me anything..."
             disabled={isLoading || !!pendingConfirmation}
-            className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:border-brand-400 focus:ring-1 focus:ring-brand-400 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-500 dark:focus:border-brand-500"
+            className="flex-1 rounded-lg border border-brand-200 bg-brand-50/50 px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none transition focus:border-brand-400 focus:ring-1 focus:ring-brand-400 disabled:opacity-50 dark:border-brand-800 dark:bg-brand-950/50 dark:text-white dark:placeholder-gray-500 dark:focus:border-brand-500"
           />
           <button
             onClick={handleSend}
@@ -185,7 +199,7 @@ export default function ChatPanel() {
             </svg>
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[10px] text-gray-300 dark:text-gray-600">
+        <p className="mt-1.5 text-center text-[10px] text-brand-300 dark:text-brand-700">
           Jido AI Assistant. Actions are permission-checked.
         </p>
       </div>

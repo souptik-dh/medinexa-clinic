@@ -15,6 +15,7 @@ import {
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
+import AddExistingDoctorForm from "@/components/doctors/AddExistingDoctorForm";
 import SpecializationMultiSelectFilter from "@/components/doctors/SpecializationMultiSelectFilter";
 import {
   BranchDoctor,
@@ -46,6 +47,7 @@ export default function BranchDoctorsPanel() {
   const [search, setSearch] = useState("");
   const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addExistingOpen, setAddExistingOpen] = useState(false);
 
   // Cached under the branch id so switching tabs and coming back to Doctors
   // shows the roster instantly instead of refetching every time.
@@ -92,25 +94,33 @@ export default function BranchDoctorsPanel() {
             Doctors
           </h3>
           {canManage && (
-            <button
-              onClick={() => setInviteOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-            >
-              <svg
-                className="h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setAddExistingOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Invite Doctor
-            </button>
+                Add Existing Doctor
+              </button>
+              <button
+                onClick={() => setInviteOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Invite Doctor
+              </button>
+            </div>
           )}
         </div>
 
@@ -279,6 +289,23 @@ export default function BranchDoctorsPanel() {
             reload();
           }}
           onCancel={() => setInviteOpen(false)}
+        />
+      </FormDrawer>
+
+      {/* Add existing doctor: doctor already has an account and is already
+       * associated with this clinic at another branch — no invite/token. */}
+      <FormDrawer
+        isOpen={addExistingOpen}
+        onClose={() => setAddExistingOpen(false)}
+        title="Add existing doctor"
+        description="Adds a doctor already associated with this clinic to this branch."
+      >
+        <AddExistingDoctorForm
+          onDone={() => {
+            setAddExistingOpen(false);
+            reload();
+          }}
+          onCancel={() => setAddExistingOpen(false)}
         />
       </FormDrawer>
     </div>

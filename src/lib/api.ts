@@ -584,9 +584,14 @@ export interface DoctorSpecialization {
 }
 
 export interface DoctorInviteCreateInput {
-  name: string;
+  /** Picking an existing clinic doctor (see doctorsApi.listByClinic) skips
+   * the invite entirely and fast-tracks a direct branch assignment - name
+   * and email are looked up server-side and may be omitted. Otherwise both
+   * are required to send a normal invite. */
+  doctor_id?: string;
+  name?: string;
   specialization_ids: string[];
-  email: string;
+  email?: string;
   phone?: string | null;
   reg_no?: string | null;
   smc_name?: string | null;
@@ -598,7 +603,29 @@ export interface DoctorInviteCreateInput {
   slot_template: SlotTemplateItem[];
 }
 
+export interface ClinicDoctorSummary {
+  id: string;
+  name: string;
+  specialization: string | null;
+  specializations: { id: string; name: string }[];
+  phone: string | null;
+  photo_url?: string | null;
+  doctor_degree?: string | null;
+  smc_name?: string | null;
+  /** The branches of this clinic the doctor is already active at, with the
+   * fee/currency/booking type they're set up with there — used to prefill
+   * sensible defaults when adding them to a new branch. */
+  branches: {
+    branch_id: string;
+    branch_name: string;
+    fee_amount: number;
+    currency: string;
+    slot_type: SlotType;
+  }[];
+}
+
 export interface DoctorInvite {
+  type: "invite";
   id: string;
   branch_id: string;
   name?: string | null;
@@ -611,6 +638,19 @@ export interface DoctorInvite {
   expires_at: string;
   created_at?: string;
 }
+
+/** Returned when the doctor already belongs to another branch in the same clinic. */
+export interface DirectAssignmentResult {
+  type: "direct_assignment";
+  id: string;
+  branch_id: string;
+  email: string;
+  doctor_id: string;
+  specializations: { id: string; name: string }[];
+  status: string;
+}
+
+export type DoctorInviteCreateResult = DoctorInvite | DirectAssignmentResult;
 
 export interface UnavailableDateRange {
   start_date: string;
@@ -1890,8 +1930,8 @@ export const staffApi = {
 // ---------------------------------------------------------------------------
 
 export const doctorInvitesApi = {
-  async create(branchId: string, input: DoctorInviteCreateInput): Promise<DoctorInvite> {
-    return apiFetch<DoctorInvite>(`/branches/${branchId}/doctor-invites`, {
+  async create(branchId: string, input: DoctorInviteCreateInput): Promise<DoctorInviteCreateResult> {
+    return apiFetch<DoctorInviteCreateResult>(`/branches/${branchId}/doctor-invites`, {
       method: "POST",
       body: JSON.stringify(input),
     });
@@ -1993,6 +2033,18 @@ export const doctorsApi = {
   async search(q: string, limit = 10): Promise<Paginated<DoctorSearchResult>> {
     return apiFetch<Paginated<DoctorSearchResult>>(
       `/doctors/search${query({ q, limit })}`
+    );
+  },
+
+  /** Doctors already actively assigned somewhere in this clinic - powers the
+   * "add existing doctor" picker. `excludeBranchId` drops doctors already
+   * active at that branch (typically the target branch of the add). */
+  async listByClinic(
+    clinicId: string,
+    opts?: { excludeBranchId?: string }
+  ): Promise<{ items: ClinicDoctorSummary[] }> {
+    return apiFetch<{ items: ClinicDoctorSummary[] }>(
+      `/clinics/${clinicId}/doctors${query({ exclude_branch_id: opts?.excludeBranchId })}`
     );
   },
 

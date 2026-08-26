@@ -5,6 +5,7 @@ import type {
   AgentStep,
   ToolCall,
   ToolResult,
+  NavigationLink,
 } from "./types";
 import { recognizeIntent } from "./intent-engine";
 import { getToolById } from "./tools";
@@ -45,12 +46,20 @@ function mapIntentToTool(intent: Intent): string | null {
     get_ledger: "get_ledger",
     get_audit_logs: "get_audit_logs",
     get_platform_stats: "get_platform_stats",
+    get_sales_report: "get_sales_report",
+    get_patient_report: "get_patient_report",
+    get_booking_report: "get_booking_report",
+    get_lab_test_report: "get_lab_test_report",
+    get_business_summary: "get_business_summary",
+    get_analytics: "get_analytics",
     confirm_appointment: "confirm_appointment",
     complete_appointment: "complete_appointment",
     cancel_appointment: "cancel_appointment",
     approve_lab_appointment: "approve_lab_appointment",
     reject_lab_appointment: "reject_lab_appointment",
+    complete_lab_appointment: "complete_lab_appointment",
     mark_notification_read: "mark_notification_read",
+    mark_all_notifications_read: "mark_all_notifications_read",
   };
   return mapping[intent.type] ?? null;
 }
@@ -69,6 +78,28 @@ function generateParameters(
     params.notificationId = intent.entities.notificationId;
   if (intent.entities.doctorId) params.doctorId = intent.entities.doctorId;
   if (intent.entities.branchId) params.branchId = intent.entities.branchId;
+
+  if (intent.entities.period) {
+    const p = intent.entities.period.toLowerCase();
+    if (p === "today") params.period = "today";
+    else if (p === "this week" || p === "weekly") params.period = "weekly";
+    else if (p === "this quarter" || p === "last quarter" || p === "quarterly") params.period = "quarterly";
+    else if (p === "this year" || p === "last year" || p === "yearly") params.period = "yearly";
+    else params.period = "monthly";
+  }
+
+  if (intent.entities.analyticsType) {
+    const t = intent.entities.analyticsType.toLowerCase();
+    if (t.includes("revenue")) params.type = "revenue_comparison";
+    else if (t.includes("patient")) params.type = "patient_growth";
+    else if (t.includes("booking") || t.includes("appointment")) params.type = "booking_trends";
+    else params.type = "performance";
+  }
+
+  if (intent.entities.destination) {
+    params.destination = intent.entities.destination;
+  }
+
   return params;
 }
 
@@ -121,7 +152,7 @@ export async function processMessage(
             content: "Action cancelled. Let me know if there's anything else I can help with.",
             timestamp: Date.now(),
           },
-          steps: [...steps, { type: "completed", description: "Action cancelled by user", timestamp: Date.now() }],
+          steps: [...steps, { type: "completed", description: "Action cancelled by user", icon: "🚫", timestamp: Date.now() }],
           newConversationId: conversationId ?? generateId(),
         };
       }
@@ -151,7 +182,7 @@ export async function processMessage(
         toolResult
       );
 
-      steps.push({ type: "completed", description: "Done", timestamp: Date.now() });
+      steps.push({ type: "completed", description: "Done", icon: "✅", timestamp: Date.now() });
 
       return {
         response: {
@@ -173,12 +204,20 @@ export async function processMessage(
 
   steps.push({
     type: "planning",
-    description: `Understood intent: ${intent.type.replace(/_/g, " ")} (${Math.round(intent.confidence * 100)}% confidence)`,
+    description: `Understanding request`,
+    icon: "🔎",
+    timestamp: Date.now(),
+  });
+
+  steps.push({
+    type: "planning",
+    description: `Intent: ${intent.type.replace(/_/g, " ")} (${Math.round(intent.confidence * 100)}% confidence)`,
+    icon: "🧠",
     timestamp: Date.now(),
   });
 
   if (intent.type === "greeting") {
-    steps.push({ type: "completed", description: "Greeting response", timestamp: Date.now() });
+    steps.push({ type: "completed", description: "Greeting response", icon: "👋", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
@@ -193,7 +232,7 @@ export async function processMessage(
   }
 
   if (intent.type === "help") {
-    steps.push({ type: "completed", description: "Help response", timestamp: Date.now() });
+    steps.push({ type: "completed", description: "Help response", icon: "📖", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
@@ -209,14 +248,19 @@ export async function processMessage(
 
   if (intent.type === "navigate") {
     const dest = intent.entities.destination ?? "the page you requested";
-    steps.push({ type: "completed", description: "Navigation guidance", timestamp: Date.now() });
+    const navLinks = getNavigationLinks(dest);
+    const linkText = navLinks.length > 0
+      ? `\n\n${navLinks.map((l) => `- [${l.label}](${l.href})`).join("\n")}`
+      : "";
+    steps.push({ type: "completed", description: "Navigation guidance", icon: "🧭", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
         role: "assistant",
-        content: `You can navigate to **${dest}** using the sidebar menu. Let me know if you need help finding anything specific!`,
+        content: `You can navigate to **${dest}** using the sidebar menu.${linkText}\n\nLet me know if you need help finding anything specific!`,
         timestamp: Date.now(),
         steps,
+        navigationLinks: navLinks,
       },
       steps,
       newConversationId: conversationId ?? generateId(),
@@ -224,7 +268,7 @@ export async function processMessage(
   }
 
   if (intent.type === "unknown") {
-    steps.push({ type: "completed", description: "Could not determine intent", timestamp: Date.now() });
+    steps.push({ type: "completed", description: "Could not determine intent", icon: "❓", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
@@ -240,7 +284,7 @@ export async function processMessage(
 
   const toolId = mapIntentToTool(intent);
   if (!toolId) {
-    steps.push({ type: "completed", description: "No tool for this intent", timestamp: Date.now() });
+    steps.push({ type: "completed", description: "No tool for this intent", icon: "🔧", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
@@ -270,14 +314,15 @@ export async function processMessage(
 
   steps.push({
     type: "checking_permissions",
-    description: `Checking access for ${tool.name}...`,
+    description: `Verifying your access`,
+    icon: "🔐",
     timestamp: Date.now(),
   });
 
   const permCheck = checkToolPermissions(user, toolId);
   if (!permCheck.allowed) {
     logBlockedAction(user, toolId, tool.name, permCheck.reason ?? "Permission denied");
-    steps.push({ type: "error", description: `Access denied: ${permCheck.reason}`, timestamp: Date.now() });
+    steps.push({ type: "error", description: `Access denied: ${permCheck.reason}`, icon: "🚫", timestamp: Date.now() });
     return {
       response: {
         id: generateId(),
@@ -293,7 +338,8 @@ export async function processMessage(
 
   steps.push({
     type: "checking_permissions",
-    description: "Permission check passed",
+    description: "Access verified",
+    icon: "✅",
     timestamp: Date.now(),
   });
 
@@ -318,6 +364,7 @@ export async function processMessage(
     steps.push({
       type: "executing",
       description: "Confirmation required",
+      icon: "⚠️",
       toolCallId: toolCall.id,
       timestamp: Date.now(),
     });
@@ -360,6 +407,7 @@ export async function processMessage(
   steps.push({
     type: "executing",
     description: `Running ${tool.name}...`,
+    icon: "⚙️",
     toolCallId: toolCall.id,
     timestamp: Date.now(),
   });
@@ -371,8 +419,9 @@ export async function processMessage(
   steps.push({
     type: "verifying",
     description: toolResult.success
-      ? `${tool.name} completed in ${toolResult.executionTimeMs}ms`
-      : `${tool.name} failed: ${toolResult.error}`,
+      ? `Completed in ${toolResult.executionTimeMs}ms`
+      : `Failed: ${toolResult.error}`,
+    icon: toolResult.success ? "✅" : "❌",
     toolCallId: toolCall.id,
     timestamp: Date.now(),
   });
@@ -406,6 +455,14 @@ function formatToolResult(
 
   if (!data) {
     return `**${toolName}** completed but returned no data.`;
+  }
+
+  const REPORT_TOOLS = [
+    "get_sales_report", "get_patient_report", "get_booking_report",
+    "get_lab_test_report", "get_business_summary", "get_analytics",
+  ];
+  if (REPORT_TOOLS.includes(toolName) && typeof data === "object" && !Array.isArray(data)) {
+    return `### ${toolName.replace(/_/g, " ")}\n\n` + formatReportResult(toolName, data as Record<string, unknown>);
   }
 
   // Unwrap common API response envelopes
@@ -523,6 +580,10 @@ function buildConfirmationDescription(
       return `Approve lab test appointment ${id}`;
     case "reject_lab_appointment":
       return `Reject lab test appointment ${id}`;
+    case "complete_lab_appointment":
+      return `Mark lab test appointment ${id} as completed`;
+    case "mark_all_notifications_read":
+      return "Mark all notifications as read";
     default:
       return `Execute ${toolId}`;
   }
@@ -533,10 +594,11 @@ function buildConfirmationMessage(
   params: Record<string, unknown>
 ): string {
   const id = params.appointmentId ?? params.notificationId ?? "N/A";
+  const target = params.appointmentId ? `**Target:** ${id}` : "";
   return (
     `I need your confirmation before proceeding.\n\n` +
     `**Action:** ${toolName}\n` +
-    `**Target:** ${id}\n\n` +
+    `${target}\n\n` +
     `Do you want me to proceed? (Reply "yes" to confirm or "no" to cancel)`
   );
 }
@@ -551,10 +613,12 @@ function getGreetingResponse(user: AiUser): string {
   return (
     `${timeGreeting}, **${user.name}**! I'm your MediNexa AI assistant. ` +
     `I can help you with:\n\n` +
-    `- **Viewing** appointments, patients, doctors, lab tests, and notifications\n` +
-    `- **Checking** subscription status, billing, and reports\n` +
-    `- **Managing** appointments and lab test workflows\n` +
-    `- **Navigating** the dashboard\n\n` +
+    "- **Viewing** appointments, patients, doctors, lab tests, and notifications\n" +
+    "- **Reports** on sales, patients, bookings, and lab tests\n" +
+    "- **Analytics** with comparisons, trends, and insights\n" +
+    "- **Business summaries** with alerts and key metrics\n" +
+    "- **Managing** appointments and lab test workflows\n" +
+    "- **Navigating** the dashboard\n\n" +
     `What would you like to do?`
   );
 }
@@ -569,12 +633,37 @@ function getHelpResponse(user: AiUser): string {
     "- \"What's my subscription status?\"",
     "- \"Show unread notifications\"",
     "- \"Show lab test appointments\"\n",
+    "### Sales & Revenue Reports",
+    "- \"Show today's sales\"",
+    "- \"Show monthly revenue\"",
+    "- \"Show quarterly sales report\"",
+    "- \"Show yearly revenue\"\n",
+    "### Patient Reports",
+    "- \"Show new patients this month\"",
+    "- \"Show patient growth\"",
+    "- \"How many patients do I have?\"\n",
+    "### Booking & Appointment Reports",
+    "- \"Show today's bookings\"",
+    "- \"Show booking statistics\"",
+    "- \"What is the appointment completion rate?\"\n",
+    "### Lab Test Reports",
+    "- \"Show lab test revenue\"",
+    "- \"Show monthly lab test bookings\"",
+    "- \"Most booked lab tests\"\n",
+    "### Business Insights",
+    "- \"Give me today's summary\"",
+    "- \"Show business performance\"",
+    "- \"What needs my attention?\"\n",
+    "### Analytics",
+    "- \"Compare this month with last month\"",
+    "- \"Show revenue growth\"",
+    "- \"Show patient trends\"\n",
     "### Take Actions",
     "- \"Confirm appointment [ID]\"",
     "- \"Complete appointment [ID]\"",
     "- \"Cancel appointment [ID]\"",
     "- \"Approve lab test appointment [ID]\"",
-    "- \"Reject lab test appointment [ID]\"\n",
+    "- \"Mark all notifications as read\"\n",
     "### Navigate",
     "- \"Go to dashboard\"",
     "- \"Open appointments page\"\n",
@@ -582,7 +671,7 @@ function getHelpResponse(user: AiUser): string {
     "- I enforce your **role permissions** at every step",
     "- **Destructive actions** require your explicit confirmation",
     "- I show my **thinking process** as I work through your request",
-    "- Your data never leaves this application",
+    "- The assistant is restricted to authorized data and actions within this application",
   ];
 
   if (user.role === "sys_admin") {
@@ -604,14 +693,170 @@ function getUnknownResponse(query: string): string {
     "\"Find a doctor\"",
     "\"Check my notifications\"",
     "\"What's my subscription status?\"",
+    "\"Show today's sales\"",
+    "\"Give me a monthly summary\"",
     "\"Help\" - to see all available commands",
   ];
-  const pick = suggestions.slice(0, 3);
+  const pick = suggestions.slice(0, 4);
 
   return (
     `I'm not sure how to help with \"${query.substring(0, 60)}\". ` +
     `Here are some things you can try:\n\n` +
     pick.map((s) => `- ${s}`).join("\n") +
-    `\n\nType **\"help\"** to see everything I can do.`
+    `\n\nType **"help"** to see everything I can do.`
   );
+}
+
+const PAGE_LINKS: Record<string, NavigationLink[]> = {
+  dashboard: [{ label: "Dashboard", href: "/dashboard" }],
+  appointments: [{ label: "Appointments", href: "/appointments" }],
+  patients: [{ label: "Patients", href: "/patients" }],
+  doctors: [{ label: "Doctors", href: "/doctors" }],
+  clinics: [{ label: "Clinics", href: "/clinics" }],
+  branches: [{ label: "Branches", href: "/branches" }],
+  staff: [{ label: "Staff", href: "/staff" }],
+  billing: [{ label: "Billing", href: "/billing" }],
+  settings: [{ label: "Settings", href: "/settings" }],
+  notifications: [{ label: "Notifications", href: "/notifications" }],
+  prescriptions: [{ label: "Prescriptions", href: "/prescriptions" }],
+  reports: [{ label: "Reports", href: "/reports" }],
+  "lab tests": [{ label: "Lab Tests", href: "/lab-test-appointments" }],
+  "lab-test-appointments": [{ label: "Lab Test Appointments", href: "/lab-test-appointments" }],
+  ledger: [{ label: "Payment Ledger", href: "/ledger" }],
+  subscription: [{ label: "Subscription", href: "/billing" }],
+  "ai assistant": [{ label: "AI Assistant", href: "/ai-assistant" }],
+  analytics: [{ label: "Reports", href: "/reports" }],
+  profile: [{ label: "Profile", href: "/settings" }],
+};
+
+function getNavigationLinks(destination: string): NavigationLink[] {
+  const lower = destination.toLowerCase().trim();
+  for (const [key, links] of Object.entries(PAGE_LINKS)) {
+    if (lower.includes(key)) return links;
+  }
+  return [];
+}
+
+function formatReportResult(toolName: string, data: Record<string, unknown>): string {
+  const lines: string[] = [];
+
+  if (data.period) lines.push(`**Period:** ${String(data.period)}`);
+  if (data.dateFrom && data.dateTo) lines.push(`**Date Range:** ${data.dateFrom} to ${data.dateTo}`);
+  lines.push("");
+
+  if (data.totalRevenue !== undefined) {
+    const rev = Number(data.totalRevenue);
+    lines.push(`| Metric | Value |`);
+    lines.push(`|--------|-------|`);
+    lines.push(`| Total Revenue | ₹${rev.toLocaleString("en-IN")} |`);
+    if (data.totalAppointments !== undefined) lines.push(`| Total Appointments | ${data.totalAppointments} |`);
+    if (data.totalLabAppointments !== undefined) lines.push(`| Total Lab Appointments | ${data.totalLabAppointments} |`);
+    if (data.total !== undefined && toolName.includes("Lab")) lines.push(`| Total Lab Tests | ${data.total} |`);
+    lines.push("");
+  }
+
+  if (data.totalBookings !== undefined) {
+    lines.push(`| Metric | Value |`);
+    lines.push(`|--------|-------|`);
+    lines.push(`| Total Bookings | ${data.totalBookings} |`);
+    if (data.revenue !== undefined) lines.push(`| Revenue | ₹${Number(data.revenue).toLocaleString("en-IN")} |`);
+    if (data.pending !== undefined) lines.push(`| Pending | ${data.pending} |`);
+    if (data.completed !== undefined) lines.push(`| Completed | ${data.completed} |`);
+    if (data.cancelled !== undefined) lines.push(`| Cancelled | ${data.cancelled} |`);
+    if (data.unreadNotifications !== undefined) lines.push(`| Unread Notifications | ${data.unreadNotifications} |`);
+    lines.push("");
+  }
+
+  if (data.totalNewPatients !== undefined) {
+    lines.push(`| Metric | Value |`);
+    lines.push(`|--------|-------|`);
+    lines.push(`| Total New Patients | ${data.totalNewPatients} |`);
+    lines.push(`| Total Returning Patients | ${data.totalReturningPatients} |`);
+    lines.push(`| Total Patients | ${data.totalPatients} |`);
+    if (data.newThisPeriod !== undefined) lines.push(`| New This Period | ${data.newThisPeriod} |`);
+    lines.push("");
+  }
+
+  if (data.completionRate !== undefined) {
+    lines.push(`| Metric | Value |`);
+    lines.push(`|--------|-------|`);
+    lines.push(`| Total | ${data.total} |`);
+    lines.push(`| Completed | ${data.completedCount} (${data.completionRate}%) |`);
+    lines.push(`| Cancelled | ${data.cancelledCount} (${data.cancellationRate}%) |`);
+    lines.push(`| Pending | ${data.pendingCount} |`);
+    lines.push(`| No-Show | ${data.noShowCount} |`);
+    lines.push(`| Confirmation Rate | ${data.confirmationRate}% |`);
+    lines.push("");
+  }
+
+  if (data.byStatus && typeof data.byStatus === "object") {
+    const entries = Object.entries(data.byStatus as Record<string, number>);
+    if (entries.length > 0) {
+      lines.push(`**By Status:**`);
+      for (const [status, count] of entries) {
+        lines.push(`- ${status}: ${count}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (data.byDoctor && Array.isArray(data.byDoctor) && data.byDoctor.length > 0) {
+    lines.push(`**By Doctor:**`);
+    for (const doc of data.byDoctor.slice(0, 5) as Record<string, unknown>[]) {
+      const name = String(doc.name ?? "");
+      const total = doc.total ?? doc.count ?? 0;
+      const completed = doc.completed;
+      const line = `- **${name}**: ${total} booking${Number(total) === 1 ? "" : "s"}`;
+      lines.push(completed !== undefined ? `${line} (${completed} completed)` : line);
+    }
+    lines.push("");
+  }
+
+  if (data.byBranch && Array.isArray(data.byBranch) && data.byBranch.length > 0) {
+    lines.push(`**By Branch:**`);
+    for (const b of data.byBranch.slice(0, 5) as Record<string, unknown>[]) {
+      lines.push(`- **${String(b.name ?? "")}**: ${b.count} bookings, ₹${Number(b.revenue ?? 0).toLocaleString("en-IN")} revenue`);
+    }
+    lines.push("");
+  }
+
+  if (data.mostBookedTests && Array.isArray(data.mostBookedTests) && data.mostBookedTests.length > 0) {
+    lines.push(`**Most Booked Tests:**`);
+    for (const t of data.mostBookedTests.slice(0, 5) as Record<string, unknown>[]) {
+      lines.push(`- **${String(t.name ?? "")}**: ${t.count} bookings, ₹${Number(t.revenue ?? 0).toLocaleString("en-IN")}`);
+    }
+    lines.push("");
+  }
+
+  if (data.alerts && Array.isArray(data.alerts) && data.alerts.length > 0) {
+    lines.push(`**Alerts:**`);
+    for (const alert of data.alerts as string[]) {
+      lines.push(`- ⚠️ ${alert}`);
+    }
+    lines.push("");
+  }
+
+  if (data.needsAttention === false) {
+    lines.push("✅ Everything looks good! No immediate attention needed.");
+  }
+
+  if (data.comparison && typeof data.comparison === "object") {
+    const comp = data.comparison as Record<string, string>;
+    lines.push(`**Comparison with Previous Period:**`);
+    if (comp.revenueChange) lines.push(`- Revenue: ${comp.revenueChange}`);
+    if (comp.bookingChange) lines.push(`- Bookings: ${comp.bookingChange}`);
+    if (comp.completionChange) lines.push(`- Completions: ${comp.completionChange}`);
+    if (comp.cancellationChange) lines.push(`- Cancellations: ${comp.cancellationChange}`);
+    lines.push("");
+  }
+
+  if (data.topDoctors && Array.isArray(data.topDoctors) && data.topDoctors.length > 0) {
+    lines.push(`**Top Performing Doctors:**`);
+    for (const doc of data.topDoctors.slice(0, 3) as Record<string, unknown>[]) {
+      lines.push(`- **${String(doc.name ?? "")}**: ${doc.count} appointments`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n") || `**${toolName}** completed successfully.`;
 }

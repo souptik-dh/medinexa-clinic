@@ -161,7 +161,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
     setBusy(true);
     setError(null);
     try {
-      await doctorInvitesApi.create(branch.id, {
+      const result = await doctorInvitesApi.create(branch.id, {
         name: inviteName,
         specialization_ids: specializations.map((s) => s.id),
         email: inviteEmail,
@@ -175,7 +175,12 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
         slot_type: slotType,
         slot_template: slots,
       });
-      toast.success("Doctor invite sent successfully.");
+      const isDirect = result.type === "direct_assignment";
+      toast.success(
+        isDirect
+          ? "Doctor added to this branch successfully."
+          : "Doctor invite sent successfully.",
+      );
       if (onDone) {
         onDone();
       } else {

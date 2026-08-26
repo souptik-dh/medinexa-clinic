@@ -20,6 +20,37 @@ function renderMarkdown(text: string): string {
   html = html.replace(/^- (.+)$/gm, '<li class="ml-3 list-disc text-gray-600 dark:text-gray-400">$1</li>');
   html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul class="my-1">$&</ul>');
   html = html.replace(/^_([^_]+)_$/gm, '<em class="text-gray-400 dark:text-gray-500">$1</em>');
+
+  const lines = html.split("\n");
+  const processed: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].startsWith("|") && i + 1 < lines.length && lines[i + 1].startsWith("|")) {
+      const headerCells = lines[i].split("|").filter((c) => c.trim());
+      processed.push('<div class="my-2 overflow-x-auto"><table class="w-full text-[11px] border-collapse">');
+      processed.push("<thead><tr>");
+      for (const cell of headerCells) {
+        processed.push(`<th class="border border-gray-200 dark:border-gray-700 px-2 py-1 text-left font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800">${cell.trim()}</th>`);
+      }
+      processed.push("</tr></thead><tbody>");
+      i += 2;
+      while (i < lines.length && lines[i].startsWith("|")) {
+        const cells = lines[i].split("|").filter((c) => c.trim());
+        processed.push("<tr>");
+        for (const cell of cells) {
+          processed.push(`<td class="border border-gray-200 dark:border-gray-700 px-2 py-1 text-gray-600 dark:text-gray-400">${cell.trim()}</td>`);
+        }
+        processed.push("</tr>");
+        i++;
+      }
+      processed.push("</tbody></table></div>");
+    } else {
+      processed.push(lines[i]);
+      i++;
+    }
+  }
+
+  html = processed.join("\n");
   html = html.replace(/\n/g, "<br />");
 
   return html;
@@ -60,6 +91,25 @@ export default function MessageBubble({ message }: Props) {
             className="rounded-lg bg-white px-3.5 py-2.5 text-sm text-gray-700 shadow-theme-xs dark:bg-gray-800 dark:text-gray-300"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
           />
+
+          {message.navigationLinks && message.navigationLinks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {message.navigationLinks.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-600 transition hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-400 dark:hover:bg-brand-900"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          )}
 
           {message.steps && message.steps.length > 0 && (
             <button

@@ -18,6 +18,7 @@ import ClinicTabs from "@/components/clinics/ClinicTabs";
 import ConfirmDeleteModal from "@/components/common/ConfirmDeleteModal";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
+import AddExistingDoctorForm from "@/components/doctors/AddExistingDoctorForm";
 import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
@@ -73,6 +74,7 @@ export default function DoctorsPanel() {
   const [busy, setBusy] = useState(false);
   const [doctorToRemove, setDoctorToRemove] = useState<BranchDoctor | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addExistingOpen, setAddExistingOpen] = useState(false);
 
   // doctor directory search (GET /doctors/search)
   const [searchQuery, setSearchQuery] = useState("");
@@ -294,13 +296,22 @@ export default function DoctorsPanel() {
             </button>
           </div>
           {tab === "invites" && canManage && (
-            <button
-              onClick={() => setInviteOpen(true)}
-              disabled={!branch}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
-            >
-              + New invite
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setAddExistingOpen(true)}
+                disabled={!branch}
+                className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:border-gray-300 disabled:text-gray-400 dark:hover:bg-brand-500/10"
+              >
+                Add Existing Doctor
+              </button>
+              <button
+                onClick={() => setInviteOpen(true)}
+                disabled={!branch}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              >
+                + New invite
+              </button>
+            </div>
           )}
         </div>
 
@@ -696,6 +707,23 @@ export default function DoctorsPanel() {
             if (branch) load(branch, "invites");
           }}
           onCancel={() => setInviteOpen(false)}
+        />
+      </FormDrawer>
+
+      {/* Add existing doctor: doctor already has an account and is already
+       * associated with this clinic at another branch — no invite/token. */}
+      <FormDrawer
+        isOpen={addExistingOpen}
+        onClose={() => setAddExistingOpen(false)}
+        title="Add existing doctor"
+        description="Adds a doctor already associated with a clinic to another branch."
+      >
+        <AddExistingDoctorForm
+          onDone={() => {
+            setAddExistingOpen(false);
+            if (branch) load(branch, "invites");
+          }}
+          onCancel={() => setAddExistingOpen(false)}
         />
       </FormDrawer>
     </div>

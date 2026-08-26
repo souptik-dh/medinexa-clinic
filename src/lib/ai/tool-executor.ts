@@ -290,6 +290,565 @@ const toolHandlers: Record<string, ToolHandler> = {
     return apiRequest("/super-admin/statistics", {}, token);
   },
 
+  // ─── Report handlers ─────────────────────────────────────────
+
+  get_sales_report: async (user, params, token) => {
+    const period = String(params.period ?? "monthly");
+    const now = new Date();
+    let dateFrom: string;
+    let dateTo: string;
+
+    if (params.dateFrom && params.dateTo) {
+      dateFrom = String(params.dateFrom);
+      dateTo = String(params.dateTo);
+    } else {
+      switch (period) {
+        case "today": {
+          const d = now.toISOString().split("T")[0];
+          dateFrom = d;
+          dateTo = d;
+          break;
+        }
+        case "weekly": {
+          const start = new Date(now);
+          start.setDate(now.getDate() - now.getDay());
+          dateFrom = start.toISOString().split("T")[0];
+          dateTo = now.toISOString().split("T")[0];
+          break;
+        }
+        case "quarterly": {
+          const start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+          dateFrom = start.toISOString().split("T")[0];
+          dateTo = now.toISOString().split("T")[0];
+          break;
+        }
+        case "yearly": {
+          dateFrom = `${now.getFullYear()}-01-01`;
+          dateTo = now.toISOString().split("T")[0];
+          break;
+        }
+        default: {
+          const start = new Date(now.getFullYear(), now.getMonth(), 1);
+          dateFrom = start.toISOString().split("T")[0];
+          dateTo = now.toISOString().split("T")[0];
+          break;
+        }
+      }
+    }
+
+    const clinicId = params.clinicId ?? user.clinicId;
+    const branchId = params.branchId ?? user.branchId;
+
+    const q = new URLSearchParams();
+    q.set("date_from", dateFrom);
+    q.set("date_to", dateTo);
+    q.set("limit", "200");
+    if (clinicId) q.set("clinic_id", String(clinicId));
+    if (branchId) q.set("branch_id", String(branchId));
+
+    const appointRes = await apiRequest(`/appointments?${q}`, {}, token) as Record<string, unknown>;
+    const appointments = (appointRes?.items ?? []) as Record<string, unknown>[];
+
+    const labQ = new URLSearchParams();
+    labQ.set("date_from", dateFrom);
+    labQ.set("date_to", dateTo);
+    labQ.set("limit", "200");
+    if (branchId) labQ.set("branch_id", String(branchId));
+
+    let labAppointments: Record<string, unknown>[] = [];
+    try {
+      const labRes = await apiRequest(`/clinic/lab-test-appointments?${labQ}`, {}, token) as Record<string, unknown>;
+      labAppointments = (labRes?.items ?? []) as Record<string, unknown>[];
+    } catch {
+      // Non-fatal - user may not have lab test access
+    }
+
+    let totalAppointmentRevenue = 0;
+    let totalLabRevenue = 0;
+    const byStatus: Record<string, number> = {};
+    const byPaymentMethod: Record<string, number> = {};
+    const byDay: Record<string, { revenue: number; count: number }> = {};
+    const byBranch: Record<string, { revenue: number; count: number }> = {};
+
+    for (const a of appointments) {
+      const fee = Number(a.fee_amount ?? 0);
+      const status = String(a.status ?? "unknown");
+      const method = String(a.payment_method ?? "unknown");
+      const date = String(a.scheduled_date ?? "").split("T")[0];
+      const bName = String(a.branch_name ?? a._branch_name ?? "Unknown");
+
+      if (status === "completed" || status === "paid") {
+        totalAppointmentRevenue += fee;
+      }
+
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+      if (method !== "unknown" && (status === "completed" || status === "paid")) {
+        byPaymentMethod[method] = (byPaymentMethod[method] ?? 0) + fee;
+      }
+      if (date) {
+        if (!byDay[date]) byDay[date] = { revenue: 0, count: 0 };
+        byDay[date].count++;
+        if (status === "completed" || status === "paid") byDay[date].revenue += fee;
+      }
+      if (bName !== "Unknown") {
+        if (!byBranch[bName]) byBranch[bName] = { revenue: 0, count: 0 };
+        byBranch[bName].count++;
+        if (status === "completed" || status === "paid") byBranch[bName].revenue += fee;
+      }
+    }
+
+    for (const lt of labAppointments) {
+      const price = Number(lt.price ?? 0);
+      const pStatus = String(lt.payment_status ?? "unknown");
+      if (pStatus === "PAID") {
+        totalLabRevenue += price;
+      }
+    }
+
+    return {
+      period,
+      dateFrom,
+      dateTo,
+      totalAppointmentRevenue,
+      totalLabRevenue,
+      totalRevenue: totalAppointmentRevenue + totalLabRevenue,
+      totalAppointments: appointments.length,
+      totalLabAppointments: labAppointments.length,
+      byStatus,
+      byPaymentMethod,
+      byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(0, 30),
+      byBranch: Object.entries(byBranch).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.revenue - a.revenue),
+    };
+  },
+
+  get_patient_report: async (user, params, token) => {
+    const period = String(params.period ?? "monthly");
+    const branchId = params.branchId ?? user.branchId;
+
+    if (!branchId) {
+      return { message: "No branch context available for patient report." };
+    }
+
+    const [newPatientsRes, returningPatientsRes] = await Promise.all([
+      apiRequest(`/branches/${branchId}/patients?type=new&limit=200`, {}, token) as Promise<Record<string, unknown>>,
+      apiRequest(`/branches/${branchId}/patients?type=old&limit=200`, {}, token) as Promise<Record<string, unknown>>,
+    ]);
+
+    const newPatients = (newPatientsRes?.items ?? []) as Record<string, unknown>[];
+    const returningPatients = (returningPatientsRes?.items ?? []) as Record<string, unknown>[];
+
+    const now = new Date();
+    let cutoffDate: Date;
+    switch (period) {
+      case "today":
+        cutoffDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case "quarterly":
+        cutoffDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        break;
+      case "yearly":
+        cutoffDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        cutoffDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const cutoffStr = cutoffDate.toISOString().split("T")[0];
+    const newThisPeriod = newPatients.filter((p) => {
+      const fd = String(p.first_visit_date ?? p.created_at ?? "");
+      return fd >= cutoffStr;
+    });
+
+    const byMonth: Record<string, number> = {};
+    for (const p of newPatients) {
+      const fd = String(p.first_visit_date ?? p.created_at ?? "").substring(0, 7);
+      if (fd) byMonth[fd] = (byMonth[fd] ?? 0) + 1;
+    }
+
+    return {
+      period,
+      totalNewPatients: newPatients.length,
+      totalReturningPatients: returningPatients.length,
+      totalPatients: newPatients.length + returningPatients.length,
+      newThisPeriod: newThisPeriod.length,
+      monthlyBreakdown: Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).slice(-12),
+    };
+  },
+
+  get_booking_report: async (user, params, token) => {
+    const period = String(params.period ?? "monthly");
+    const now = new Date();
+    let dateFrom: string;
+    let dateTo: string;
+
+    switch (period) {
+      case "today": {
+        const d = now.toISOString().split("T")[0];
+        dateFrom = d;
+        dateTo = d;
+        break;
+      }
+      case "weekly": {
+        const start = new Date(now);
+        start.setDate(now.getDate() - 7);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      case "quarterly": {
+        const start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      case "yearly": {
+        dateFrom = `${now.getFullYear()}-01-01`;
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      default: {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+    }
+
+    const q = new URLSearchParams();
+    q.set("date_from", dateFrom);
+    q.set("date_to", dateTo);
+    q.set("limit", "200");
+    if (user.clinicId) q.set("clinic_id", user.clinicId);
+
+    const appointRes = await apiRequest(`/appointments?${q}`, {}, token) as Record<string, unknown>;
+    const appointments = (appointRes?.items ?? []) as Record<string, unknown>[];
+
+    const byStatus: Record<string, number> = {};
+    const byDoctor: Record<string, { total: number; completed: number; cancelled: number }> = {};
+    const byDay: Record<string, number> = {};
+    let totalFee = 0;
+    let completedCount = 0;
+    let cancelledCount = 0;
+    let pendingCount = 0;
+    let noShowCount = 0;
+
+    for (const a of appointments) {
+      const status = String(a.status ?? "unknown");
+      const doctor = String(a.doctor_name ?? "Unknown");
+      const date = String(a.scheduled_date ?? "").split("T")[0];
+      const fee = Number(a.fee_amount ?? 0);
+
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+
+      if (status === "completed") { completedCount++; totalFee += fee; }
+      if (status === "cancelled") cancelledCount++;
+      if (status === "pending") pendingCount++;
+      if (status === "no_show") noShowCount++;
+
+      if (doctor !== "Unknown") {
+        if (!byDoctor[doctor]) byDoctor[doctor] = { total: 0, completed: 0, cancelled: 0 };
+        byDoctor[doctor].total++;
+        if (status === "completed") byDoctor[doctor].completed++;
+        if (status === "cancelled") byDoctor[doctor].cancelled++;
+      }
+      if (date) byDay[date] = (byDay[date] ?? 0) + 1;
+    }
+
+    const total = appointments.length;
+    const completionRate = total > 0 ? Math.round((completedCount / total) * 100) : 0;
+    const cancellationRate = total > 0 ? Math.round((cancelledCount / total) * 100) : 0;
+    const confirmationRate = total > 0 ? Math.round(((total - pendingCount) / total) * 100) : 0;
+
+    return {
+      period,
+      dateFrom,
+      dateTo,
+      total,
+      totalFee,
+      byStatus,
+      completedCount,
+      cancelledCount,
+      pendingCount,
+      noShowCount,
+      completionRate,
+      cancellationRate,
+      confirmationRate,
+      byDoctor: Object.entries(byDoctor).map(([name, data]) => ({ name, ...data })).sort((a, b) => b.total - a.total),
+      byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-30),
+    };
+  },
+
+  get_lab_test_report: async (user, params, token) => {
+    const period = String(params.period ?? "monthly");
+    const now = new Date();
+    let dateFrom: string;
+    let dateTo: string;
+
+    switch (period) {
+      case "today": {
+        const d = now.toISOString().split("T")[0];
+        dateFrom = d;
+        dateTo = d;
+        break;
+      }
+      case "quarterly": {
+        const start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      case "yearly": {
+        dateFrom = `${now.getFullYear()}-01-01`;
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      default: {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+    }
+
+    const q = new URLSearchParams();
+    q.set("date_from", dateFrom);
+    q.set("date_to", dateTo);
+    q.set("limit", "200");
+    if (params.branchId) q.set("branch_id", String(params.branchId));
+    else if (user.branchId) q.set("branch_id", user.branchId);
+
+    const labRes = await apiRequest(`/clinic/lab-test-appointments?${q}`, {}, token) as Record<string, unknown>;
+    const appointments = (labRes?.items ?? []) as Record<string, unknown>[];
+
+    const byStatus: Record<string, number> = {};
+    const byTest: Record<string, { count: number; revenue: number }> = {};
+    const byPaymentStatus: Record<string, number> = {};
+    let totalRevenue = 0;
+
+    for (const a of appointments) {
+      const status = String(a.status ?? "unknown");
+      const testName = String((a.test as Record<string, unknown>)?.name ?? a.test_name ?? "Unknown");
+      const pStatus = String(a.payment_status ?? "unknown");
+      const price = Number(a.price ?? 0);
+
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+      byPaymentStatus[pStatus] = (byPaymentStatus[pStatus] ?? 0) + 1;
+
+      if (pStatus === "PAID") totalRevenue += price;
+
+      if (testName !== "Unknown") {
+        if (!byTest[testName]) byTest[testName] = { count: 0, revenue: 0 };
+        byTest[testName].count++;
+        if (pStatus === "PAID") byTest[testName].revenue += price;
+      }
+    }
+
+    return {
+      period,
+      dateFrom,
+      dateTo,
+      total: appointments.length,
+      totalRevenue,
+      byStatus,
+      byPaymentStatus,
+      mostBookedTests: Object.entries(byTest)
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10),
+    };
+  },
+
+  get_business_summary: async (user, params, token) => {
+    const period = String(params.period ?? "today");
+    const now = new Date();
+    let dateFrom: string;
+    let dateTo: string;
+
+    switch (period) {
+      case "today": {
+        const d = now.toISOString().split("T")[0];
+        dateFrom = d;
+        dateTo = d;
+        break;
+      }
+      case "weekly": {
+        const start = new Date(now);
+        start.setDate(now.getDate() - 7);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+      default: {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        dateFrom = start.toISOString().split("T")[0];
+        dateTo = now.toISOString().split("T")[0];
+        break;
+      }
+    }
+
+    const q = new URLSearchParams();
+    q.set("date_from", dateFrom);
+    q.set("date_to", dateTo);
+    q.set("limit", "200");
+    if (user.clinicId) q.set("clinic_id", user.clinicId);
+
+    const [appointRes, notifRes] = await Promise.all([
+      apiRequest(`/appointments?${q}`, {}, token) as Promise<Record<string, unknown>>,
+      apiRequest(`/notifications?unread_only=true&limit=5`, {}, token).catch(() => ({ items: [] })) as Promise<Record<string, unknown>>,
+    ]);
+
+    const appointments = (appointRes?.items ?? []) as Record<string, unknown>[];
+    const unreadNotifs = Array.isArray(notifRes?.items) ? notifRes.items.length : 0;
+
+    let revenue = 0;
+    let pending = 0;
+    let completed = 0;
+    let cancelled = 0;
+    let todayBookings = 0;
+
+    for (const a of appointments) {
+      const status = String(a.status ?? "");
+      const fee = Number(a.fee_amount ?? 0);
+      if (status === "completed" || status === "paid") { revenue += fee; completed++; }
+      if (status === "pending") pending++;
+      if (status === "cancelled") cancelled++;
+      todayBookings++;
+    }
+
+    const alerts: string[] = [];
+    if (pending > 0) alerts.push(`${pending} appointment(s) pending confirmation`);
+    if (unreadNotifs > 0) alerts.push(`${unreadNotifs} unread notification(s)`);
+
+    let subscriptionInfo: Record<string, unknown> | null = null;
+    if (user.clinicId) {
+      try {
+        const subRes = await apiRequest(`/clinics/${user.clinicId}/subscription`, {}, token) as Record<string, unknown>;
+        const sub = subRes?.subscription as Record<string, unknown> | undefined;
+        if (sub) {
+          subscriptionInfo = {
+            status: sub.status,
+            daysRemaining: sub.days_remaining,
+            expiringSoon: sub.expiring_soon,
+          };
+          if (sub.status === "EXPIRING" || sub.expiring_soon) {
+            alerts.push(`Subscription expiring in ${sub.days_remaining} days`);
+          }
+          if (sub.status === "EXPIRED") {
+            alerts.push("Subscription has expired!");
+          }
+        }
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    return {
+      period,
+      dateFrom,
+      dateTo,
+      totalBookings: todayBookings,
+      revenue,
+      pending,
+      completed,
+      cancelled,
+      unreadNotifications: unreadNotifs,
+      subscription: subscriptionInfo,
+      alerts,
+      needsAttention: alerts.length > 0,
+    };
+  },
+
+  get_analytics: async (user, params, token) => {
+    const type = String(params.type ?? "revenue_comparison");
+    const period = String(params.period ?? "monthly");
+    const now = new Date();
+
+    function getPeriodDates(p: string, offset: number): { from: string; to: string } {
+      const d = new Date(now);
+      switch (p) {
+        case "monthly":
+          d.setMonth(d.getMonth() - offset);
+          return {
+            from: new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0],
+            to: new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split("T")[0],
+          };
+        case "quarterly": {
+          const qStart = Math.floor(d.getMonth() / 3) * 3;
+          d.setMonth(qStart - offset * 3);
+          return {
+            from: new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0],
+            to: new Date(d.getFullYear(), d.getMonth() + 3, 0).toISOString().split("T")[0],
+          };
+        }
+        case "yearly":
+          d.setFullYear(d.getFullYear() - offset);
+          return { from: `${d.getFullYear()}-01-01`, to: `${d.getFullYear()}-12-31` };
+        default:
+          return { from: "", to: "" };
+      }
+    }
+
+    const current = getPeriodDates(period, 0);
+    const previous = getPeriodDates(period, 1);
+
+    async function fetchAppointments(from: string, to: string) {
+      const q = new URLSearchParams();
+      q.set("date_from", from);
+      q.set("date_to", to);
+      q.set("limit", "200");
+      if (user.clinicId) q.set("clinic_id", user.clinicId);
+      const res = await apiRequest(`/appointments?${q}`, {}, token) as Record<string, unknown>;
+      return (res?.items ?? []) as Record<string, unknown>[];
+    }
+
+    const [currentAppts, previousAppts] = await Promise.all([
+      fetchAppointments(current.from, current.to),
+      fetchAppointments(previous.from, previous.to),
+    ]);
+
+    function summarize(appts: Record<string, unknown>[]) {
+      let revenue = 0;
+      let completed = 0;
+      let cancelled = 0;
+      const doctors: Record<string, number> = {};
+      for (const a of appts) {
+        const status = String(a.status ?? "");
+        const fee = Number(a.fee_amount ?? 0);
+        if (status === "completed" || status === "paid") { revenue += fee; completed++; }
+        if (status === "cancelled") cancelled++;
+        const doc = String(a.doctor_name ?? "");
+        if (doc) doctors[doc] = (doctors[doc] ?? 0) + 1;
+      }
+      return { total: appts.length, revenue, completed, cancelled, doctors };
+    }
+
+    const currSummary = summarize(currentAppts);
+    const prevSummary = summarize(previousAppts);
+
+    function pctChange(curr: number, prev: number): string {
+      if (prev === 0) return curr > 0 ? "+100%" : "0%";
+      const pct = Math.round(((curr - prev) / prev) * 100);
+      return `${pct > 0 ? "+" : ""}${pct}%`;
+    }
+
+    return {
+      type,
+      period,
+      currentPeriod: { ...current, ...currSummary },
+      previousPeriod: { ...previous, ...prevSummary },
+      comparison: {
+        revenueChange: pctChange(currSummary.revenue, prevSummary.revenue),
+        bookingChange: pctChange(currSummary.total, prevSummary.total),
+        completionChange: pctChange(currSummary.completed, prevSummary.completed),
+        cancellationChange: pctChange(currSummary.cancelled, prevSummary.cancelled),
+      },
+      topDoctors: Object.entries(currSummary.doctors)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5),
+    };
+  },
+
   confirm_appointment: async (_user, params, token) => {
     return apiRequest(`/appointments/${params.appointmentId}/confirm`, { method: "PATCH" }, token);
   },
@@ -312,6 +871,14 @@ const toolHandlers: Record<string, ToolHandler> = {
 
   mark_notification_read: async (_user, params, token) => {
     return apiRequest(`/notifications/${params.notificationId}/read`, { method: "PATCH" }, token);
+  },
+
+  mark_all_notifications_read: async (_user, _params, token) => {
+    return apiRequest(`/notifications/read-all`, { method: "PATCH" }, token);
+  },
+
+  complete_lab_appointment: async (_user, params, token) => {
+    return apiRequest(`/clinic/lab-test-appointments/${params.appointmentId}/complete`, { method: "POST" }, token);
   },
 };
 

@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 export interface BranchSelectValue {
   id: string;
   name: string;
+  clinic_id: string;
 }
 
 interface BranchSelectProps {
@@ -74,7 +75,7 @@ function StaffBranchLock({
   onChange,
 }: {
   clinic: { id: string; name: string } | null;
-  branch: BranchSelectValue | null;
+  branch: { id: string; name: string } | null;
   onChange: (branch: BranchSelectValue | null) => void;
 }) {
   const reported = useRef<string | null>(null);
@@ -82,9 +83,9 @@ function StaffBranchLock({
     const id = branch?.id ?? null;
     if (reported.current === id) return;
     reported.current = id;
-    onChange(branch ? { id: branch.id, name: branch.name } : null);
+    onChange(branch ? { id: branch.id, name: branch.name, clinic_id: clinic?.id ?? "" } : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branch?.id]);
+  }, [branch?.id, clinic?.id]);
 
   if (!branch) {
     return (

@@ -34,12 +34,20 @@ export type IntentType =
   | "get_ledger"
   | "get_audit_logs"
   | "get_platform_stats"
+  | "get_sales_report"
+  | "get_patient_report"
+  | "get_booking_report"
+  | "get_lab_test_report"
+  | "get_business_summary"
+  | "get_analytics"
   | "confirm_appointment"
   | "complete_appointment"
   | "cancel_appointment"
   | "approve_lab_appointment"
   | "reject_lab_appointment"
+  | "complete_lab_appointment"
   | "mark_notification_read"
+  | "mark_all_notifications_read"
   | "navigate"
   | "help"
   | "greeting"
@@ -90,8 +98,14 @@ export interface ToolResult {
 export interface AgentStep {
   type: "planning" | "checking_permissions" | "executing" | "verifying" | "completed" | "error";
   description: string;
+  icon?: string;
   toolCallId?: string;
   timestamp: number;
+}
+
+export interface NavigationLink {
+  label: string;
+  href: string;
 }
 
 export interface ChatMessage {
@@ -103,6 +117,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
   confirmationRequired?: ConfirmationRequest;
+  navigationLinks?: NavigationLink[];
 }
 
 export interface ConfirmationRequest {

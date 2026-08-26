@@ -6,13 +6,22 @@ interface Props {
   steps: AgentStep[];
 }
 
-const STEP_ICONS: Record<AgentStep["type"], { color: string; icon: string }> = {
-  planning: { color: "text-blue-light-500", icon: "P" },
-  checking_permissions: { color: "text-warning-500", icon: "C" },
-  executing: { color: "text-brand-500", icon: "E" },
-  verifying: { color: "text-purple-500", icon: "V" },
-  completed: { color: "text-success-500", icon: "D" },
-  error: { color: "text-error-500", icon: "!" },
+const STEP_COLORS: Record<AgentStep["type"], string> = {
+  planning: "text-blue-light-500",
+  checking_permissions: "text-warning-500",
+  executing: "text-brand-500",
+  verifying: "text-purple-500",
+  completed: "text-success-500",
+  error: "text-error-500",
+};
+
+const FALLBACK_ICONS: Record<AgentStep["type"], string> = {
+  planning: "🔎",
+  checking_permissions: "🔐",
+  executing: "⚙️",
+  verifying: "📊",
+  completed: "✅",
+  error: "❌",
 };
 
 export default function ToolExecutionDisplay({ steps }: Props) {
@@ -21,18 +30,15 @@ export default function ToolExecutionDisplay({ steps }: Props) {
   return (
     <div className="mt-2 space-y-1">
       {steps.map((step, i) => {
-        const config = STEP_ICONS[step.type];
+        const color = STEP_COLORS[step.type];
+        const icon = step.icon ?? FALLBACK_ICONS[step.type];
         return (
           <div
             key={i}
             className="flex items-center gap-2 text-[11px] leading-5 text-gray-400 dark:text-gray-500"
           >
-            <span
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white ${config.color.replace("text-", "bg-")}`}
-            >
-              {config.icon}
-            </span>
-            <span className={config.color}>{step.description}</span>
+            <span className="shrink-0 text-[11px] leading-none">{icon}</span>
+            <span className={color}>{step.description}</span>
           </div>
         );
       })}

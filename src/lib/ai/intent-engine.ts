@@ -125,6 +125,94 @@ const INTENT_PATTERNS: IntentPattern[] = [
     ],
   },
   {
+    type: "get_sales_report",
+    patterns: [
+      /\b(?:show|get|see|view|generate|pull)\b.*\b(?:sales|revenue|payment|collection|earning)s?\b/i,
+      /\b(?:sales|revenue|payment|collection|earning)s?\b.*\b(?:report|summary|breakdown|detail)s?\b/i,
+      /\bhow (?:much )?(?:did (?:we|the clinic))\b.*\b(?:earn|collect|make|get)\b/i,
+      /\b(?:today|this week|this month|this quarter|this year|last month|last quarter|last year)(?:'s)?\s+(?:sales|revenue|payment|collection|earning)s?\b/i,
+      /\b(?:daily|monthly|quarterly|yearly)\s+(?:sales|revenue|report|collection)s?\b/i,
+      /\bshow\s+(?:me\s+)?(?:the\s+)?(?:revenue|sales|payments?)\s+(?:by|for|from|between|of)\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|last quarter|this year|last year|daily|monthly|quarterly|yearly|weekly)\b/i },
+      { name: "dateRange", pattern: /\bbetween\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})\b/i },
+    ],
+  },
+  {
+    type: "get_patient_report",
+    patterns: [
+      /\b(?:show|get|see|view|generate)\b.*\bpatient\s+(?:report|statistics|growth|summary|analytics|breakdown|count|number)s?\b/i,
+      /\b(?:patient|patients)\s+(?:report|statistics|growth|summary|analytics|breakdown)s?\b/i,
+      /\bhow (?:many|much)\s+(?:new\s+)?patients?\b/i,
+      /\b(?:new|returning|active|inactive|total)\s+patients?\b.*\b(?:this|last|today|month|quarter|year|week)\b/i,
+      /\bpatient\s+(?:growth|trend|comparison)\b/i,
+      /\b(?:show|get)\b.*\bnew\s+patients?\b.*\b(?:today|this month|this quarter|this year|this week)\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|last quarter|this year|last year|daily|monthly|quarterly|yearly|weekly)\b/i },
+    ],
+  },
+  {
+    type: "get_booking_report",
+    patterns: [
+      /\b(?:show|get|see|view|generate)\b.*\b(?:booking|appointment)s?\s+(?:report|statistics|summary|analytics|breakdown|trend|growth|rate)s?\b/i,
+      /\b(?:booking|appointment)s?\s+(?:report|statistics|summary|analytics|breakdown|trend|growth|rate)s?\b/i,
+      /\bhow (?:many|much)\s+(?:bookings?|appointments?)\b/i,
+      /\b(?:booking|appointment)\s+(?:completion|cancellation|confirmation|no-show)\s+rate\b/i,
+      /\b(?:show|get)\b.*\b(?:booking|appointment)\s+(?:trend|growth|comparison|by)\b/i,
+      /\b(?:today|this week|this month|this quarter|this year)(?:'s)?\s+(?:bookings?|appointments?)\b/i,
+      /\b(?:confirmed|pending|completed|cancelled|no-show|upcoming)\s+(?:bookings?|appointments?)\s+(?:report|count|number|statistics)s?\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|last quarter|this year|last year|daily|monthly|quarterly|yearly|weekly)\b/i },
+      { name: "doctorId", pattern: /\b(?:for|by|doctor)\s+(?:dr\.?\s*)?([a-f0-9]{24})\b/i },
+    ],
+  },
+  {
+    type: "get_lab_test_report",
+    patterns: [
+      /\b(?:show|get|see|view|generate)\b.*\blab\s+test\s+(?:report|statistics|revenue|sales|summary|analytics|breakdown|growth)s?\b/i,
+      /\blab\s+test\s+(?:report|statistics|revenue|sales|summary|analytics|breakdown|growth)s?\b/i,
+      /\bhow (?:many|much)\s+lab\s+tests?\b/i,
+      /\blab\s+(?:test|testing)\s+(?:revenue|sales|income|earnings?)\b/i,
+      /\b(?:show|get)\b.*\blab\s+(?:test|testing)\s+(?:trend|growth|by|popular|most booked)\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|last quarter|this year|last year|daily|monthly|quarterly|yearly|weekly)\b/i },
+    ],
+  },
+  {
+    type: "get_business_summary",
+    patterns: [
+      /\b(?:show|get|give|generate)\b.*\b(?:business|clinic|daily|monthly|weekly|quarterly|yearly)\s+summary\b/i,
+      /\bwhat happened\s+(?:today|this week|this month)\b/i,
+      /\bwhat(?:'s| is)\s+(?:pending|needs?|urgent|important|attention)\b/i,
+      /\b(?:show|get)\b.*\b(?:important|key|pending|attention)\s+(?:alerts?|items?|tasks?)\b/i,
+      /\b(?:show|get)\b.*\b(?:clinic|branch|doctor|performance)\s+(?:summary|report|insights?|overview)\b/i,
+      /\bgive me (?:a |the )?(?:today|daily|monthly|weekly|quarterly|yearly) (?:summary|overview|report)\b/i,
+      /\b(?:what|how)(?:'s| is| are)\b.*\b(?:business|clinic|practice)\s+(?:doing|performing|looking)\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|this year|daily|monthly|weekly|quarterly|yearly)\b/i },
+    ],
+  },
+  {
+    type: "get_analytics",
+    patterns: [
+      /\b(?:show|get|see|view|generate)\b.*\b(?:analytics|analysis|compare|comparison|trend|insights?|growth)\b/i,
+      /\bcompare\b.*\b(?:this|last)\s+(?:month|quarter|year|week)\b/i,
+      /\b(?:this|last)\s+(?:month|quarter|year)\s+(?:vs|versus|compared to|against)\s+(?:this|last)\s+(?:month|quarter|year)\b/i,
+      /\b(?:revenue|patient|booking|appointment|lab test)\s+(?:growth|trend|comparison|decline|increase)\b/i,
+      /\b(?:best|top|worst|highest|lowest|most|least)\s+(?:performing|popular|booked|productive)\b.*\b(?:branch|doctor|clinic|service|month|period)\b/i,
+      /\b(?:show|identify|find)\b.*\b(?:unusual|declining|increasing|growing|dropping)\b.*\b(?:changes?|trends?|patterns?)\b/i,
+    ],
+    entities: [
+      { name: "period", pattern: /\b(today|this week|this month|last month|this quarter|last quarter|this year|last year|daily|monthly|quarterly|yearly|weekly)\b/i },
+      { name: "analyticsType", pattern: /\b(revenue|patient|booking|appointment|lab test|performance)\s+(?:comparison|growth|trend|analysis)\b/i },
+    ],
+  },
+  {
     type: "get_reviews",
     patterns: [
       /\b(?:show|list|get|see|view)\b.*\breview(?:s)?\b/i,
@@ -207,6 +295,21 @@ const INTENT_PATTERNS: IntentPattern[] = [
     patterns: [
       /\b(?:mark|mark as)\b.*\bnotification\b.*\b(?:read|done|viewed)\b/i,
       /\bdismiss\b.*\bnotification/i,
+    ],
+  },
+  {
+    type: "mark_all_notifications_read",
+    patterns: [
+      /\b(?:mark|mark all)\b.*\bnotifications?\b.*\b(?:all|read|done|viewed|cleared)\b/i,
+      /\b(?:clear|dismiss|read)\s+all\s+notifications?\b/i,
+      /\b(?:mark|set)\b.*\ball\b.*\bnotifications?\b.*\bread\b/i,
+    ],
+  },
+  {
+    type: "complete_lab_appointment",
+    patterns: [
+      /\b(?:complete|finish|mark as done)\b.*\blab test\b/i,
+      /\blab test\b.*\b(?:complete|finished|done)\b/i,
     ],
   },
   {
