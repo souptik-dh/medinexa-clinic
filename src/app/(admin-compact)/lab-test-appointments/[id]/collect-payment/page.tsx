@@ -6,7 +6,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { LabTestAppointmentDetail, labTestAppointmentsApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function CollectPaymentPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,7 +53,7 @@ export default function CollectPaymentPage() {
         items={[{ label: "Lab Appointments", href: "/lab-test-appointments" }]}
       />
       {loading ? (
-        <TruckLoader />
+        <DetailSkeleton rows={3} />
       ) : (
         <form
           onSubmit={handleSubmit}

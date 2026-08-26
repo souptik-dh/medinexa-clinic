@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import React, { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
@@ -9,9 +10,12 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 
+const REDIRECT_DELAY_MS = 2000;
+
 type RequiredField = "inviteCode" | "password" | "confirmPassword";
 
 export default function AcceptDoctorInviteForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
   const codeFromLink = searchParams.get("code");
@@ -25,10 +29,20 @@ export default function AcceptDoctorInviteForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const activationInFlight = useRef(false);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    if (!done) return;
+    const timer = setTimeout(() => {
+      router.push("/signin");
+    }, REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [done, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activationInFlight.current || done) return;
     setError(null);
     setSubmitted(true);
     if (!inviteCode.trim() || !password.trim() || !confirmPassword.trim()) {
@@ -39,6 +53,7 @@ export default function AcceptDoctorInviteForm() {
       setError("Passwords do not match.");
       return;
     }
+    activationInFlight.current = true;
     setSubmitting(true);
     try {
       const res = await authApi.acceptDoctorInvite({
@@ -49,8 +64,12 @@ export default function AcceptDoctorInviteForm() {
       });
       setRegNo(res.doctor.reg_no ?? "");
       setDone(true);
+      toast.success("Account activated successfully.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to accept this invite");
+      const message = err instanceof ApiError ? err.message : "Unable to accept this invite";
+      setError(message);
+      toast.error(message);
+      activationInFlight.current = false;
     } finally {
       setSubmitting(false);
     }
@@ -71,8 +90,26 @@ export default function AcceptDoctorInviteForm() {
 
           {done ? (
             <div className="space-y-5">
-              <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
-                Your account is now active. You can sign in from the Jido Healthcare doctor app.
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-success-500/30 bg-success-50 px-4 py-6 text-center dark:bg-success-500/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-500/15">
+                  <svg
+                    className="h-6 w-6 text-success-600 dark:text-success-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-success-700 dark:text-success-500">
+                    Account activated successfully
+                  </p>
+                  <p className="mt-1 text-sm text-success-700/80 dark:text-success-500/80">
+                    Redirecting you to sign in…
+                  </p>
+                </div>
               </div>
               {regNo && (
                 <div>

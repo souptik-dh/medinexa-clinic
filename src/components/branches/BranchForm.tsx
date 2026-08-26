@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import PincodeField from "@/components/common/PincodeField";
 import { PostOffice } from "@/hooks/usePincodeLookup";
 import { ApiError, TradeLicenseValidationStatus, branchesApi, clinicsApi } from "@/lib/api";
@@ -302,7 +302,7 @@ export default function BranchForm({
         )}
 
         {loading ? (
-          <TruckLoader label="Loading…" />
+          <DetailSkeleton rows={7} />
         ) : (
           <div className="mt-6 space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

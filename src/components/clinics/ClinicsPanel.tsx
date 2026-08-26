@@ -1,5 +1,6 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import Link from "next/link";
 import { Clinic, branchesApi, clinicsApi, doctorsApi } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
@@ -17,57 +18,51 @@ export default function ClinicsPanel() {
     isAdmin ||
     canCreateClinic(user?.role === "branch_staff" ? user.permissions : undefined);
 
-  const [clinics, setClinics] = useState<ClinicRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Cached under this key so returning to /clinics from another page shows
+  // the directory instantly instead of refetching from scratch every time.
+  const {
+    data: clinicsRes,
+    error: swrError,
+    isLoading: loading,
+  } = useSWR(isAdmin ? "clinics" : null, () => clinicsApi.list({ limit: 50 }));
+  const error = swrError ? getErrorMessage(swrError, "Failed to load clinics") : null;
+
+  const [doctorCounts, setDoctorCounts] = useState<Record<string, number | null>>({});
   const [search, setSearch] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await clinicsApi.list({ limit: 50 });
-      setClinics(res.items.map((c) => ({ ...c, doctorCount: null })));
-
-      res.items.forEach((clinic) => {
-        branchesApi
-          .list(clinic.id)
-          .then((branchesRes) =>
-            Promise.all(
-              branchesRes.items.map((b) =>
-                doctorsApi
-                  .listByBranch(b.id)
-                  .then((r) => r.total)
-                  .catch(() => 0)
-              )
+  useEffect(() => {
+    if (!clinicsRes) return;
+    clinicsRes.items.forEach((clinic) => {
+      branchesApi
+        .list(clinic.id)
+        .then((branchesRes) =>
+          Promise.all(
+            branchesRes.items.map((b) =>
+              doctorsApi
+                .listByBranch(b.id)
+                .then((r) => r.total)
+                .catch(() => 0)
             )
           )
-          .then((counts) => {
-            const total = counts.reduce((sum, n) => sum + n, 0);
-            setClinics((prev) =>
-              prev.map((row) =>
-                row.id === clinic.id ? { ...row, doctorCount: total } : row
-              )
-            );
-          })
-          .catch(() => {
-            setClinics((prev) =>
-              prev.map((row) =>
-                row.id === clinic.id ? { ...row, doctorCount: 0 } : row
-              )
-            );
-          });
-      });
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to load clinics"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        )
+        .then((counts) => {
+          const total = counts.reduce((sum, n) => sum + n, 0);
+          setDoctorCounts((prev) => ({ ...prev, [clinic.id]: total }));
+        })
+        .catch(() => {
+          setDoctorCounts((prev) => ({ ...prev, [clinic.id]: 0 }));
+        });
+    });
+  }, [clinicsRes]);
 
-  useEffect(() => {
-    if (isAdmin) load();
-  }, [isAdmin, load]);
+  const clinics: ClinicRow[] = useMemo(
+    () =>
+      (clinicsRes?.items ?? []).map((c) => ({
+        ...c,
+        doctorCount: doctorCounts[c.id] ?? null,
+      })),
+    [clinicsRes, doctorCounts]
+  );
 
   const filtered = useMemo(() => {
     if (!search.trim()) return clinics;

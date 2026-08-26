@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import TruckLoader from "@/components/common/TruckLoader";
+import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import toast from "react-hot-toast";
 import { Branch, BranchLicenseType, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -135,7 +135,7 @@ export default function BranchLicensesPanel({
       )}
 
       {loading ? (
-        <TruckLoader label="Loading licenses…" />
+        <ListSkeleton rows={3} />
       ) : (
         <div className="space-y-3">
           {LICENSE_DEFS.map((def) => {

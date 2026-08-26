@@ -21,6 +21,7 @@ export const BRANCH_STAFF_PERMISSIONS = [
   "branch:create",
   "branch:update",
   "lab_tests:manage",
+  "lab_appointments:create",
   "lab_appointments:view",
   "lab_appointments:approve",
   "lab_appointments:reject",
@@ -178,6 +179,12 @@ export const BRANCH_STAFF_PERMISSION_META: {
     module: "lab_tests",
     label: "Manage lab tests",
     description: "Create, edit, and configure lab tests",
+  },
+  {
+    permission: "lab_appointments:create",
+    module: "lab_tests",
+    label: "Book on behalf",
+    description: "Book lab test appointments for walk-in patients at the front desk",
   },
   {
     permission: "lab_appointments:view",
@@ -357,6 +364,12 @@ export function canManageLabTests(
   permissions: readonly BranchStaffPermission[] | undefined
 ): boolean {
   return hasPermission(permissions, "lab_tests:manage");
+}
+
+export function canCreateLabAppointments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "lab_appointments:create");
 }
 
 export function canViewLabAppointments(

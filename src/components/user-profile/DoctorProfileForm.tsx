@@ -8,7 +8,7 @@ import { getInputClass, inputClass } from "@/components/form/fieldStyles";
 import PhoneNumberField from "@/components/form/input/PhoneNumberField";
 import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 type RequiredField = "name" | "phone";
 
@@ -94,7 +94,7 @@ export default function DoctorProfileForm() {
       )}
 
       {loading ? (
-        <TruckLoader label="Loading profile…" />
+        <DetailSkeleton rows={3} />
       ) : (
         <div className="mt-5 space-y-4">
           <Field label="Name *">

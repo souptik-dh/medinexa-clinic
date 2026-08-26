@@ -1,5 +1,12 @@
 "use client";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import {
@@ -96,9 +103,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Reads localStorage only after mount (client-only) so the first client
   // render matches the server's null-state render - reading it in the useState
   // initializer above would make the client's first render diverge from SSR
-  // and trigger a hydration mismatch.
+  // and trigger a hydration mismatch. useLayoutEffect (rather than useEffect)
+  // runs this before the browser paints, so protected layouts that gate on
+  // `user` skip a blank frame instead of flashing it after paint.
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
+  useLayoutEffect(() => {
     setUser(getStoredUser());
     setClinic(readStoredClinic());
     setStaffClinic(readStoredStaffClinic());

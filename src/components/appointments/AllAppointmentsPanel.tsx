@@ -16,8 +16,9 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
+import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import {
   Appointment,
   AppointmentDetail,
@@ -303,8 +304,9 @@ export default function AllAppointmentsPanel() {
 
   return (
     <div>
-      {/* Header actions */}
-      {can("appointments:create") && (
+      {/* Header actions — books a doctor appointment or a lab test depending
+          on which tab is active. */}
+      {(activeTab === "doctor" ? can("appointments:create") : can("lab_appointments:create")) && (
         <div className="mb-4 flex justify-end">
           <button
             onClick={() => setShowBookModal(true)}
@@ -319,7 +321,7 @@ export default function AllAppointmentsPanel() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Book for patient
+            {activeTab === "doctor" ? "Book appointment for patient" : "Book lab test for patient"}
           </button>
         </div>
       )}
@@ -397,7 +399,7 @@ export default function AllAppointmentsPanel() {
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
             {docLoading ? (
-              <TruckLoader label="Loading appointments…" />
+              <TableSkeleton rows={5} cols={7} />
             ) : docItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 No appointments match the current filters.
@@ -579,7 +581,7 @@ export default function AllAppointmentsPanel() {
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
             {labLoading ? (
-              <TruckLoader label="Loading lab appointments…" />
+              <TableSkeleton rows={5} cols={8} />
             ) : labItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 No lab appointments match the current filters.
@@ -820,7 +822,7 @@ export default function AllAppointmentsPanel() {
       <Modal isOpen={isOpen && showDetail} onClose={closeModal} className="max-w-[560px] p-6 lg:p-8">
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">Appointment details</h5>
         {detailLoading ? (
-          <TruckLoader label="Loading…" />
+          <DetailSkeleton rows={4} />
         ) : detailError ? (
           <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {detailError}
@@ -876,15 +878,18 @@ export default function AllAppointmentsPanel() {
         </div>
       </Modal>
 
-      {/* Book-on-behalf modal */}
+      {/* Book-on-behalf modals — only the one matching the active tab ever opens. */}
       <BookAppointmentModal
-        isOpen={showBookModal}
+        isOpen={showBookModal && activeTab === "doctor"}
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId}
-        onBooked={() => {
-          if (activeTab === "doctor") loadDoctor();
-          else loadLab();
-        }}
+        onBooked={loadDoctor}
+      />
+      <BookLabTestModal
+        isOpen={showBookModal && activeTab === "lab"}
+        onClose={() => setShowBookModal(false)}
+        initialClinicId={clinicId}
+        onBooked={loadLab}
       />
     </div>
   );

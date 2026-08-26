@@ -8,20 +8,49 @@ import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSel
 import DatePicker from "@/components/form/date-picker";
 import {
   ApiError,
-  Appointment,
-  AvailabilityRangeResponse,
-  AvailabilityResponse,
-  BranchDoctor,
+  BranchClosure,
+  BranchLabTest,
+  BranchOperatingDay,
+  LabTestAppointment,
+  LabTestAvailabilityResponse,
+  LabTestSchedule,
   PatientRelationship,
-  appointmentsApi,
-  doctorsApi,
+  branchLabTestsApi,
+  branchScheduleApi,
+  labTestAppointmentsApi,
+  labTestSchedulesApi,
 } from "@/lib/api";
 import { addDays, formatCurrency, formatDateISO, today } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 
-// How far ahead to fetch the doctor's day-level availability for greying out
-// non-bookable dates in the calendar - matches the availability-range endpoint's cap.
+// How far ahead to compute day-level availability from the clinic/lab
+// schedule for greying out non-bookable dates in the calendar.
 const CALENDAR_RANGE_DAYS = 60;
+
+// A date is bookable for a lab test when: it isn't in the past, the branch
+// is open that weekday (branch-wide operating days), the branch's lab-test
+// schedule has an active window for that weekday, and no active closure
+// covers the date. This mirrors the server-side rule described for the
+// per-date availability endpoint, computed client-side so the whole
+// calendar can be highlighted from three cheap one-shot calls instead of a
+// per-day round trip.
+function isDateBookable(
+  dateStr: string,
+  operatingDays: BranchOperatingDay[],
+  labSchedules: LabTestSchedule[],
+  closures: BranchClosure[]
+): boolean {
+  if (dateStr < today()) return false;
+  const weekday = new Date(`${dateStr}T00:00:00`).getDay();
+  const branchOpen = operatingDays.find((d) => d.weekday === weekday)?.is_open ?? true;
+  if (!branchOpen) return false;
+  const hasActiveSchedule = labSchedules.some((s) => s.weekday === weekday && s.is_active);
+  if (!hasActiveSchedule) return false;
+  const closed = closures.some(
+    (c) => c.status !== "cancelled" && dateStr >= c.start_date && dateStr <= c.end_date
+  );
+  return !closed;
+}
 
 const RELATIONSHIPS: PatientRelationship[] = [
   "self",
@@ -38,64 +67,72 @@ const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
-interface BookAppointmentModalProps {
+interface BookLabTestModalProps {
   isOpen: boolean;
   onClose: () => void;
   /** Called after a successful booking so the host page can refresh its list. */
-  onBooked?: (appointment: Appointment) => void;
+  onBooked?: (appointment: LabTestAppointment) => void;
   /** Pre-selects this clinic in the branch picker (clinic-owner context). */
   initialClinicId?: string;
 }
 
-export default function BookAppointmentModal({
+export default function BookLabTestModal({
   isOpen,
   onClose,
   onBooked,
   initialClinicId,
-}: BookAppointmentModalProps) {
+}: BookLabTestModalProps) {
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
 
-  const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
-  const [doctorsLoading, setDoctorsLoading] = useState(false);
-  const [doctorsError, setDoctorsError] = useState<string | null>(null);
-  const [doctorId, setDoctorId] = useState("");
+  const [tests, setTests] = useState<BranchLabTest[]>([]);
+  const [testsLoading, setTestsLoading] = useState(false);
+  const [testsError, setTestsError] = useState<string | null>(null);
+  const [testId, setTestId] = useState("");
 
   const [date, setDate] = useState(today());
-  const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
+  const [availability, setAvailability] = useState<LabTestAvailabilityResponse | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState("");
-  // Day-level availability for the chosen doctor, used to grey out
-  // non-bookable dates directly in the calendar popup.
-  const [calendarAvailability, setCalendarAvailability] =
-    useState<AvailabilityRangeResponse | null>(null);
+  // Clinic-schedule-derived day availability, for greying out non-bookable
+  // dates directly in the calendar - branch-wide, so it only depends on the
+  // chosen branch, not on which specific lab test is selected.
+  const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[]>([]);
+  const [labSchedules, setLabSchedules] = useState<LabTestSchedule[]>([]);
+  const [closures, setClosures] = useState<BranchClosure[]>([]);
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
 
   const [relationship, setRelationship] = useState<PatientRelationship>("self");
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
+  const [notes, setNotes] = useState("");
 
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const doctor = doctors.find((d) => d.id === doctorId) ?? null;
+  const test = tests.find((t) => t.id === testId) ?? null;
 
   const reset = useCallback(() => {
     setBranch(null);
-    setDoctors([]);
-    setDoctorId("");
+    setTests([]);
+    setTestId("");
     setDate(today());
     setAvailability(null);
     setSelectedTime("");
-    setCalendarAvailability(null);
+    setOperatingDays([]);
+    setLabSchedules([]);
+    setClosures([]);
+    setScheduleLoaded(false);
     setRelationship("self");
     setPatientName("");
     setPhone("");
     setAge("");
     setGender("");
+    setNotes("");
     setFormError(null);
-    setDoctorsError(null);
+    setTestsError(null);
     setAvailError(null);
   }, []);
 
@@ -103,74 +140,55 @@ export default function BookAppointmentModal({
     if (isOpen) reset();
   }, [isOpen, reset]);
 
-  // Load the selected branch's doctors whenever the branch changes.
+  // Load the selected branch's active lab tests whenever the branch changes.
   useEffect(() => {
-    setDoctors([]);
-    setDoctorId("");
+    setTests([]);
+    setTestId("");
     setAvailability(null);
     setSelectedTime("");
     setAvailError(null);
-    setCalendarAvailability(null);
     if (!branch) return;
     let active = true;
-    setDoctorsLoading(true);
-    setDoctorsError(null);
-    doctorsApi
-      .listByBranch(branch.id)
+    setTestsLoading(true);
+    setTestsError(null);
+    branchLabTestsApi
+      .list(branch.id, "active")
       .then((res) => {
         if (!active) return;
-        setDoctors(res.items);
-        if (res.items.length === 0) setDoctorsError("No doctors are assigned to this branch yet.");
+        setTests(res.items);
+        if (res.items.length === 0) setTestsError("No lab tests are configured for this branch yet.");
       })
       .catch((err) => {
-        if (active) setDoctorsError(getErrorMessage(err, "Failed to load doctors"));
+        if (active) setTestsError(getErrorMessage(err, "Failed to load lab tests"));
       })
       .finally(() => {
-        if (active) setDoctorsLoading(false);
+        if (active) setTestsLoading(false);
       });
     return () => {
       active = false;
     };
   }, [branch]);
 
-  const loadAvailability = useCallback(async () => {
-    if (!branch || !doctorId || !date || doctor?.slot_type !== "fixed") {
-      setAvailability(null);
-      return;
-    }
-    setAvailLoading(true);
-    setAvailError(null);
-    setSelectedTime("");
-    try {
-      const res = await doctorsApi.availability(doctorId, date, branch.id);
-      setAvailability(res);
-    } catch (err) {
-      setAvailability(null);
-      setAvailError(getErrorMessage(err, "Failed to load availability"));
-    } finally {
-      setAvailLoading(false);
-    }
-  }, [branch, doctorId, date, doctor?.slot_type]);
-
+  // Clinic schedule for the chosen branch (operating days + closures) and
+  // its lab-test weekly schedule - drives the calendar's day highlighting.
   useEffect(() => {
-    loadAvailability();
-  }, [loadAvailability]);
-
-  // Day-level availability for the chosen doctor, so the calendar can grey
-  // out dates that are on leave, outside the doctor's schedule, or fully
-  // booked - before the front-desk staff even picks a date.
-  useEffect(() => {
-    setCalendarAvailability(null);
-    if (!branch || !doctorId) return;
+    setOperatingDays([]);
+    setLabSchedules([]);
+    setClosures([]);
+    setScheduleLoaded(false);
+    if (!branch) return;
     let active = true;
-    doctorsApi
-      .availabilityRange(doctorId, {
-        from: today(),
-        to: addDays(today(), CALENDAR_RANGE_DAYS),
-        branchId: branch.id,
-      })
-      .then((res) => {
-        if (active) setCalendarAvailability(res);
+    Promise.all([
+      branchScheduleApi.get(branch.id),
+      labTestSchedulesApi.list(branch.id),
+      branchScheduleApi.listClosures(branch.id),
+    ])
+      .then(([schedule, labScheduleRes, closureRes]) => {
+        if (!active) return;
+        setOperatingDays(schedule.operating_days);
+        setLabSchedules(labScheduleRes.items);
+        setClosures(closureRes.items);
+        setScheduleLoaded(true);
       })
       .catch(() => {
         // Non-fatal — the calendar just won't grey out unavailable dates.
@@ -178,30 +196,24 @@ export default function BookAppointmentModal({
     return () => {
       active = false;
     };
-  }, [branch, doctorId]);
+  }, [branch]);
 
-  const nonBookableDates = useMemo(
-    () =>
-      calendarAvailability
-        ? calendarAvailability.dates.filter((d) => !d.is_bookable).map((d) => d.date)
-        : [],
-    [calendarAvailability]
-  );
-  const calendarRangeEnd = calendarAvailability?.dates.length
-    ? calendarAvailability.dates[calendarAvailability.dates.length - 1].date
-    : undefined;
-  // Keyed by "YYYY-MM-DD" so onDayCreate can look up each cell's status in
-  // O(1) - dates outside the fetched window simply aren't in the map.
   const bookableByDate = useMemo(() => {
     const map: Record<string, boolean> = {};
-    calendarAvailability?.dates.forEach((d) => {
-      map[d.date] = d.is_bookable === true;
-    });
+    if (!scheduleLoaded) return map;
+    for (let i = 0; i <= CALENDAR_RANGE_DAYS; i++) {
+      const d = addDays(today(), i);
+      map[d] = isDateBookable(d, operatingDays, labSchedules, closures);
+    }
     return map;
-  }, [calendarAvailability]);
+  }, [scheduleLoaded, operatingDays, labSchedules, closures]);
 
-  // Marks each in-range day cell with a small dot: green + available, grey
-  // dash + not available - mirrors the legend shown under the calendar.
+  const nonBookableDates = useMemo(
+    () => Object.keys(bookableByDate).filter((d) => !bookableByDate[d]),
+    [bookableByDate]
+  );
+  const calendarRangeEnd = scheduleLoaded ? addDays(today(), CALENDAR_RANGE_DAYS) : undefined;
+
   const markDayAvailability = useCallback(
     (_dates: Date[], _dateStr: string, _instance: unknown, data?: unknown) => {
       const dayElem = data as HTMLElement | undefined;
@@ -229,21 +241,50 @@ export default function BookAppointmentModal({
     [bookableByDate]
   );
 
+  const loadAvailability = useCallback(async () => {
+    if (!branch || !testId || !date) {
+      setAvailability(null);
+      return;
+    }
+    setAvailLoading(true);
+    setAvailError(null);
+    setSelectedTime("");
+    try {
+      const res = await branchLabTestsApi.availability(branch.id, testId, date);
+      setAvailability(res);
+    } catch (err) {
+      setAvailability(null);
+      setAvailError(getErrorMessage(err, "Failed to load availability"));
+    } finally {
+      setAvailLoading(false);
+    }
+  }, [branch, testId, date]);
+
+  useEffect(() => {
+    loadAvailability();
+  }, [loadAvailability]);
+
   const submit = async () => {
     if (!branch) {
       setFormError("Please select a branch.");
       return;
     }
-    if (!doctorId) {
-      setFormError("Please select a doctor.");
+    if (!testId) {
+      setFormError("Please select a lab test.");
       return;
     }
     if (!date) {
       setFormError("Please pick a date.");
       return;
     }
-    if (doctor && doctor.slot_type === "fixed" && !selectedTime) {
+    if (!selectedTime) {
       setFormError("Please pick a time slot.");
+      return;
+    }
+    if (test?.prescription_required) {
+      setFormError(
+        "This test requires a prescription on file, which isn't supported by this booking form yet."
+      );
       return;
     }
     if (!patientName.trim()) {
@@ -254,12 +295,15 @@ export default function BookAppointmentModal({
     setBusy(true);
     setFormError(null);
     try {
-      const created = await appointmentsApi.create(
+      const created = await labTestAppointmentsApi.create(
         {
-          doctor_id: doctorId,
           branch_id: branch.id,
-          date,
-          ...(doctor && doctor.slot_type === "fixed" ? { time: selectedTime } : {}),
+          branch_lab_test_id: testId,
+          service_mode: "CLINIC",
+          appointment_date: date,
+          start_time: selectedTime,
+          payment_method: "PAY_AT_CLINIC",
+          patient_notes: notes.trim() || undefined,
           patient_details: {
             relationship,
             name: patientName.trim(),
@@ -270,17 +314,14 @@ export default function BookAppointmentModal({
         },
         crypto.randomUUID()
       );
-      toast.success(
-        `Appointment booked for ${created.patient_details?.name ?? patientName.trim()}` +
-          (created.scheduled_time ? ` at ${created.scheduled_time}` : "")
-      );
+      toast.success(`Lab test booked for ${patientName.trim()} at ${selectedTime}`);
       onBooked?.(created);
       onClose();
     } catch (err) {
       const message =
         err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
           ? "That slot was just taken. Please pick another."
-          : getErrorMessage(err, "Unable to book the appointment.");
+          : getErrorMessage(err, "Unable to book the lab test appointment.");
       setFormError(message);
       toast.error(message);
       // Refresh slots so a just-taken slot no longer looks available.
@@ -294,7 +335,7 @@ export default function BookAppointmentModal({
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[900px] p-6 lg:p-8">
       <div>
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Book appointment for a patient
+          Book a lab test for a patient
         </h5>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Front-desk booking &mdash; the appointment is created on behalf of the walk-in
@@ -320,41 +361,45 @@ export default function BookAppointmentModal({
               />
             </div>
 
-            {/* Doctor */}
+            {/* Lab test */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Doctor
+                Lab test
               </label>
-              {doctorsLoading ? (
+              {testsLoading ? (
                 <ListSkeleton rows={3} />
-              ) : doctorsError ? (
-                <p className="text-sm text-error-600 dark:text-error-400">{doctorsError}</p>
+              ) : testsError ? (
+                <p className="text-sm text-error-600 dark:text-error-400">{testsError}</p>
               ) : (
                 <select
-                  value={doctorId}
-                  onChange={(e) => setDoctorId(e.target.value)}
+                  value={testId}
+                  onChange={(e) => setTestId(e.target.value)}
                   disabled={!branch}
                   className={inputClass}
                 >
                   <option value="">
-                    {!branch ? "Select a branch first" : "Select doctor"}
+                    {!branch ? "Select a branch first" : "Select lab test"}
                   </option>
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                      {d.specialization ? ` — ${d.specialization}` : ""}
+                  {tests.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.test_name} — {formatCurrency(t.price, t.currency)}
                     </option>
                   ))}
                 </select>
               )}
-              {doctor && (
+              {test && (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge size="sm" color="light">
-                    Fee: {formatCurrency(doctor.fee_amount, doctor.currency)}
+                    {formatCurrency(test.price, test.currency)}
                   </Badge>
-                  <Badge size="sm" color={doctor.slot_type === "sequential" ? "info" : "light"}>
-                    {doctor.slot_type === "sequential" ? "As per bookings" : "Fixed slots"}
+                  <Badge size="sm" color="light">
+                    {test.duration_minutes} min
                   </Badge>
+                  {test.prescription_required && (
+                    <Badge size="sm" color="warning">
+                      Prescription required
+                    </Badge>
+                  )}
                 </div>
               )}
             </div>
@@ -364,14 +409,14 @@ export default function BookAppointmentModal({
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
                 Date
               </label>
-              {!doctorId ? (
+              {!testId ? (
                 <div className="flex h-24 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500">
-                  Select a doctor to see availability
+                  Select a lab test to see availability
                 </div>
               ) : (
                 <div className="rounded-xl border border-gray-200 p-2 dark:border-gray-800">
                   <DatePicker
-                    id="book-appointment-date"
+                    id="book-lab-test-date"
                     inline
                     defaultDate={date}
                     minDate={today()}
@@ -384,28 +429,29 @@ export default function BookAppointmentModal({
                   />
                 </div>
               )}
-              {doctorId && (
+              {testId && (
                 <>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-success-500" /> Available
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> Doctor not available
+                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> Not available
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full bg-brand-500" /> Selected
                     </span>
                   </div>
                   <p className="mt-2 rounded-lg border border-brand-500/20 bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-400">
-                    Past dates, leaves, outside schedule, or fully booked dates are not selectable.
+                    Availability follows the clinic&apos;s schedule — past dates, closed
+                    weekdays, and branch closures are not selectable.
                   </p>
                 </>
               )}
             </div>
 
-            {/* Time slot — fixed doctors only */}
-            {doctor && doctor.slot_type === "fixed" && (
+            {/* Time slot */}
+            {testId && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
                   Time slot
@@ -422,40 +468,28 @@ export default function BookAppointmentModal({
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     No bookable slots for this date.
                   </p>
-                ) : availability.status === "leave" ? (
-                  <p className="text-sm text-error-600 dark:text-error-400">
-                    Doctor is on leave for this date
-                    {availability.leave?.reason ? ` — ${availability.leave.reason}` : ""}.
-                  </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {availability.slots.map((slot) => (
                       <button
-                        key={slot.time}
+                        key={slot.start}
                         type="button"
                         disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.time)}
+                        onClick={() => setSelectedTime(slot.start)}
                         className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                          selectedTime === slot.time
+                          selectedTime === slot.start
                             ? "border-brand-500 bg-brand-500 text-white"
                             : slot.available
                               ? "border-success-500/30 bg-success-50 text-success-700 hover:border-brand-400 dark:bg-success-500/10 dark:text-success-500"
                               : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
                         }`}
                       >
-                        {slot.time}
+                        {slot.start}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-            )}
-
-            {doctor && doctor.slot_type === "sequential" && (
-              <p className="rounded-lg border border-info-500/30 bg-info-50 px-4 py-3 text-sm text-info-700 dark:bg-info-500/10 dark:text-info-400">
-                This doctor books as per bookings — the next free slot for the chosen
-                date is assigned automatically.
-              </p>
             )}
           </div>
 
@@ -535,6 +569,18 @@ export default function BookAppointmentModal({
                 ))}
               </select>
             </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                Notes
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional — e.g. fasting since last night"
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              />
+            </div>
           </div>
 
           {formError && (
@@ -553,10 +599,10 @@ export default function BookAppointmentModal({
           </button>
           <button
             onClick={submit}
-            disabled={busy || !branch || !doctorId}
+            disabled={busy || !branch || !testId}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Booking…" : "Book appointment"}
+            {busy ? "Booking…" : "Book lab test"}
           </button>
         </div>
       </div>

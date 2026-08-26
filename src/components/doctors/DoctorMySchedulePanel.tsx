@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import {
   ApiError,
   BranchOperatingDay,
@@ -54,7 +54,7 @@ export default function DoctorMySchedulePanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <TruckLoader label="Loading schedule…" />
+        <DetailSkeleton rows={3} />
       </div>
     );
   }

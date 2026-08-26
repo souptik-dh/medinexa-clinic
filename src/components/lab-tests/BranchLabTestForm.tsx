@@ -10,7 +10,7 @@ import {
 } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import TruckLoader from "@/components/common/TruckLoader";
+import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 interface ConfigForm {
   test_id: string;
@@ -139,7 +139,11 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
   };
 
   if (loading) {
-    return <TruckLoader label="Loading…" />;
+    return (
+      <div className="max-w-[500px] rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
+        <DetailSkeleton rows={5} />
+      </div>
+    );
   }
 
   return (

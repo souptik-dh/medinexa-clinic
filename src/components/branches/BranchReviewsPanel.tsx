@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import { ApiError, BranchReview, RatingSummary, reviewsApi } from "@/lib/api";
-import TruckLoader from "@/components/common/TruckLoader";
+import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import RatingStars from "@/components/common/RatingStars";
 
 interface BranchReviewsPanelProps {
@@ -43,7 +43,7 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
       </div>
 
       {loading ? (
-        <TruckLoader label="Loading reviews…" />
+        <ListSkeleton rows={3} />
       ) : error ? (
         <p className="mt-4 text-sm text-error-600 dark:text-error-400">{error}</p>
       ) : reviews.length === 0 ? (

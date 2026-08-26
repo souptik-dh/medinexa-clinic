@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import TruckLoader from "@/components/common/TruckLoader";
+import { CardGridSkeleton } from "@/components/ui/skeleton/Skeleton";
 import toast from "react-hot-toast";
 import { BranchGalleryImage, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -127,7 +127,7 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       )}
 
       {loading ? (
-        <TruckLoader label="Loading gallery…" />
+        <CardGridSkeleton count={8} />
       ) : images.length === 0 ? (
         <div className="py-12 text-center">
           <svg

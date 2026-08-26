@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Badge from "@/components/ui/badge/Badge";
-import TruckLoader from "@/components/common/TruckLoader";
+import { Skeleton, DetailSkeleton, ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import RatingStars from "@/components/common/RatingStars";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -217,7 +217,7 @@ export default function DoctorProfilePanel() {
   if (loading) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        <TruckLoader label="Loading profile…" />
+        <DetailSkeleton rows={4} />
       </div>
     );
   }
@@ -312,7 +312,7 @@ export default function DoctorProfilePanel() {
             Bookings at this branch
           </h4>
           {bookingsLoading ? (
-            <TruckLoader label="Loading…" />
+            <Skeleton className="mt-3 h-8 w-64" />
           ) : bookingsError ? (
             <p className="mt-2 text-sm text-error-600 dark:text-error-400">{bookingsError}</p>
           ) : (
@@ -335,7 +335,7 @@ export default function DoctorProfilePanel() {
             Invite record
           </h4>
           {invitesLoading ? (
-            <TruckLoader label="Loading…" />
+            <Skeleton className="mt-3 h-8 w-48" />
           ) : invitesError ? (
             <p className="mt-2 text-sm text-error-600 dark:text-error-400">{invitesError}</p>
           ) : invites && invites.length > 0 ? (
@@ -371,7 +371,7 @@ export default function DoctorProfilePanel() {
             {rating && <RatingStars average={rating.average} count={rating.count} />}
           </div>
           {reviewsLoading ? (
-            <TruckLoader label="Loading…" />
+            <ListSkeleton rows={3} />
           ) : reviewsError ? (
             <p className="mt-4 text-sm text-error-600 dark:text-error-400">{reviewsError}</p>
           ) : !reviews || reviews.length === 0 ? (

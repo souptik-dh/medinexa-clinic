@@ -14,7 +14,7 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
-import TruckLoader from "@/components/common/TruckLoader";
+import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
 import {
   Appointment,
@@ -276,7 +276,7 @@ export default function AppointmentsPanel() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         {loading ? (
-          <TruckLoader label="Loading appointments…" />
+          <TableSkeleton rows={5} cols={7} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             No appointments match the current filters.
@@ -532,7 +532,7 @@ export default function AppointmentsPanel() {
         </h5>
 
         {detailLoading ? (
-          <TruckLoader label="Loading…" />
+          <DetailSkeleton rows={4} />
         ) : detailError ? (
           <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {detailError}
