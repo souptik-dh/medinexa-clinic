@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { addDays, formatCurrency, formatDateISO, today } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // How far ahead to compute day-level availability from the clinic/lab
 // schedule for greying out non-bookable dates in the calendar.
@@ -82,6 +83,7 @@ export default function BookLabTestModal({
   onBooked,
   initialClinicId,
 }: BookLabTestModalProps) {
+  const { t } = useTranslation();
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
 
   const [tests, setTests] = useState<BranchLabTest[]>([]);
@@ -156,10 +158,10 @@ export default function BookLabTestModal({
       .then((res) => {
         if (!active) return;
         setTests(res.items);
-        if (res.items.length === 0) setTestsError("No lab tests are configured for this branch yet.");
+        if (res.items.length === 0) setTestsError(t("bookLabTestModal.noLabTestsConfigured"));
       })
       .catch((err) => {
-        if (active) setTestsError(getErrorMessage(err, "Failed to load lab tests"));
+        if (active) setTestsError(getErrorMessage(err, t("labTests.failedToLoad")));
       })
       .finally(() => {
         if (active) setTestsLoading(false);
@@ -254,7 +256,7 @@ export default function BookLabTestModal({
       setAvailability(res);
     } catch (err) {
       setAvailability(null);
-      setAvailError(getErrorMessage(err, "Failed to load availability"));
+      setAvailError(getErrorMessage(err, t("doctorProfile.failedToLoadAvailability")));
     } finally {
       setAvailLoading(false);
     }
@@ -266,29 +268,27 @@ export default function BookLabTestModal({
 
   const submit = async () => {
     if (!branch) {
-      setFormError("Please select a branch.");
+      setFormError(t("bookAppointmentModal.pleaseSelectBranch"));
       return;
     }
     if (!testId) {
-      setFormError("Please select a lab test.");
+      setFormError(t("branchLabTestForm.pleaseSelectLabTest"));
       return;
     }
     if (!date) {
-      setFormError("Please pick a date.");
+      setFormError(t("bookAppointmentModal.pleaseSelectDate"));
       return;
     }
     if (!selectedTime) {
-      setFormError("Please pick a time slot.");
+      setFormError(t("bookAppointmentModal.pleaseSelectTimeSlot"));
       return;
     }
     if (test?.prescription_required) {
-      setFormError(
-        "This test requires a prescription on file, which isn't supported by this booking form yet."
-      );
+      setFormError(t("bookLabTestModal.prescriptionRequiredNotSupported"));
       return;
     }
     if (!patientName.trim()) {
-      setFormError("Please enter the patient's name.");
+      setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
       return;
     }
     if (busy) return;
@@ -314,14 +314,14 @@ export default function BookLabTestModal({
         },
         crypto.randomUUID()
       );
-      toast.success(`Lab test booked for ${patientName.trim()} at ${selectedTime}`);
+      toast.success(t("bookLabTestModal.labTestBookedFor", { name: patientName.trim(), time: selectedTime }));
       onBooked?.(created);
       onClose();
     } catch (err) {
       const message =
         err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
-          ? "That slot was just taken. Please pick another."
-          : getErrorMessage(err, "Unable to book the lab test appointment.");
+          ? t("bookAppointmentModal.slotJustTaken")
+          : getErrorMessage(err, t("bookLabTestModal.unableToBook"));
       setFormError(message);
       toast.error(message);
       // Refresh slots so a just-taken slot no longer looks available.
@@ -335,24 +335,23 @@ export default function BookLabTestModal({
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[900px] p-6 lg:p-8">
       <div>
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Book a lab test for a patient
+          {t("bookLabTestModal.title")}
         </h5>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Front-desk booking &mdash; the appointment is created on behalf of the walk-in
-          patient.
+          {t("bookAppointmentModal.subtitle")}
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Appointment — left column */}
           <div className="space-y-5">
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-              Appointment
+              {t("calendar.appointmentTitle")}
             </h6>
 
             {/* Branch (role-aware: locked for staff, picker for owners) */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Clinic &amp; branch
+                {t("bookAppointmentModal.clinicAndBranch")}
               </label>
               <BranchSelect
                 value={branch?.id ?? ""}
@@ -364,7 +363,7 @@ export default function BookLabTestModal({
             {/* Lab test */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Lab test
+                {t("bookLabTestModal.labTest")}
               </label>
               {testsLoading ? (
                 <ListSkeleton rows={3} />
@@ -378,7 +377,7 @@ export default function BookLabTestModal({
                   className={inputClass}
                 >
                   <option value="">
-                    {!branch ? "Select a branch first" : "Select lab test"}
+                    {!branch ? t("bookAppointmentModal.selectBranchFirst") : t("bookLabTestModal.selectLabTest")}
                   </option>
                   {tests.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -393,11 +392,11 @@ export default function BookLabTestModal({
                     {formatCurrency(test.price, test.currency)}
                   </Badge>
                   <Badge size="sm" color="light">
-                    {test.duration_minutes} min
+                    {t("bookLabTestModal.durationMinShort", { count: test.duration_minutes })}
                   </Badge>
                   {test.prescription_required && (
                     <Badge size="sm" color="warning">
-                      Prescription required
+                      {t("bookLabTestModal.prescriptionRequired")}
                     </Badge>
                   )}
                 </div>
@@ -407,11 +406,11 @@ export default function BookLabTestModal({
             {/* Date */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Date
+                {t("schedule.date")}
               </label>
               {!testId ? (
                 <div className="flex h-24 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500">
-                  Select a lab test to see availability
+                  {t("bookLabTestModal.selectLabTestToSeeAvailability")}
                 </div>
               ) : (
                 <div className="rounded-xl border border-gray-200 p-2 dark:border-gray-800">
@@ -433,18 +432,17 @@ export default function BookLabTestModal({
                 <>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-success-500" /> Available
+                      <span className="h-2 w-2 rounded-full bg-success-500" /> {t("bookAppointmentModal.availableLegend")}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> Not available
+                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> {t("bookLabTestModal.notAvailableLegend")}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-brand-500" /> Selected
+                      <span className="h-2 w-2 rounded-full bg-brand-500" /> {t("doctors.selected")}
                     </span>
                   </div>
                   <p className="mt-2 rounded-lg border border-brand-500/20 bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-400">
-                    Availability follows the clinic&apos;s schedule — past dates, closed
-                    weekdays, and branch closures are not selectable.
+                    {t("bookLabTestModal.availabilityFollowsSchedule")}
                   </p>
                 </>
               )}
@@ -454,7 +452,7 @@ export default function BookLabTestModal({
             {testId && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Time slot
+                  {t("bookAppointmentModal.timeSlot")}
                 </label>
                 {availLoading ? (
                   <div className="flex flex-wrap gap-2">
@@ -466,7 +464,7 @@ export default function BookLabTestModal({
                   <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
                 ) : !availability || availability.slots.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No bookable slots for this date.
+                    {t("bookAppointmentModal.noBookableSlots")}
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -496,11 +494,11 @@ export default function BookLabTestModal({
           {/* Patient details — right column */}
           <div className="space-y-4 border-t border-gray-100 pt-5 dark:border-gray-800 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-              Patient details
+              {t("bookAppointmentModal.patientDetails")}
             </h6>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Relationship
+                {t("appointments.relationship")}
               </label>
               <select
                 value={relationship}
@@ -509,38 +507,38 @@ export default function BookLabTestModal({
               >
                 {RELATIONSHIPS.map((r) => (
                   <option key={r} value={r}>
-                    {r === "self" ? "Self" : r.charAt(0).toUpperCase() + r.slice(1)}
+                    {r === "self" ? t("appointments.self") : r.charAt(0).toUpperCase() + r.slice(1)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Name <span className="text-error-500">*</span>
+                {t("appointments.name")} <span className="text-error-500">*</span>
               </label>
               <input
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
-                placeholder="Visitor's full name"
+                placeholder={t("bookAppointmentModal.visitorFullName")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Phone
+                {t("appointments.phone")}
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Age
+                {t("appointments.age")}
               </label>
               <input
                 type="number"
@@ -548,20 +546,20 @@ export default function BookLabTestModal({
                 max={150}
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Gender
+                {t("appointments.genderLabel")}
               </label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
                 className={inputClass}
               >
-                <option value="">Prefer not to say</option>
+                <option value="">{t("bookAppointmentModal.preferNotToSay")}</option>
                 {GENDERS.filter((g) => g !== "prefer_not_to_say").map((g) => (
                   <option key={g} value={g}>
                     {g.charAt(0).toUpperCase() + g.slice(1)}
@@ -571,12 +569,12 @@ export default function BookLabTestModal({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Notes
+                {t("bookLabTestModal.notes")}
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional — e.g. fasting since last night"
+                placeholder={t("bookLabTestModal.notesPlaceholder")}
                 rows={2}
                 className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
@@ -595,14 +593,14 @@ export default function BookLabTestModal({
             onClick={onClose}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={submit}
             disabled={busy || !branch || !testId}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Booking…" : "Book lab test"}
+            {busy ? t("bookLabTestModal.booking") : t("bookLabTestModal.bookLabTest")}
           </button>
         </div>
       </div>

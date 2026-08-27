@@ -12,8 +12,10 @@ import {
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function StaffPermissionsPanel() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams<{ branchId?: string; staffId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -42,17 +44,17 @@ export default function StaffPermissionsPanel() {
       ]);
       const found = staffRes.items.find((s) => s.id === staffId) ?? null;
       if (!found) {
-        setError("Staff member not found.");
+        setError(t("staffPermissions.staffMemberNotFound"));
       } else {
         setMember(found);
       }
       setPermValues(permRes.permissions as BranchStaffPermission[]);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load permissions"));
+      setError(getErrorMessage(err, t("staffPermissions.failedToLoadPermissions")));
     } finally {
       setLoading(false);
     }
-  }, [branchId, staffId]);
+  }, [branchId, staffId, t]);
 
   useEffect(() => {
     load();
@@ -66,17 +68,17 @@ export default function StaffPermissionsPanel() {
 
   const save = async () => {
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setBusy(true);
     setError(null);
     try {
       await staffApi.setPermissions(branchId, staffId, permValues);
-      toast.success("Permissions updated successfully.");
+      toast.success(t("staffPermissions.permissionsUpdatedSuccess"));
       router.push("/staff");
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to update permissions. Please try again.");
+      const message = getErrorMessage(err, t("staffPermissions.unableToUpdatePermissions"));
       setError(message);
       toast.error(message);
     } finally {
@@ -87,12 +89,12 @@ export default function StaffPermissionsPanel() {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
       <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-        Permissions{member && ` — ${member.name}`}
+        {t("staffPermissions.permissionsHeading")}{member && ` — ${member.name}`}
       </h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         {member
-          ? `Grant actions ${member.name} can perform at this branch.`
-          : "Grant actions this staff member can perform at the branch."}
+          ? t("staffPermissions.grantActionsFor", { name: member.name })
+          : t("staffPermissions.grantActionsGeneric")}
       </p>
 
       {error && (
@@ -144,7 +146,7 @@ export default function StaffPermissionsPanel() {
           onClick={() => router.push("/staff")}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Back to staff
+          {t("staffPermissions.backToStaff")}
         </button>
         {canManage && (
           <button
@@ -152,7 +154,7 @@ export default function StaffPermissionsPanel() {
             disabled={busy || loading}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Saving…" : "Save permissions"}
+            {busy ? t("auth.saving") : t("staffPermissions.savePermissions")}
           </button>
         )}
       </div>

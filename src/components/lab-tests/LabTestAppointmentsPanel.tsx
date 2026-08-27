@@ -29,6 +29,7 @@ import {
   formatCurrency,
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const STATUS_FILTERS: (LabTestAppointmentStatus | "")[] = [
   "",
@@ -40,6 +41,7 @@ const STATUS_FILTERS: (LabTestAppointmentStatus | "")[] = [
 ];
 
 export default function LabTestAppointmentsPanel() {
+  const { t } = useTranslation();
   const { can } = useAuth();
   const clinicId = useClinicId();
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -74,11 +76,11 @@ export default function LabTestAppointmentsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load lab test appointments"));
+      setError(getErrorMessage(err, t("appointments.failedToLoadLabTestAppointments")));
     } finally {
       setLoading(false);
     }
-  }, [selectedBranch, statusFilter, searchName, dateFrom, dateTo]);
+  }, [selectedBranch, statusFilter, searchName, dateFrom, dateTo, t]);
 
   useEffect(() => {
     load();
@@ -88,10 +90,10 @@ export default function LabTestAppointmentsPanel() {
     setCompletingId(id);
     try {
       await labTestAppointmentsApi.complete(id);
-      toast.success("Lab appointment marked as completed.");
+      toast.success(t("appointments.labAppointmentCompleted"));
       await load();
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to complete appointment"));
+      toast.error(getErrorMessage(err, t("appointments.failedToCompleteAppointment")));
     } finally {
       setCompletingId(null);
     }
@@ -124,20 +126,20 @@ export default function LabTestAppointmentsPanel() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Book for patient
+            {t("appointments.bookForPatient")}
           </button>
         </div>
       )}
 
       {/* Filters */}
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
-        <FilterField label="Branch">
+        <FilterField label={t("appointments.branch")}>
           <select
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
-            <option value="">All branches</option>
+            <option value="">{t("appointments.allBranches")}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
@@ -145,7 +147,7 @@ export default function LabTestAppointmentsPanel() {
             ))}
           </select>
         </FilterField>
-        <FilterField label="Status">
+        <FilterField label={t("dashboard.status")}>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as LabTestAppointmentStatus | "")}
@@ -153,21 +155,21 @@ export default function LabTestAppointmentsPanel() {
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s || "all"} value={s}>
-                {s === "" ? "All statuses" : labTestAppointmentStatusLabel(s)}
+                {s === "" ? t("appointments.allStatuses") : labTestAppointmentStatusLabel(s, t)}
               </option>
             ))}
           </select>
         </FilterField>
-        <FilterField label="Patient">
+        <FilterField label={t("dashboard.patient")}>
           <input
             type="text"
             value={searchName}
             onChange={(e) => setSearchName(e.target.value)}
-            placeholder="Search..."
+            placeholder={t("appointments.searchPlaceholder")}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </FilterField>
-        <FilterField label="From">
+        <FilterField label={t("appointments.from")}>
           <input
             type="date"
             value={dateFrom}
@@ -175,7 +177,7 @@ export default function LabTestAppointmentsPanel() {
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </FilterField>
-        <FilterField label="To">
+        <FilterField label={t("appointments.to")}>
           <input
             type="date"
             value={dateTo}
@@ -187,7 +189,7 @@ export default function LabTestAppointmentsPanel() {
           onClick={load}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
-          Refresh
+          {t("appointments.refresh")}
         </button>
       </div>
 
@@ -202,7 +204,7 @@ export default function LabTestAppointmentsPanel() {
           <TableSkeleton rows={5} cols={8} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No lab test appointments match the current filters.
+            {t("appointments.noLabTestAppointmentsMatch")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -210,28 +212,28 @@ export default function LabTestAppointmentsPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    #Number
+                    {t("appointments.labNumber")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Patient
+                    {t("dashboard.patient")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Test
+                    {t("appointments.labTest")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Date & Time
+                    {t("appointments.labDateTime")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Amount
+                    {t("appointments.labAmount")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("dashboard.status")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Payment
+                    {t("appointments.labPayment")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                    Actions
+                    {t("appointments.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -265,12 +267,12 @@ export default function LabTestAppointmentsPanel() {
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={labTestAppointmentStatusColor(appt.status)}>
-                        {labTestAppointmentStatusLabel(appt.status)}
+                        {labTestAppointmentStatusLabel(appt.status, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={labTestPaymentStatusColor(appt.payment_status)}>
-                        {labTestPaymentStatusLabel(appt.payment_status)}
+                        {labTestPaymentStatusLabel(appt.payment_status, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
@@ -279,13 +281,13 @@ export default function LabTestAppointmentsPanel() {
                           href={`/lab-test-appointments/${appt.id}`}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                         >
-                          View
+                          {t("appointments.view")}
                         </Link>
                         {canApprove(appt) && can("lab_appointments:approve") && (
-                          <ActionLink href={`/lab-test-appointments/${appt.id}/approve`} label="Approve" color="brand" />
+                          <ActionLink href={`/lab-test-appointments/${appt.id}/approve`} label={t("labTests.approve")} color="brand" />
                         )}
                         {canReject(appt) && can("lab_appointments:reject") && (
-                          <ActionLink href={`/lab-test-appointments/${appt.id}/reject`} label="Reject" color="error" />
+                          <ActionLink href={`/lab-test-appointments/${appt.id}/reject`} label={t("labTests.reject")} color="error" />
                         )}
                         {canComplete(appt) && can("lab_appointments:complete") && (
                           <button
@@ -293,14 +295,14 @@ export default function LabTestAppointmentsPanel() {
                             disabled={completingId === appt.id}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-success-600 hover:bg-success-50 disabled:opacity-50 dark:hover:bg-success-500/10"
                           >
-                            Complete
+                            {t("appointments.complete")}
                           </button>
                         )}
                         {canPay(appt) && can("lab_payments:collect") && (
-                          <ActionLink href={`/lab-test-appointments/${appt.id}/collect-payment`} label="Pay" color="brand" />
+                          <ActionLink href={`/lab-test-appointments/${appt.id}/collect-payment`} label={t("appointments.pay")} color="brand" />
                         )}
                         {canCancel(appt) && can("lab_appointments:cancel") && (
-                          <ActionLink href={`/lab-test-appointments/${appt.id}/cancel`} label="Cancel" color="error" />
+                          <ActionLink href={`/lab-test-appointments/${appt.id}/cancel`} label={t("appointments.cancel")} color="error" />
                         )}
                       </div>
                     </TableCell>

@@ -11,8 +11,16 @@ import {
 import { ApiError, superAdminApi } from "@/lib/api";
 import type { SubscriptionPayment } from "@/lib/api";
 import { formatCurrency, formatDateTime, subscriptionPaymentStatusColor } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
+
+const PAYMENT_STATUS_KEY: Record<string, string> = {
+  PENDING: "billing.pending",
+  PAID: "billing.paid",
+  FAILED: "billing.failed",
+};
 
 export default function SuperAdminPaymentsPanel() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -37,12 +45,12 @@ export default function SuperAdminPaymentsPanel() {
         setCursor(res.next_cursor ?? undefined);
       } catch (err) {
         if (!append) setItems([]);
-        setError(err instanceof ApiError ? err.message : "Failed to load payments");
+        setError(err instanceof ApiError ? err.message : t("billing.failedToLoadPayments"));
       } finally {
         setLoading(false);
       }
     },
-    [status, from, to]
+    [status, from, to, t]
   );
 
   useEffect(() => {
@@ -57,13 +65,13 @@ export default function SuperAdminPaymentsPanel() {
           onChange={(e) => setStatus(e.target.value)}
           className="h-11 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         >
-          <option value="">All statuses</option>
-          <option value="PENDING">Pending</option>
-          <option value="PAID">Paid</option>
-          <option value="FAILED">Failed</option>
+          <option value="">{t("billing.allStatuses")}</option>
+          <option value="PENDING">{t("billing.pending")}</option>
+          <option value="PAID">{t("billing.paid")}</option>
+          <option value="FAILED">{t("billing.failed")}</option>
         </select>
         <div>
-          <label className="sr-only">From</label>
+          <label className="sr-only">{t("appointments.from")}</label>
           <input
             type="date"
             value={from}
@@ -72,7 +80,7 @@ export default function SuperAdminPaymentsPanel() {
           />
         </div>
         <div>
-          <label className="sr-only">To</label>
+          <label className="sr-only">{t("appointments.to")}</label>
           <input
             type="date"
             value={to}
@@ -86,7 +94,7 @@ export default function SuperAdminPaymentsPanel() {
         {error && <p className="p-6 text-sm text-error-500">{error}</p>}
         {!error && items.length === 0 && !loading && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No payments found.
+            {t("superAdminPayments.noPaymentsFound")}
           </p>
         )}
         {items.length > 0 && (
@@ -94,12 +102,12 @@ export default function SuperAdminPaymentsPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Clinic</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Invoice</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Amount</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Months</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Created</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminClinics.clinic")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("billing.invoiceCol")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("billing.amountCol")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("billing.months")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("dashboard.status")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("billing.created")}</TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -117,7 +125,7 @@ export default function SuperAdminPaymentsPanel() {
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">{p.months}</TableCell>
                     <TableCell className="px-4 py-3">
                       <Badge size="sm" color={subscriptionPaymentStatusColor(p.status)}>
-                        {p.status}
+                        {PAYMENT_STATUS_KEY[p.status] ? t(PAYMENT_STATUS_KEY[p.status]) : p.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs text-gray-400">
@@ -134,14 +142,14 @@ export default function SuperAdminPaymentsPanel() {
                   disabled={loading}
                   className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
                 >
-                  {loading ? "Loading…" : "Load more"}
+                  {loading ? t("common.loading") : t("patients.loadMore")}
                 </button>
               </div>
             )}
           </div>
         )}
         {loading && items.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-400">Loading…</p>
+          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

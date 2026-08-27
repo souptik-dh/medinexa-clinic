@@ -7,10 +7,12 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField = "email" | "password";
 
 export default function SuperAdminSignInForm() {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,7 +37,7 @@ export default function SuperAdminSignInForm() {
     setError(null);
     setSubmitted(true);
     if (!email.trim() || !password.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
@@ -43,7 +45,7 @@ export default function SuperAdminSignInForm() {
       await superAdminLogin(email, password);
       router.push("/super-admin");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in");
+      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
     } finally {
       setSubmitting(false);
     }
@@ -55,23 +57,23 @@ export default function SuperAdminSignInForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Super Admin Sign In
+              {t("auth.superAdminTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Restricted access. Sign in to the Jido Healthcare platform console.
+              {t("auth.superAdminDesc")}
             </p>
           </div>
 
           {sessionExpired && (
             <div className="mb-5 rounded-lg border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/10 dark:text-warning-400">
-              Your session has expired. Please sign in again.
+              {t("auth.sessionExpired")}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label>
-                Email <span className="text-error-500">*</span>{" "}
+                {t("auth.email")} <span className="text-error-500">*</span>{" "}
               </Label>
               <Input
                 placeholder="admin@jidohealth.com"
@@ -86,12 +88,12 @@ export default function SuperAdminSignInForm() {
             </div>
             <div>
               <Label>
-                Password <span className="text-error-500">*</span>{" "}
+                {t("auth.password")} <span className="text-error-500">*</span>{" "}
               </Label>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
+                  placeholder={t("auth.enterPasswordPlaceholder")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onBlur={() => touch("password")}
@@ -118,7 +120,7 @@ export default function SuperAdminSignInForm() {
             )}
             <div>
               <Button className="w-full" size="sm" disabled={submitting}>
-                {submitting ? "Signing in..." : "Sign in"}
+                {submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>
             </div>
           </form>

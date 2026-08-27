@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export interface NmcDoctorResult {
   year: number | null;
@@ -24,6 +25,7 @@ export default function NmcDoctorSearch({
   onSelect,
   disabled,
 }: NmcDoctorSearchProps) {
+  const { t } = useTranslation();
   const [registrationNo, setRegistrationNo] = useState("");
   const [name, setName] = useState("");
   const [results, setResults] = useState<NmcDoctorResult[] | null>(null);
@@ -65,7 +67,7 @@ export default function NmcDoctorSearch({
     const regNo = registrationNo.trim();
     const nameQ = name.trim();
     if (!regNo && !nameQ) {
-      setError("Enter a registration number or a doctor name.");
+      setError(t("nmcDoctorSearch.enterRegOrName"));
       return;
     }
     setLoading(true);
@@ -81,11 +83,11 @@ export default function NmcDoctorSearch({
       });
       const data = (await res.json()) as { results?: NmcDoctorResult[]; error?: string };
       if (!res.ok) {
-        throw new Error(data.error || "NMC search failed");
+        throw new Error(data.error || t("nmcDoctorSearch.searchFailed"));
       }
       setResults(data.results ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "NMC search failed");
+      setError(err instanceof Error ? err.message : t("nmcDoctorSearch.searchFailed"));
     } finally {
       setLoading(false);
     }
@@ -94,17 +96,15 @@ export default function NmcDoctorSearch({
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/40">
       <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
-        Verify doctor in the NMC registry
+        {t("nmcDoctorSearch.verifyTitle")}
       </p>
       <p className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
-        Search the Indian Medical Register by registration number or name, then
-        use the result to prefill this form. Name search works best with a single
-        keyword.
+        {t("nmcDoctorSearch.verifyDesc")}
       </p>
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="sm:w-40">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Reg. no
+            {t("nmcDoctorSearch.regNo")}
           </label>
           <input
             type="text"
@@ -120,7 +120,7 @@ export default function NmcDoctorSearch({
           disabled={disabled || loading}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {loading ? "Searching…" : "Search"}
+          {loading ? t("nmcDoctorSearch.searching") : t("nmcDoctorSearch.search")}
         </button>
       </div>
 
@@ -130,7 +130,7 @@ export default function NmcDoctorSearch({
 
       {results !== null && results.length === 0 && !error && (
         <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-          No doctors found in the NMC registry.
+          {t("nmcDoctorSearch.noDoctorsFound")}
         </p>
       )}
 
@@ -150,7 +150,7 @@ export default function NmcDoctorSearch({
                       {doc.name}
                     </p>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                      Reg. {doc.registrationNo} · {doc.council}
+                      {t("nmcDoctorSearch.regPrefix", { no: doc.registrationNo, council: doc.council })}
                       {doc.year ? ` · ${doc.year}` : ""}
                     </p>
                     {doc.doctorDegree && (
@@ -165,7 +165,7 @@ export default function NmcDoctorSearch({
                     disabled={disabled || isSelecting}
                     className="shrink-0 rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                   >
-                    {isSelecting ? "Loading…" : "Use"}
+                    {isSelecting ? t("common.loading") : t("nmcDoctorSearch.use")}
                   </button>
                 </div>
               </li>

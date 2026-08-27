@@ -12,10 +12,12 @@ import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFi
 import { markAutoBranchPending } from "@/lib/autoCreateBranch";
 import { PHONE_VALIDATION_MESSAGE, isValidPhone, sanitizePhoneDigits } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField = "firstName" | "lastName" | "email" | "phone" | "password";
 
 export default function SignUpForm() {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [autoCreateBranch, setAutoCreateBranch] = useState(true);
@@ -38,7 +40,7 @@ export default function SignUpForm() {
     setSubmitted(true);
     const name = `${firstName} ${lastName}`.trim();
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (phone.trim() !== "" && !isValidPhone(phone)) {
@@ -60,14 +62,14 @@ export default function SignUpForm() {
       if (autoCreateBranch && result.clinicId) {
         markAutoBranchPending(result.clinicId);
       }
-      toast.success(result.verified ? "Account created successfully." : result.message);
+      toast.success(result.verified ? t("auth.accountCreatedSuccess") : result.message);
       if (result.verified) {
         router.push("/dashboard");
       } else {
         setPendingMessage(result.message);
       }
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to create account");
+      const message = getErrorMessage(err, t("auth.unableToCreateAccount"));
       setError(message);
       toast.error(message);
     } finally {
@@ -83,10 +85,10 @@ export default function SignUpForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Sign Up
+              {t("auth.signUp")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Create your clinic owner account to get started
+              {t("auth.createAccount")}
             </p>
           </div>
           {pendingMessage ? (
@@ -98,7 +100,7 @@ export default function SignUpForm() {
                 href="/signin"
                 className="block w-full rounded-lg bg-brand-500 px-4 py-3 text-center text-sm font-medium text-white hover:bg-brand-600"
               >
-                Go to sign in
+                {t("auth.goToSignIn")}
               </Link>
             </div>
           ) : (
@@ -107,13 +109,13 @@ export default function SignUpForm() {
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div className="sm:col-span-1">
                   <Label>
-                    First Name<span className="text-error-500">*</span>
+                    {t("auth.firstName")}<span className="text-error-500">*</span>
                   </Label>
                   <Input
                     type="text"
                     id="fname"
                     name="fname"
-                    placeholder="Enter your first name"
+                    placeholder={t("auth.firstNamePlaceholder")}
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     onBlur={() => touch("firstName")}
@@ -128,13 +130,13 @@ export default function SignUpForm() {
                 </div>
                 <div className="sm:col-span-1">
                   <Label>
-                    Last Name<span className="text-error-500">*</span>
+                    {t("auth.lastName")}<span className="text-error-500">*</span>
                   </Label>
                   <Input
                     type="text"
                     id="lname"
                     name="lname"
-                    placeholder="Enter your last name"
+                    placeholder={t("auth.lastNamePlaceholder")}
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     onBlur={() => touch("lastName")}
@@ -150,13 +152,13 @@ export default function SignUpForm() {
               </div>
               <div>
                 <Label>
-                  Email<span className="text-error-500">*</span>
+                  {t("auth.email")}<span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="email"
                   id="email"
                   name="email"
-                  placeholder="Enter your email"
+                  placeholder={t("auth.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onBlur={() => touch("email")}
@@ -166,25 +168,25 @@ export default function SignUpForm() {
                 />
               </div>
               <div>
-                <Label>Clinic name</Label>
+                <Label>{t("auth.clinicName")}</Label>
                 <Input
                   type="text"
                   id="clinicName"
                   name="clinicName"
-                  placeholder="Defaults to your name if left blank"
+                  placeholder={t("auth.clinicNamePlaceholder")}
                   value={clinicName}
                   onChange={(e) => setClinicName(e.target.value)}
                 />
               </div>
               <div>
-                <Label>Phone</Label>
+                <Label>{t("auth.phone")}</Label>
                 <Input
                   type="tel"
                   id="phone"
                   name="phone"
                   inputMode="numeric"
                   maxLength={10}
-                  placeholder="10-digit mobile number"
+                  placeholder={t("auth.phonePlaceholder")}
                   value={phone}
                   onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
                   onBlur={() => touch("phone")}
@@ -198,11 +200,11 @@ export default function SignUpForm() {
               </div>
               <div>
                 <Label>
-                  Password<span className="text-error-500">*</span>
+                  {t("auth.password")}<span className="text-error-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
-                    placeholder="Min. 8 characters"
+                    placeholder={t("auth.passwordPlaceholder")}
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -233,8 +235,7 @@ export default function SignUpForm() {
                   onChange={setAutoCreateBranch}
                 />
                 <p className="inline-block font-normal text-gray-500 dark:text-gray-400">
-                  Automatically create my first branch as soon as my clinic has a
-                  trade license number on file.
+                  {t("auth.autoCreateBranch")}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -244,14 +245,7 @@ export default function SignUpForm() {
                   onChange={setIsChecked}
                 />
                 <p className="inline-block font-normal text-gray-500 dark:text-gray-400">
-                  By creating an account means you agree to the{" "}
-                  <span className="text-gray-800 dark:text-white/90">
-                    Terms and Conditions,
-                  </span>{" "}
-                  and our{" "}
-                  <span className="text-gray-800 dark:text-white">
-                    Privacy Policy
-                  </span>
+                  {t("auth.agreeToTerms")}
                 </p>
               </div>
               {error && (
@@ -265,19 +259,19 @@ export default function SignUpForm() {
                   disabled={submitting}
                   className="flex items-center justify-center w-full px-4 py-3 text-sm font-medium text-white transition rounded-lg bg-brand-500 shadow-theme-xs hover:bg-brand-600 disabled:bg-brand-300"
                 >
-                  {submitting ? "Creating account..." : "Sign Up"}
+                  {submitting ? t("auth.creatingAccount") : t("auth.signUp")}
                 </button>
               </div>
             </form>
 
             <div className="mt-5">
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
-                Already have an account?
+                {t("auth.alreadyHaveAccount")}
                 <Link
                   href="/signin"
                   className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
                 >
-                  Sign In
+                  {t("auth.signIn")}
                 </Link>
               </p>
             </div>

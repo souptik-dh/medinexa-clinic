@@ -178,6 +178,7 @@ export async function processMessage(
       });
 
       const responseContent = formatToolResult(
+        pending.toolCall.toolId,
         pending.toolName,
         toolResult
       );
@@ -426,7 +427,7 @@ export async function processMessage(
     timestamp: Date.now(),
   });
 
-  const responseContent = formatToolResult(tool.name, toolResult);
+  const responseContent = formatToolResult(toolId, tool.name, toolResult);
 
   return {
     response: {
@@ -444,6 +445,7 @@ export async function processMessage(
 }
 
 function formatToolResult(
+  toolId: string,
   toolName: string,
   result: ToolResult
 ): string {
@@ -461,8 +463,12 @@ function formatToolResult(
     "get_sales_report", "get_patient_report", "get_booking_report",
     "get_lab_test_report", "get_business_summary", "get_analytics",
   ];
-  if (REPORT_TOOLS.includes(toolName) && typeof data === "object" && !Array.isArray(data)) {
-    return `### ${toolName.replace(/_/g, " ")}\n\n` + formatReportResult(toolName, data as Record<string, unknown>);
+  if (REPORT_TOOLS.includes(toolId) && typeof data === "object" && !Array.isArray(data)) {
+    return `### ${toolName}\n\n` + formatReportResult(toolId, data as Record<string, unknown>);
+  }
+
+  if (toolId === "get_subscription" && typeof data === "object" && !Array.isArray(data)) {
+    return formatSubscriptionResult(data as Record<string, unknown>);
   }
 
   // Unwrap common API response envelopes
@@ -510,7 +516,6 @@ function formatArrayResult(toolName: string, items: unknown[]): string {
     const name = String(obj.name ?? obj.patient_name ?? obj.doctor_name ?? obj.test_name ?? "");
     const status = String(obj.status ?? "");
     const date = String(obj.scheduled_date ?? obj.created_at ?? "");
-    const id = String(obj.id ?? "");
     const email = String(obj.email ?? "");
     const phone = String(obj.phone ?? "");
     const branchName = String(obj._branch_name ?? "");
@@ -522,9 +527,8 @@ function formatArrayResult(toolName: string, items: unknown[]): string {
     if (status) parts.push(`Status: ${status}`);
     if (date) parts.push(`Date: ${date}`);
     if (branchName) parts.push(`Branch: ${branchName}`);
-    if (id) parts.push(`ID: \`${String(id).substring(0, 8)}\``);
 
-    lines.push(`- ${parts.join(" | ") || JSON.stringify(item).substring(0, 120)}`);
+    lines.push(`- ${parts.join(" | ") || "(no details available)"}`);
   }
 
   if (items.length > 10) {
@@ -534,12 +538,61 @@ function formatArrayResult(toolName: string, items: unknown[]): string {
   return lines.join("\n");
 }
 
+function formatSubscriptionResult(data: Record<string, unknown>): string {
+  const sub = (data.subscription ?? {}) as Record<string, unknown>;
+  const plan = (data.current_plan ?? {}) as Record<string, unknown>;
+
+  const status = String(sub.status ?? "Unknown");
+  const currency = String(plan.currency ?? sub.currency ?? "");
+  const amount = plan.monthly_amount ?? sub.monthly_amount;
+
+  const lines: string[] = ["### Subscription\n"];
+
+  if (sub.is_trial) {
+    lines.push(`You're currently on a **free trial** (status: **${status}**).`);
+  } else {
+    lines.push(`Your subscription is currently **${status}**.`);
+  }
+  if (sub.blocked) {
+    lines.push(`⚠️ Access is **blocked**${sub.blocked_reason ? `: ${String(sub.blocked_reason)}` : "."}`);
+  } else if (sub.expiring_soon) {
+    lines.push(`⚠️ It is expiring soon — **${String(sub.days_remaining)} day${sub.days_remaining === 1 ? "" : "s"}** remaining.`);
+  }
+  lines.push("");
+
+  lines.push(`| Detail | Value |`);
+  lines.push(`|--------|-------|`);
+  if (plan.name) lines.push(`| Plan | ${String(plan.name)} |`);
+  if (amount !== undefined) lines.push(`| Monthly Amount | ${currency} ${Number(amount).toLocaleString("en-IN")} |`);
+  if (sub.days_remaining !== undefined) lines.push(`| Days Remaining | ${String(sub.days_remaining)} |`);
+  if (sub.period_start) lines.push(`| Period Start | ${String(sub.period_start)} |`);
+  if (sub.period_end) lines.push(`| Period End | ${String(sub.period_end)} |`);
+  if (sub.auto_renew !== undefined) lines.push(`| Auto Renew | ${sub.auto_renew ? "Yes" : "No"} |`);
+
+  return lines.join("\n");
+}
+
+function formatFieldValue(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  if (Array.isArray(val)) {
+    return val.map((v) => formatFieldValue(v)).filter(Boolean).join(", ");
+  }
+  if (typeof val === "object") {
+    const nested = val as Record<string, unknown>;
+    return Object.keys(nested)
+      .slice(0, 8)
+      .map((k) => `${k.replace(/_/g, " ")}: ${formatFieldValue(nested[k]).substring(0, 60)}`)
+      .join(", ");
+  }
+  return String(val);
+}
+
 function formatObjectResult(toolName: string, obj: Record<string, unknown>): string {
   const lines: string[] = [`### ${toolName}\n`];
 
   const displayKeys = [
     "name", "email", "phone", "status", "created_at",
-    "id", "description", "fee_amount", "currency",
+    "description", "fee_amount", "currency",
     "average", "count", "total", "monthly_amount",
     "period_start", "period_end", "message",
   ];
@@ -547,17 +600,18 @@ function formatObjectResult(toolName: string, obj: Record<string, unknown>): str
   let found = false;
   for (const key of displayKeys) {
     if (obj[key] !== undefined && obj[key] !== null) {
-      const val = typeof obj[key] === "object" ? JSON.stringify(obj[key]) : String(obj[key]);
-      lines.push(`**${key.replace(/_/g, " ")}**: ${val}`);
+      lines.push(`**${key.replace(/_/g, " ")}**: ${formatFieldValue(obj[key])}`);
       found = true;
     }
   }
 
   if (!found) {
-    const keys = Object.keys(obj).slice(0, 8);
+    const keys = Object.keys(obj)
+      .filter((k) => !/(^|_)id$/i.test(k))
+      .slice(0, 8);
     for (const key of keys) {
-      const val = typeof obj[key] === "object" ? JSON.stringify(obj[key]) : String(obj[key]);
-      lines.push(`**${key.replace(/_/g, " ")}**: ${val.substring(0, 100)}`);
+      const val = formatFieldValue(obj[key]).substring(0, 100);
+      lines.push(`**${key.replace(/_/g, " ")}**: ${val}`);
     }
   }
 
@@ -751,7 +805,7 @@ function formatReportResult(toolName: string, data: Record<string, unknown>): st
     lines.push(`| Total Revenue | ₹${rev.toLocaleString("en-IN")} |`);
     if (data.totalAppointments !== undefined) lines.push(`| Total Appointments | ${data.totalAppointments} |`);
     if (data.totalLabAppointments !== undefined) lines.push(`| Total Lab Appointments | ${data.totalLabAppointments} |`);
-    if (data.total !== undefined && toolName.includes("Lab")) lines.push(`| Total Lab Tests | ${data.total} |`);
+    if (data.total !== undefined && toolName.toLowerCase().includes("lab")) lines.push(`| Total Lab Tests | ${data.total} |`);
     lines.push("");
   }
 

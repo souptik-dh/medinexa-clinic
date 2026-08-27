@@ -2,9 +2,8 @@
 import { BranchOperatingDay, SlotTemplateItem } from "@/lib/api";
 import { today } from "@/lib/utils";
 import DatePicker from "@/components/form/date-picker";
-import { WEEKDAYS, inputClass } from "@/components/doctors/scheduleShared";
-
-const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { inputClass, weekdayLabel, weekdayShortLabel } from "@/components/doctors/scheduleShared";
+import { useTranslation } from "@/hooks/useTranslation";
 
 function formatDateOnly(d: Date): string {
   const y = d.getFullYear();
@@ -45,6 +44,7 @@ export default function SlotWeekEditor({
   operatingDays: BranchOperatingDay[] | null;
   error?: boolean;
 }) {
+  const { t } = useTranslation();
   const isOpen = (weekday: number): boolean => {
     if (!operatingDays) return true;
     const day = operatingDays.find((d) => d.weekday === weekday);
@@ -72,7 +72,7 @@ export default function SlotWeekEditor({
     onChange(slots.filter((_, i) => i !== index));
   };
 
-  const groups = WEEKDAYS.map((_, weekday) => ({
+  const groups = Array.from({ length: 7 }, (_, weekday) => ({
     weekday,
     entries: slots
       .map((slot, index) => ({ slot, index }))
@@ -86,7 +86,7 @@ export default function SlotWeekEditor({
       }
     >
       <div className="flex gap-2">
-        {DAY_SHORT.map((name, weekday) => {
+        {Array.from({ length: 7 }, (_, weekday) => {
           const open = isOpen(weekday);
           const configured = slots.some((s) => s.weekday === weekday);
           return (
@@ -97,10 +97,10 @@ export default function SlotWeekEditor({
               disabled={!open}
               title={
                 !open
-                  ? "Branch closed this day"
+                  ? t("slotWeekEditor.branchClosedDay")
                   : configured
-                    ? "Click to remove this day's schedule"
-                    : "Click to add a slot for this day"
+                    ? t("labSchedule.clickToRemoveDay")
+                    : t("labSchedule.clickToAddDay")
               }
               className={`flex-1 rounded-lg border px-2 py-2.5 text-center text-xs font-semibold transition-colors ${
                 !open
@@ -110,9 +110,9 @@ export default function SlotWeekEditor({
                     : "border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-800 dark:text-gray-400 dark:hover:border-gray-700"
               }`}
             >
-              {name}
+              {weekdayShortLabel(weekday, t)}
               <div className="mt-0.5 text-[10px] font-normal">
-                {!open ? "Closed" : configured ? "Scheduled" : "Off"}
+                {!open ? t("slotWeekEditor.closed") : configured ? t("labSchedule.scheduled") : t("labSchedule.off")}
               </div>
             </button>
           );
@@ -122,7 +122,7 @@ export default function SlotWeekEditor({
       <div className="mt-4 space-y-3">
         {groups.length === 0 && (
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            No days selected — click a day above to add a slot.
+            {t("labSchedule.noDaysSelected")}
           </p>
         )}
         {groups.map((group) => (
@@ -132,14 +132,14 @@ export default function SlotWeekEditor({
           >
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                {WEEKDAYS[group.weekday]}
+                {weekdayLabel(group.weekday, t)}
               </p>
               <button
                 type="button"
                 onClick={() => addRangeForDay(group.weekday)}
                 className="text-xs font-medium text-brand-500 hover:underline"
               >
-                + Add time range
+                {t("labSchedule.addTimeRange")}
               </button>
             </div>
             <div className="space-y-3">
@@ -151,8 +151,8 @@ export default function SlotWeekEditor({
                   <div className="w-40">
                     <DatePicker
                       id={`slot-from-${index}`}
-                      label="Applies from *"
-                      placeholder="Select a date"
+                      label={t("slotWeekEditor.appliesFrom")}
+                      placeholder={t("schedule.selectDate")}
                       defaultDate={slot.start_date || undefined}
                       onChange={(_, dateStr) => {
                         if (dateStr) updateEntry(index, { start_date: dateStr });
@@ -162,8 +162,8 @@ export default function SlotWeekEditor({
                   <div className="w-40">
                     <DatePicker
                       id={`slot-until-${index}`}
-                      label="Applies until *"
-                      placeholder="Select a date"
+                      label={t("slotWeekEditor.appliesUntil")}
+                      placeholder={t("schedule.selectDate")}
                       defaultDate={slot.end_date || undefined}
                       onChange={(_, dateStr) => {
                         if (dateStr) updateEntry(index, { end_date: dateStr });
@@ -174,8 +174,8 @@ export default function SlotWeekEditor({
                     <DatePicker
                       id={`slot-start-time-${index}`}
                       mode="time"
-                      label="Start time *"
-                      placeholder="Select time"
+                      label={t("labSchedule.startTime")}
+                      placeholder={t("slotWeekEditor.selectTime")}
                       defaultDate={slot.start_time || undefined}
                       onChange={(_, timeStr) => {
                         if (timeStr) updateEntry(index, { start_time: timeStr });
@@ -186,8 +186,8 @@ export default function SlotWeekEditor({
                     <DatePicker
                       id={`slot-end-time-${index}`}
                       mode="time"
-                      label="End time *"
-                      placeholder="Select time"
+                      label={t("labSchedule.endTime")}
+                      placeholder={t("slotWeekEditor.selectTime")}
                       defaultDate={slot.end_time || undefined}
                       onChange={(_, timeStr) => {
                         if (timeStr) updateEntry(index, { end_time: timeStr });
@@ -196,7 +196,7 @@ export default function SlotWeekEditor({
                   </div>
                   <div className="w-24">
                     <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Duration (min)
+                      {t("slotWeekEditor.durationMin")}
                     </label>
                     <input
                       type="number"
@@ -214,7 +214,7 @@ export default function SlotWeekEditor({
                     onClick={() => removeEntry(index)}
                     className="mb-1 rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 dark:hover:bg-error-500/10"
                   >
-                    Remove
+                    {t("schedule.remove")}
                   </button>
                 </div>
               ))}

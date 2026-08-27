@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError, Branch, branchesApi, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export interface BranchSelectValue {
   id: string;
@@ -40,6 +41,7 @@ export default function BranchSelect({
   initialBranchId,
 }: BranchSelectProps) {
   const { user, staffClinic, staffBranch } = useAuth();
+  const { t } = useTranslation();
 
   if (user?.role === "branch_staff") {
     return (
@@ -78,6 +80,7 @@ function StaffBranchLock({
   branch: { id: string; name: string } | null;
   onChange: (branch: BranchSelectValue | null) => void;
 }) {
+  const { t } = useTranslation();
   const reported = useRef<string | null>(null);
   useEffect(() => {
     const id = branch?.id ?? null;
@@ -90,8 +93,7 @@ function StaffBranchLock({
   if (!branch) {
     return (
       <p className="text-sm text-error-600 dark:text-error-400">
-        Could not load your assigned branch. Try refreshing, or contact your
-        clinic owner if this persists.
+        {t("branches.couldNotLoadAssignedBranch")}
       </p>
     );
   }
@@ -100,7 +102,7 @@ function StaffBranchLock({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
       <div className="sm:w-56">
         <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Clinic
+          {t("billing.clinic")}
         </label>
         <p className="flex h-11 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90">
           {clinic?.name ?? "—"}
@@ -108,7 +110,7 @@ function StaffBranchLock({
       </div>
       <div className="sm:w-56">
         <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Branch
+          {t("appointments.branch")}
         </label>
         <p className="flex h-11 items-center rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 dark:border-gray-800 dark:bg-white/[0.03] dark:text-white/90">
           {branch.name}
@@ -128,6 +130,7 @@ function OwnerBranchPicker({
   initialClinicId,
   initialBranchId,
 }: BranchSelectProps) {
+  const { t } = useTranslation();
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [clinicId, setClinicId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -156,7 +159,7 @@ function OwnerBranchPicker({
       })
       .catch((err) => {
         if (active)
-          setLoadError(err instanceof ApiError ? err.message : "Failed to load clinics");
+          setLoadError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
       })
       .finally(() => {
         if (active) setLoadingClinics(false);
@@ -185,7 +188,7 @@ function OwnerBranchPicker({
       .catch(() => {
         if (active) {
           setBranches([]);
-          setLoadError("Failed to load branches");
+          setLoadError(t("branches.failedToLoad"));
         }
       })
       .finally(() => {
@@ -213,7 +216,7 @@ function OwnerBranchPicker({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="sm:w-56">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Clinic
+            {t("billing.clinic")}
           </label>
           <select
             value={clinicId}
@@ -222,7 +225,7 @@ function OwnerBranchPicker({
             className={selectClass}
           >
             <option value="">
-              {loadingClinics ? "Loading clinics…" : "Select clinic"}
+              {loadingClinics ? t("branches.loadingClinics") : t("billing.selectClinic")}
             </option>
             {clinics.map((c) => (
               <option key={c.id} value={c.id}>
@@ -233,7 +236,7 @@ function OwnerBranchPicker({
         </div>
         <div className="sm:w-56">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Branch
+            {t("appointments.branch")}
           </label>
           <select
             value={value}
@@ -247,10 +250,10 @@ function OwnerBranchPicker({
           >
             <option value="">
               {!clinicId
-                ? "Select a clinic first"
+                ? t("branches.selectClinicFirst")
                 : loadingBranches
-                  ? "Loading branches…"
-                  : "Select branch"}
+                  ? t("branches.loadingBranchesEllipsis")
+                  : t("branches.selectBranch")}
             </option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>

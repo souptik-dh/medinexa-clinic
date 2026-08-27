@@ -3,10 +3,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { ApiError, authApi } from "@/lib/api";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type Status = "verifying" | "success" | "error";
 
 export default function VerifyEmailForm() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [status, setStatus] = useState<Status>("verifying");
@@ -17,7 +19,7 @@ export default function VerifyEmailForm() {
     async function run() {
       if (!token) {
         setStatus("error");
-        setMessage("This verification link is missing its token.");
+        setMessage(t("auth.missingVerificationToken"));
         return;
       }
       try {
@@ -28,13 +30,14 @@ export default function VerifyEmailForm() {
       } catch (err) {
         if (!active) return;
         setStatus("error");
-        setMessage(err instanceof ApiError ? err.message : "Verification failed.");
+        setMessage(err instanceof ApiError ? err.message : t("auth.verificationFailed"));
       }
     }
     run();
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (
@@ -43,15 +46,15 @@ export default function VerifyEmailForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Verify your email
+              {t("auth.verifyEmailTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Confirming your clinic owner account.
+              {t("auth.verifyEmailDesc")}
             </p>
           </div>
 
           {status === "verifying" && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">Verifying your email…</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t("auth.verifyingEmail")}</p>
           )}
 
           {status === "success" && (
@@ -63,7 +66,7 @@ export default function VerifyEmailForm() {
                 href="/signin"
                 className="block w-full rounded-lg bg-brand-500 px-4 py-3 text-center text-sm font-medium text-white hover:bg-brand-600"
               >
-                Go to sign in
+                {t("auth.goToSignIn")}
               </Link>
             </div>
           )}
@@ -77,7 +80,7 @@ export default function VerifyEmailForm() {
                 href="/signin"
                 className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Back to sign in
+                {t("auth.backToSignIn")}
               </Link>
             </div>
           )}

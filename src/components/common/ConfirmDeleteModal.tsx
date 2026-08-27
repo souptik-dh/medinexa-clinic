@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -21,8 +22,10 @@ export default function ConfirmDeleteModal({
   title,
   description,
   impactItems,
-  confirmLabel = "Delete",
+  confirmLabel,
 }: ConfirmDeleteModalProps) {
+  const { t } = useTranslation();
+  const resolvedConfirmLabel = confirmLabel ?? t("common.delete");
   const [confirmText, setConfirmText] = useState("");
   const [confirming, setConfirming] = useState(false);
 
@@ -53,7 +56,7 @@ export default function ConfirmDeleteModal({
     <Modal isOpen={isOpen} onClose={handleClose} className="max-w-md">
       <div className="p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Are you sure you want to delete?
+          {t("common.deleteConfirmTitle")}
         </h3>
         <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">{title}</p>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
@@ -61,7 +64,7 @@ export default function ConfirmDeleteModal({
         {impactItems && impactItems.length > 0 && (
           <div className="mt-4 rounded-lg border border-warning-500/30 bg-warning-50 p-3 dark:border-warning-500/20 dark:bg-warning-500/10">
             <p className="text-sm font-medium text-warning-700 dark:text-orange-400">
-              This will also affect:
+              {t("common.deleteImpactPrefix")}
             </p>
             <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm text-warning-700 dark:text-orange-400">
               {impactItems.map((item) => (
@@ -73,7 +76,7 @@ export default function ConfirmDeleteModal({
 
         <div className="mt-5">
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Type <span className="font-semibold text-error-500">{CONFIRM_WORD}</span> to confirm
+            {t("common.typeToConfirm", { word: CONFIRM_WORD })}
           </label>
           <input
             type="text"
@@ -91,14 +94,14 @@ export default function ConfirmDeleteModal({
             disabled={confirming}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={handleConfirm}
             disabled={!canConfirm}
             className="rounded-lg bg-error-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:bg-error-300"
           >
-            {confirming ? "Deleting…" : confirmLabel}
+            {confirming ? t("common.deletingEllipsis") : resolvedConfirmLabel}
           </button>
         </div>
       </div>

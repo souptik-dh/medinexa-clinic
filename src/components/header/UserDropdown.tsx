@@ -4,8 +4,10 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useAuth } from "@/context/AuthContext";
 import { canManageClinics } from "@/lib/permissions";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function UserDropdown() {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
   const userPermissions = user?.role === "branch_staff" ? user.permissions : undefined;
@@ -37,7 +39,7 @@ export default function UserDropdown() {
           {initials}
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">{user?.name ?? "Sign in"}</span>
+        <span className="block mr-1 font-medium text-theme-sm">{user?.name ?? t("auth.signIn")}</span>
 
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
@@ -96,7 +98,7 @@ export default function UserDropdown() {
                   fill=""
                 />
               </svg>
-              Edit profile
+              {t("userMenu.editProfile")}
             </DropdownItem>
           </li>
           {hasClinicAccess && (
@@ -122,7 +124,7 @@ export default function UserDropdown() {
                     fill=""
                   />
                 </svg>
-                Manage clinics
+                {t("userMenu.manageClinics")}
               </DropdownItem>
             </li>
           )}
@@ -149,7 +151,7 @@ export default function UserDropdown() {
               fill=""
             />
           </svg>
-          Sign out
+          {t("auth.signOut")}
         </button>
       </Dropdown>
     </div>

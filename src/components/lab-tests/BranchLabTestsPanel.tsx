@@ -15,8 +15,10 @@ import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { BranchLabTest, branchLabTestsApi } from "@/lib/api";
 import { labTestCategoryLabel, formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function BranchLabTestsPanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string; branchId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
@@ -33,11 +35,11 @@ export default function BranchLabTestsPanel() {
       const res = await branchLabTestsApi.list(branchId);
       setItems(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load branch lab tests"));
+      setError(getErrorMessage(err, t("branchLabTests.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   useEffect(() => {
     load();
@@ -50,9 +52,9 @@ export default function BranchLabTestsPanel() {
         status: item.status === "active" ? "inactive" : "active",
       });
       await load();
-      toast.success("Branch lab test status updated.");
+      toast.success(t("branchLabTests.statusUpdated"));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to update status"));
+      toast.error(getErrorMessage(err, t("branchLabTests.failedToUpdateStatus")));
     } finally {
       setTogglingId(null);
     }
@@ -64,14 +66,14 @@ export default function BranchLabTestsPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Lab Tests
+            {t("labTests.title")}
           </h3>
           <div className="flex items-center gap-2">
             <button
               onClick={load}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
-              Refresh
+              {t("appointments.refresh")}
             </button>
             <Link
               href={`/clinics/${clinicId}/branches/${branchId}/lab-tests/new`}
@@ -90,7 +92,7 @@ export default function BranchLabTestsPanel() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              Configure Test
+              {t("branchLabTests.configureTest")}
             </Link>
           </div>
         </div>
@@ -106,7 +108,7 @@ export default function BranchLabTestsPanel() {
             <TableSkeleton rows={5} cols={6} />
           ) : items.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              No lab tests configured for this branch yet.
+              {t("branchLabTests.noBranchLabTests")}
             </p>
           ) : (
             <div className="max-w-full overflow-x-auto">
@@ -117,37 +119,37 @@ export default function BranchLabTestsPanel() {
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Test Name
+                      {t("labTests.testName")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Category
+                      {t("labTests.category")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Price
+                      {t("labTests.price")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Availability
+                      {t("branchLabTests.availability")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
                     >
-                      Status
+                      {t("dashboard.status")}
                     </TableCell>
                     <TableCell
                       isHeader
                       className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400"
                     >
-                      Actions
+                      {t("appointments.actions")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -169,8 +171,8 @@ export default function BranchLabTestsPanel() {
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {[
-                          item.clinic_available && "Clinic",
-                          item.home_collection_available && "Home",
+                          item.clinic_available && t("branchLabTests.clinicMode"),
+                          item.home_collection_available && t("branchLabTests.homeMode"),
                         ]
                           .filter(Boolean)
                           .join(" + ") || "—"}
@@ -183,8 +185,8 @@ export default function BranchLabTestsPanel() {
                           }
                         >
                           {item.status === "active"
-                            ? "Active"
-                            : "Inactive"}
+                            ? t("status.active")
+                            : t("status.inactive")}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3">
@@ -193,7 +195,7 @@ export default function BranchLabTestsPanel() {
                             href={`/clinics/${clinicId}/branches/${branchId}/lab-tests/${item.id}/edit`}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                           >
-                            Edit
+                            {t("common.edit")}
                           </Link>
                           <button
                             onClick={() => handleToggleStatus(item)}
@@ -205,8 +207,8 @@ export default function BranchLabTestsPanel() {
                             }`}
                           >
                             {item.status === "active"
-                              ? "Deactivate"
-                              : "Activate"}
+                              ? t("labTestsPage.deactivate")
+                              : t("labTestsPage.activate")}
                           </button>
                         </div>
                       </TableCell>

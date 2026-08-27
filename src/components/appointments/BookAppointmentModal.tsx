@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { addDays, formatCurrency, formatDateISO, today } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // How far ahead to fetch the doctor's day-level availability for greying out
 // non-bookable dates in the calendar - matches the availability-range endpoint's cap.
@@ -53,6 +54,7 @@ export default function BookAppointmentModal({
   onBooked,
   initialClinicId,
 }: BookAppointmentModalProps) {
+  const { t } = useTranslation();
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
 
   const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
@@ -120,10 +122,10 @@ export default function BookAppointmentModal({
       .then((res) => {
         if (!active) return;
         setDoctors(res.items);
-        if (res.items.length === 0) setDoctorsError("No doctors are assigned to this branch yet.");
+        if (res.items.length === 0) setDoctorsError(t("doctors.noDoctorsAssignedToBranch"));
       })
       .catch((err) => {
-        if (active) setDoctorsError(getErrorMessage(err, "Failed to load doctors"));
+        if (active) setDoctorsError(getErrorMessage(err, t("doctors.failedToLoad")));
       })
       .finally(() => {
         if (active) setDoctorsLoading(false);
@@ -146,7 +148,7 @@ export default function BookAppointmentModal({
       setAvailability(res);
     } catch (err) {
       setAvailability(null);
-      setAvailError(getErrorMessage(err, "Failed to load availability"));
+      setAvailError(getErrorMessage(err, t("doctorProfile.failedToLoadAvailability")));
     } finally {
       setAvailLoading(false);
     }
@@ -231,23 +233,23 @@ export default function BookAppointmentModal({
 
   const submit = async () => {
     if (!branch) {
-      setFormError("Please select a branch.");
+      setFormError(t("bookAppointmentModal.pleaseSelectBranch"));
       return;
     }
     if (!doctorId) {
-      setFormError("Please select a doctor.");
+      setFormError(t("bookAppointmentModal.pleaseSelectDoctor"));
       return;
     }
     if (!date) {
-      setFormError("Please pick a date.");
+      setFormError(t("bookAppointmentModal.pleaseSelectDate"));
       return;
     }
     if (doctor && doctor.slot_type === "fixed" && !selectedTime) {
-      setFormError("Please pick a time slot.");
+      setFormError(t("bookAppointmentModal.pleaseSelectTimeSlot"));
       return;
     }
     if (!patientName.trim()) {
-      setFormError("Please enter the patient's name.");
+      setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
       return;
     }
     if (busy) return;
@@ -271,16 +273,16 @@ export default function BookAppointmentModal({
         crypto.randomUUID()
       );
       toast.success(
-        `Appointment booked for ${created.patient_details?.name ?? patientName.trim()}` +
-          (created.scheduled_time ? ` at ${created.scheduled_time}` : "")
+        t("bookAppointmentModal.appointmentBookedFor", { name: created.patient_details?.name ?? patientName.trim() }) +
+          (created.scheduled_time ? t("bookAppointmentModal.atTime", { time: created.scheduled_time }) : "")
       );
       onBooked?.(created);
       onClose();
     } catch (err) {
       const message =
         err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
-          ? "That slot was just taken. Please pick another."
-          : getErrorMessage(err, "Unable to book the appointment.");
+          ? t("bookAppointmentModal.slotJustTaken")
+          : getErrorMessage(err, t("bookAppointmentModal.unableToBook"));
       setFormError(message);
       toast.error(message);
       // Refresh slots so a just-taken slot no longer looks available.
@@ -294,24 +296,23 @@ export default function BookAppointmentModal({
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[900px] p-6 lg:p-8">
       <div>
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Book appointment for a patient
+          {t("bookAppointmentModal.title")}
         </h5>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Front-desk booking &mdash; the appointment is created on behalf of the walk-in
-          patient.
+          {t("bookAppointmentModal.subtitle")}
         </p>
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Appointment — left column */}
           <div className="space-y-5">
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-              Appointment
+              {t("calendar.appointmentTitle")}
             </h6>
 
             {/* Branch (role-aware: locked for staff, picker for owners) */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Clinic &amp; branch
+                {t("bookAppointmentModal.clinicAndBranch")}
               </label>
               <BranchSelect
                 value={branch?.id ?? ""}
@@ -323,7 +324,7 @@ export default function BookAppointmentModal({
             {/* Doctor */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Doctor
+                {t("dashboard.doctor")}
               </label>
               {doctorsLoading ? (
                 <ListSkeleton rows={3} />
@@ -337,7 +338,7 @@ export default function BookAppointmentModal({
                   className={inputClass}
                 >
                   <option value="">
-                    {!branch ? "Select a branch first" : "Select doctor"}
+                    {!branch ? t("bookAppointmentModal.selectBranchFirst") : t("appointments.selectDoctor")}
                   </option>
                   {doctors.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -350,10 +351,10 @@ export default function BookAppointmentModal({
               {doctor && (
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge size="sm" color="light">
-                    Fee: {formatCurrency(doctor.fee_amount, doctor.currency)}
+                    {t("bookAppointmentModal.feeLabel", { amount: formatCurrency(doctor.fee_amount, doctor.currency) })}
                   </Badge>
                   <Badge size="sm" color={doctor.slot_type === "sequential" ? "info" : "light"}>
-                    {doctor.slot_type === "sequential" ? "As per bookings" : "Fixed slots"}
+                    {doctor.slot_type === "sequential" ? t("bookAppointmentModal.asPerBookings") : t("bookAppointmentModal.fixedSlots")}
                   </Badge>
                 </div>
               )}
@@ -362,11 +363,11 @@ export default function BookAppointmentModal({
             {/* Date */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Date
+                {t("schedule.date")}
               </label>
               {!doctorId ? (
                 <div className="flex h-24 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500">
-                  Select a doctor to see availability
+                  {t("bookAppointmentModal.selectDoctorToSeeAvailability")}
                 </div>
               ) : (
                 <div className="rounded-xl border border-gray-200 p-2 dark:border-gray-800">
@@ -388,17 +389,17 @@ export default function BookAppointmentModal({
                 <>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-success-500" /> Available
+                      <span className="h-2 w-2 rounded-full bg-success-500" /> {t("bookAppointmentModal.availableLegend")}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> Doctor not available
+                      <span className="h-0.5 w-2.5 rounded-full bg-gray-400 dark:bg-gray-500" /> {t("bookAppointmentModal.doctorNotAvailableLegend")}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-brand-500" /> Selected
+                      <span className="h-2 w-2 rounded-full bg-brand-500" /> {t("doctors.selected")}
                     </span>
                   </div>
                   <p className="mt-2 rounded-lg border border-brand-500/20 bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-400">
-                    Past dates, leaves, outside schedule, or fully booked dates are not selectable.
+                    {t("bookAppointmentModal.dateSelectHint")}
                   </p>
                 </>
               )}
@@ -408,7 +409,7 @@ export default function BookAppointmentModal({
             {doctor && doctor.slot_type === "fixed" && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Time slot
+                  {t("bookAppointmentModal.timeSlot")}
                 </label>
                 {availLoading ? (
                   <div className="flex flex-wrap gap-2">
@@ -420,11 +421,11 @@ export default function BookAppointmentModal({
                   <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
                 ) : !availability || availability.slots.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    No bookable slots for this date.
+                    {t("bookAppointmentModal.noBookableSlots")}
                   </p>
                 ) : availability.status === "leave" ? (
                   <p className="text-sm text-error-600 dark:text-error-400">
-                    Doctor is on leave for this date
+                    {t("doctorProfile.doctorOnLeave")}
                     {availability.leave?.reason ? ` — ${availability.leave.reason}` : ""}.
                   </p>
                 ) : (
@@ -453,8 +454,7 @@ export default function BookAppointmentModal({
 
             {doctor && doctor.slot_type === "sequential" && (
               <p className="rounded-lg border border-info-500/30 bg-info-50 px-4 py-3 text-sm text-info-700 dark:bg-info-500/10 dark:text-info-400">
-                This doctor books as per bookings — the next free slot for the chosen
-                date is assigned automatically.
+                {t("bookAppointmentModal.sequentialBookingHint")}
               </p>
             )}
           </div>
@@ -462,11 +462,11 @@ export default function BookAppointmentModal({
           {/* Patient details — right column */}
           <div className="space-y-4 border-t border-gray-100 pt-5 dark:border-gray-800 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-              Patient details
+              {t("bookAppointmentModal.patientDetails")}
             </h6>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Relationship
+                {t("appointments.relationship")}
               </label>
               <select
                 value={relationship}
@@ -475,38 +475,38 @@ export default function BookAppointmentModal({
               >
                 {RELATIONSHIPS.map((r) => (
                   <option key={r} value={r}>
-                    {r === "self" ? "Self" : r.charAt(0).toUpperCase() + r.slice(1)}
+                    {r === "self" ? t("appointments.self") : r.charAt(0).toUpperCase() + r.slice(1)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Name <span className="text-error-500">*</span>
+                {t("appointments.name")} <span className="text-error-500">*</span>
               </label>
               <input
                 type="text"
                 value={patientName}
                 onChange={(e) => setPatientName(e.target.value)}
-                placeholder="Visitor's full name"
+                placeholder={t("bookAppointmentModal.visitorFullName")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Phone
+                {t("appointments.phone")}
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Age
+                {t("appointments.age")}
               </label>
               <input
                 type="number"
@@ -514,20 +514,20 @@ export default function BookAppointmentModal({
                 max={150}
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder="Optional"
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Gender
+                {t("appointments.genderLabel")}
               </label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
                 className={inputClass}
               >
-                <option value="">Prefer not to say</option>
+                <option value="">{t("bookAppointmentModal.preferNotToSay")}</option>
                 {GENDERS.filter((g) => g !== "prefer_not_to_say").map((g) => (
                   <option key={g} value={g}>
                     {g.charAt(0).toUpperCase() + g.slice(1)}
@@ -549,14 +549,14 @@ export default function BookAppointmentModal({
             onClick={onClose}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={submit}
             disabled={busy || !branch || !doctorId}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Booking…" : "Book appointment"}
+            {busy ? t("appointments.booking") : t("appointments.bookAppointmentBtn")}
           </button>
         </div>
       </div>

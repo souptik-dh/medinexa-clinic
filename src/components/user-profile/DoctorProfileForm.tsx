@@ -9,10 +9,12 @@ import PhoneNumberField from "@/components/form/input/PhoneNumberField";
 import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField = "name" | "phone";
 
 export default function DoctorProfileForm() {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [regNo, setRegNo] = useState("");
@@ -33,11 +35,11 @@ export default function DoctorProfileForm() {
       setRegNo(p.reg_no ?? "");
       setBio(p.bio ?? "");
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctor profile"));
+      setError(getErrorMessage(err, t("doctorProfile.failedToLoadDoctorProfile")));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -46,7 +48,7 @@ export default function DoctorProfileForm() {
   const submit = async () => {
     setSubmitted(true);
     if (!name.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (phone.trim() !== "" && !isValidPhone(phone)) {
@@ -64,10 +66,10 @@ export default function DoctorProfileForm() {
         reg_no: regNo || null,
         bio: bio || null,
       });
-      setOk("Profile updated.");
-      toast.success("Profile updated successfully.");
+      setOk(t("doctorProfile.profileUpdated"));
+      toast.success(t("doctorProfile.profileUpdatedSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to update profile. Please try again.");
+      const message = getErrorMessage(err, t("doctorProfile.unableToUpdateProfile"));
       setError(message);
       toast.error(message);
     } finally {
@@ -77,9 +79,9 @@ export default function DoctorProfileForm() {
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">Doctor profile</h3>
+      <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("doctorProfile.doctorProfileTitle")}</h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Update your name, registration number, phone, and bio.
+        {t("doctorProfile.updateNameRegPhoneBio")}
       </p>
 
       {error && (
@@ -97,7 +99,7 @@ export default function DoctorProfileForm() {
         <DetailSkeleton rows={3} />
       ) : (
         <div className="mt-5 space-y-4">
-          <Field label="Name *">
+          <Field label={t("doctors.nameRequired")}>
             <input
               type="text"
               value={name}
@@ -108,7 +110,7 @@ export default function DoctorProfileForm() {
             {showError("name", !name.trim()) && <FieldError message={REQUIRED_FIELD_MESSAGE} />}
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Registration no.">
+            <Field label={t("doctors.regNoLabel")}>
               <input
                 type="text"
                 value={regNo}
@@ -116,7 +118,7 @@ export default function DoctorProfileForm() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Phone">
+            <Field label={t("patients.phone")}>
               <PhoneNumberField
                 value={phone}
                 onChange={setPhone}
@@ -125,7 +127,7 @@ export default function DoctorProfileForm() {
               />
             </Field>
           </div>
-          <Field label="Bio">
+          <Field label={t("doctorProfile.bio")}>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
@@ -142,7 +144,7 @@ export default function DoctorProfileForm() {
           disabled={saving || loading}
           className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? t("auth.saving") : t("settings.saveChanges")}
         </button>
       </div>
     </div>

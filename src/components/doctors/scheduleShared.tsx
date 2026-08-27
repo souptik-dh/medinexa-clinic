@@ -1,5 +1,17 @@
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+const WEEKDAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/** Translated weekday name for index 0 (Sunday) through 6 (Saturday). */
+export function weekdayLabel(index: number, t: (key: string) => string): string {
+  return t(`weekdays.${WEEKDAY_KEYS[index]}`);
+}
+
+/** Translated 3-letter weekday abbreviation for index 0 (Sun) through 6 (Sat). */
+export function weekdayShortLabel(index: number, t: (key: string) => string): string {
+  return t(`weekdaysShort.${WEEKDAY_KEYS[index]}`);
+}
+
 export const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50";
 

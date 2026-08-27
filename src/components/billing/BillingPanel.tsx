@@ -33,6 +33,7 @@ import {
 } from "@/lib/utils";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const PAYMENT_METHODS = [
   { value: "upi", label: "UPI" },
@@ -42,6 +43,7 @@ const PAYMENT_METHODS = [
 ] as const;
 
 export default function BillingPanel() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
 
@@ -82,9 +84,9 @@ export default function BillingPanel() {
         setClinicId((prev) => prev || res.items[0]?.id || "");
       })
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Failed to load clinics");
+        setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
       });
-  }, [isOwner]);
+  }, [isOwner, t]);
 
   const loadPayments = useCallback(
     async (cursor?: string, append = false) => {
@@ -100,12 +102,12 @@ export default function BillingPanel() {
         setPaymentsCursor(res.next_cursor ?? undefined);
       } catch (err) {
         if (!append) setPayments([]);
-        toast.error(err instanceof ApiError ? err.message : "Failed to load payments");
+        toast.error(err instanceof ApiError ? err.message : t("billing.failedToLoadPayments"));
       } finally {
         setPaymentsLoading(false);
       }
     },
-    [clinicId, paymentsStatus]
+    [clinicId, paymentsStatus, t]
   );
 
   const loadHistory = useCallback(async (cursor?: string, append = false) => {
@@ -120,11 +122,11 @@ export default function BillingPanel() {
       setHistoryCursor(res.next_cursor ?? undefined);
     } catch (err) {
       if (!append) setHistory([]);
-      toast.error(err instanceof ApiError ? err.message : "Failed to load history");
+      toast.error(err instanceof ApiError ? err.message : t("billing.failedToLoadHistory"));
     } finally {
       setHistoryLoading(false);
     }
-  }, [clinicId]);
+  }, [clinicId, t]);
 
   useEffect(() => {
     if (!clinicId) return;
@@ -143,7 +145,7 @@ export default function BillingPanel() {
       .catch((err) => {
         if (cancelled) return;
         setDetail(null);
-        setError(err instanceof ApiError ? err.message : "Failed to load subscription");
+        setError(err instanceof ApiError ? err.message : t("billing.failedToLoadSubscription"));
       })
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -193,7 +195,7 @@ export default function BillingPanel() {
           provider_signature: result.razorpay_signature,
           reference_no: null,
         });
-        toast.success(res.message || "Payment verified.");
+        toast.success(res.message || t("billing.paymentVerified"));
         setPayOpen(false);
         setPendingPayment(null);
         setCheckoutStage("idle");
@@ -205,7 +207,7 @@ export default function BillingPanel() {
       } catch (err) {
         if (err instanceof Error && err.message === "cancelled") {
           setCheckoutStage("idle");
-          toast.error("Payment cancelled.");
+          toast.error(t("billing.paymentCancelled"));
           return;
         }
         const message =
@@ -213,7 +215,7 @@ export default function BillingPanel() {
             ? err.message
             : err instanceof Error
               ? err.message
-              : "Payment verification failed";
+              : t("billing.paymentVerificationFailed");
         setCheckoutStage("error");
         setCheckoutError(message);
         toast.error(message);
@@ -235,7 +237,7 @@ export default function BillingPanel() {
       loadPayments();
       await launchCheckout(res.payment);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to initiate payment");
+      toast.error(err instanceof ApiError ? err.message : t("billing.failedToInitiatePayment"));
     } finally {
       setInitiating(false);
     }
@@ -246,13 +248,13 @@ export default function BillingPanel() {
     setReactivating(true);
     try {
       const res = await subscriptionsApi.reactivate(clinicId);
-      toast.success(res.message || "Clinic reactivated.");
+      toast.success(res.message || t("billing.clinicReactivated"));
       const fresh = await subscriptionsApi.get(clinicId);
       setDetail(fresh);
       loadPayments();
       loadHistory();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to reactivate");
+      toast.error(err instanceof ApiError ? err.message : t("billing.failedToReactivate"));
     } finally {
       setReactivating(false);
     }
@@ -261,7 +263,7 @@ export default function BillingPanel() {
   if (!isOwner) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Only clinic owners can manage billing and subscriptions.
+        {t("billing.ownerOnlyNotice")}
       </div>
     );
   }
@@ -272,14 +274,14 @@ export default function BillingPanel() {
       <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div className="w-full sm:w-72">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Clinic
+            {t("billing.clinic")}
           </label>
           <select
             value={clinicId}
             onChange={(e) => setClinicId(e.target.value)}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
-            <option value="">Select clinic</option>
+            <option value="">{t("billing.selectClinic")}</option>
             {clinics.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -296,7 +298,7 @@ export default function BillingPanel() {
               }}
               className="inline-flex h-10 items-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
-              Pay / Renew
+              {t("billing.payRenew")}
             </button>
           )}
           {isInactive && (
@@ -305,7 +307,7 @@ export default function BillingPanel() {
               disabled={reactivating}
               className="inline-flex h-10 items-center rounded-lg bg-success-500 px-4 text-sm font-medium text-white transition-colors hover:bg-success-600 disabled:opacity-60"
             >
-              {reactivating ? "Reactivating…" : "Reactivate"}
+              {reactivating ? t("billing.reactivating") : t("billing.reactivate")}
             </button>
           )}
         </div>
@@ -327,43 +329,43 @@ export default function BillingPanel() {
           <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:col-span-2">
             <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                Subscription status
+                {t("billing.subscriptionStatus")}
               </h3>
               <Badge color={subscriptionStatusColor(subscription.status)}>
-                {subscriptionStatusLabel(subscription.status)}
+                {subscriptionStatusLabel(subscription.status, t)}
               </Badge>
               {subscription.blocked && (
-                <Badge color="error">Blocked</Badge>
+                <Badge color="error">{t("billing.blocked")}</Badge>
               )}
             </div>
 
             <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
               <div>
                 <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  Plan
+                  {t("billing.plan")}
                 </dt>
                 <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                   {plan?.name || "—"} ·{" "}
-                  {plan ? `${formatCurrency(plan.monthly_amount, plan.currency)} / month` : ""}
-                  {plan?.trial_months ? ` (${plan.trial_months}-month free trial)` : ""}
+                  {plan ? t("billing.monthPrice", { amount: formatCurrency(plan.monthly_amount, plan.currency) }) : ""}
+                  {plan?.trial_months ? t("billing.trialMonths", { months: plan.trial_months }) : ""}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  Days remaining
+                  {t("billing.daysRemaining")}
                 </dt>
                 <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                   {subscription.days_remaining ?? 0}
                   {subscription.expiring_soon && (
                     <span className="ml-2 text-warning-600 dark:text-orange-400">
-                      expiring soon
+                      {t("billing.expiringSoon")}
                     </span>
                   )}
                 </dd>
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  Current period
+                  {t("billing.currentPeriod")}
                 </dt>
                 <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                   {subscription.period_start && subscription.period_end
@@ -373,7 +375,7 @@ export default function BillingPanel() {
               </div>
               <div>
                 <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                  Trial window
+                  {t("billing.trialWindow")}
                 </dt>
                 <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                   {subscription.trial_started_at && subscription.trial_ends_at
@@ -384,7 +386,7 @@ export default function BillingPanel() {
               {subscription.deactivation_reason && (
                 <div className="sm:col-span-2">
                   <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    Deactivation reason
+                    {t("billing.deactivationReason")}
                   </dt>
                   <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                     {subscription.deactivation_reason}
@@ -394,7 +396,7 @@ export default function BillingPanel() {
               {subscription.blocked_reason && (
                 <div className="sm:col-span-2">
                   <dt className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    Blocked reason
+                    {t("billing.blockedReason")}
                   </dt>
                   <dd className="mt-0.5 text-sm text-gray-800 dark:text-white/90">
                     {subscription.blocked_reason}
@@ -406,19 +408,21 @@ export default function BillingPanel() {
 
           <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              What you get
+              {t("billing.whatYouGet")}
             </h3>
             <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-              <li>Unlimited doctor appointments across branches</li>
-              <li>Lab test bookings &amp; scheduling</li>
-              <li>Prescriptions with AI scan assist</li>
-              <li>Staff permissions &amp; role management</li>
-              <li>Payment ledger &amp; reports</li>
+              <li>{t("billing.benefitAppointments")}</li>
+              <li>{t("billing.benefitLabTests")}</li>
+              <li>{t("billing.benefitPrescriptions")}</li>
+              <li>{t("billing.benefitStaff")}</li>
+              <li>{t("billing.benefitLedger")}</li>
             </ul>
             {plan && (
               <p className="mt-4 rounded-xl bg-brand-50 p-3 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
-                {formatCurrency(plan.monthly_amount, plan.currency)} per month · pay for up to{" "}
-                {detail?.settings.max_months_per_payment ?? 12} months at once.
+                {t("billing.perMonthUpTo", {
+                  amount: formatCurrency(plan.monthly_amount, plan.currency),
+                  months: detail?.settings.max_months_per_payment ?? 12,
+                })}
               </p>
             )}
           </div>
@@ -429,7 +433,7 @@ export default function BillingPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Payment history
+            {t("billing.paymentHistory")}
           </h3>
           <select
             value={paymentsStatus}
@@ -438,16 +442,16 @@ export default function BillingPanel() {
             }}
             className="h-9 w-40 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
-            <option value="">All statuses</option>
-            <option value="PENDING">Pending</option>
-            <option value="PAID">Paid</option>
-            <option value="FAILED">Failed</option>
+            <option value="">{t("billing.allStatuses")}</option>
+            <option value="PENDING">{t("billing.pending")}</option>
+            <option value="PAID">{t("billing.paid")}</option>
+            <option value="FAILED">{t("billing.failed")}</option>
           </select>
         </div>
         <div className="overflow-hidden px-4 pb-4 sm:px-6 sm:pb-6">
           {payments.length === 0 && !paymentsLoading ? (
             <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              No payments yet.
+              {t("billing.noPaymentsYet")}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -455,22 +459,22 @@ export default function BillingPanel() {
                 <TableHeader>
                   <TableRow>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Invoice
+                      {t("billing.invoiceCol")}
                     </TableCell>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Amount
+                      {t("billing.amountCol")}
                     </TableCell>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Months
+                      {t("billing.months")}
                     </TableCell>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Method
+                      {t("billing.method")}
                     </TableCell>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Status
+                      {t("dashboard.status")}
                     </TableCell>
                     <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                      Created
+                      {t("billing.created")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -501,7 +505,7 @@ export default function BillingPanel() {
                       <TableCell className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                         {formatDateTime(p.created_at)}
                         {p.period_end && (
-                          <span className="block text-xs">covers till {formatDate(p.period_end)}</span>
+                          <span className="block text-xs">{t("billing.coversTill", { date: formatDate(p.period_end) })}</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -517,7 +521,7 @@ export default function BillingPanel() {
                 disabled={paymentsLoading}
                 className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
               >
-                {paymentsLoading ? "Loading…" : "Load more"}
+                {paymentsLoading ? t("billing.loadingEllipsis") : t("billing.loadMore")}
               </button>
             </div>
           )}
@@ -527,11 +531,11 @@ export default function BillingPanel() {
       {/* History */}
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Subscription activity
+          {t("billing.subscriptionActivity")}
         </h3>
         {history.length === 0 && !historyLoading ? (
           <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            No activity yet.
+            {t("billing.noActivityYet")}
           </p>
         ) : (
           <ol className="mt-4 space-y-3 border-l border-gray-200 pl-4 dark:border-gray-800">
@@ -544,7 +548,7 @@ export default function BillingPanel() {
                   {h.reason ? ` — ${h.reason}` : ""}
                 </p>
                 <p className="text-xs text-gray-400">
-                  {formatDateTime(h.created_at)} · via {h.source.replaceAll("_", " ")}
+                  {formatDateTime(h.created_at)} · {t("billing.via", { source: h.source.replaceAll("_", " ") })}
                 </p>
               </li>
             ))}
@@ -557,7 +561,7 @@ export default function BillingPanel() {
               disabled={historyLoading}
               className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
             >
-              {historyLoading ? "Loading…" : "Load more"}
+              {historyLoading ? t("billing.loadingEllipsis") : t("billing.loadMore")}
             </button>
           </div>
         )}
@@ -566,21 +570,21 @@ export default function BillingPanel() {
       {/* Pay modal */}
       <Modal isOpen={payOpen} onClose={() => setPayOpen(false)} className="max-w-lg p-6">
         <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
-          {pendingPayment ? "Complete payment" : "Initiate payment"}
+          {pendingPayment ? t("billing.completePayment") : t("billing.initiatePayment")}
         </h3>
         <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
           {pendingPayment
-            ? "Complete the payment in the Razorpay window to activate your subscription."
-            : `Paying extends the subscription by full months starting ${formatDate(
-                subscription?.period_end || new Date().toISOString()
-              )}.`}
+            ? t("billing.completePaymentHint")
+            : t("billing.payingExtendsHint", {
+                date: formatDate(subscription?.period_end || new Date().toISOString()),
+              })}
         </p>
 
         {!pendingPayment ? (
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Months
+                {t("billing.monthsLabel")}
               </label>
               <select
                 value={months}
@@ -589,7 +593,7 @@ export default function BillingPanel() {
               >
                 {Array.from({ length: detail?.settings.max_months_per_payment || 12 }, (_, i) => i + 1).map((m) => (
                   <option key={m} value={m}>
-                    {m} month{m > 1 ? "s" : ""} —{" "}
+                    {m} {m > 1 ? t("billing.monthsUnit") : t("billing.monthUnit")} —{" "}
                     {plan ? formatCurrency(plan.monthly_amount * m, plan.currency) : ""}
                   </option>
                 ))}
@@ -597,7 +601,7 @@ export default function BillingPanel() {
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Method
+                {t("billing.method")}
               </label>
               <select
                 value={method}
@@ -616,18 +620,17 @@ export default function BillingPanel() {
               disabled={initiating}
               className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
-              {initiating ? "Initiating…" : "Create order"}
+              {initiating ? t("billing.initiating") : t("billing.createOrder")}
             </button>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="rounded-xl bg-gray-50 p-3 text-sm dark:bg-white/5">
               <p className="font-medium text-gray-800 dark:text-white/90">
-                Order {pendingPayment.provider_order_id}
+                {t("billing.order", { id: pendingPayment.provider_order_id })}
               </p>
               <p className="text-gray-500 dark:text-gray-400">
-                {formatCurrency(pendingPayment.amount, pendingPayment.currency)} for{" "}
-                {pendingPayment.months} month{pendingPayment.months > 1 ? "s" : ""}
+                {formatCurrency(pendingPayment.amount, pendingPayment.currency)} · {pendingPayment.months} {pendingPayment.months > 1 ? t("billing.monthsUnit") : t("billing.monthUnit")}
               </p>
             </div>
 
@@ -638,7 +641,7 @@ export default function BillingPanel() {
             ) : (
               <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-brand-500 dark:border-gray-700" />
-                {checkoutStage === "verifying" ? "Verifying payment…" : "Waiting for the Razorpay window…"}
+                {checkoutStage === "verifying" ? t("billing.verifyingPayment") : t("billing.waitingForRazorpay")}
               </p>
             )}
 
@@ -647,7 +650,7 @@ export default function BillingPanel() {
               disabled={checkoutStage === "opening" || checkoutStage === "verifying"}
               className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
-              {checkoutStage === "error" ? "Retry payment" : "Reopen payment window"}
+              {checkoutStage === "error" ? t("billing.retryPayment") : t("billing.reopenPaymentWindow")}
             </button>
           </div>
         )}

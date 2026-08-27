@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect } from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // Right-side slide-over used for all Add/Edit/Configure actions inside the
 // Clinics module. Keeps the user on the current tab — the action opens over
@@ -23,6 +24,7 @@ export default function FormDrawer({
   children,
   footer,
 }: FormDrawerProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -70,7 +72,7 @@ export default function FormDrawer({
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("appointments.close")}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
           >
             <svg

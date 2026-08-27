@@ -26,7 +26,7 @@ export default function ChatPanel() {
     respondConfirmation,
     clearMessages,
   } = useAiChat();
-  const { t } = useTranslation();
+  const { t, locale, setLocale } = useTranslation();
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -85,6 +85,13 @@ export default function ChatPanel() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setLocale(locale === "en" ? "bn" : "en")}
+            className="rounded-md px-1.5 py-1 text-[11px] font-medium text-white/70 transition hover:bg-white/20 hover:text-white"
+            title={t(`language.${locale === "en" ? "bn" : "en"}`)}
+          >
+            {locale === "en" ? "বাংলা" : "EN"}
+          </button>
           {messages.length > 0 && (
             <button
               onClick={clearMessages}

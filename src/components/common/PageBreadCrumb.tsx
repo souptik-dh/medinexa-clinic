@@ -1,5 +1,7 @@
+"use client";
 import Link from "next/link";
 import React from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export interface BreadcrumbItem {
   label: string;
@@ -31,6 +33,7 @@ const ChevronIcon = () => (
 );
 
 const PageBreadcrumb: React.FC<BreadcrumbProps> = ({ pageTitle, items = [] }) => {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
       <h2
@@ -46,7 +49,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({ pageTitle, items = [] }) =>
               className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400"
               href="/dashboard"
             >
-              Home
+              {t("common.home")}
               <ChevronIcon />
             </Link>
           </li>

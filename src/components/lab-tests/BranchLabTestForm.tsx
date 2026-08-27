@@ -11,6 +11,7 @@ import {
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface ConfigForm {
   test_id: string;
@@ -37,6 +38,7 @@ interface BranchLabTestFormProps {
 }
 
 export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams<{ clinicId?: string; branchId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
@@ -73,11 +75,11 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       setAllTests(testsRes.items);
       setConfiguredTestIds(new Set(configuredRes.items.map((i) => i.test_id)));
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load lab tests"));
+      setError(getErrorMessage(err, t("labTests.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, [clinicId, branchId]);
+  }, [clinicId, branchId, t]);
 
   useEffect(() => {
     loadOptions();
@@ -94,20 +96,20 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editItem && !config.test_id) {
-      setError("Please select a lab test.");
+      setError(t("branchLabTestForm.pleaseSelectLabTest"));
       return;
     }
     if (!config.price || Number(config.price) <= 0 || Number(config.price) > 1_000_000) {
-      setError("Please enter a valid price greater than 0 and up to 1,000,000.");
+      setError(t("branchLabTestForm.invalidPrice"));
       return;
     }
     if (config.currency.trim().length !== 3) {
-      setError("Currency must be a 3-letter code (e.g. INR).");
+      setError(t("branchLabTestForm.invalidCurrency"));
       return;
     }
     const duration = config.duration_minutes ? Number(config.duration_minutes) : undefined;
     if (duration !== undefined && (duration < 5 || duration > 240)) {
-      setError("Duration must be between 5 and 240 minutes.");
+      setError(t("branchLabTestForm.invalidDuration"));
       return;
     }
     setBusy(true);
@@ -123,14 +125,14 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       };
       if (editItem) {
         await branchLabTestsApi.update(branchId, editItem.id, payload);
-        toast.success("Branch lab test updated successfully.");
+        toast.success(t("branchLabTestForm.updatedSuccess"));
       } else {
         await branchLabTestsApi.configure(branchId, { ...payload, test_id: config.test_id });
-        toast.success("Branch lab test configured successfully.");
+        toast.success(t("branchLabTestForm.configuredSuccess"));
       }
       router.push(cancelHref);
     } catch (err) {
-      const msg = getErrorMessage(err, "Failed to save branch lab test");
+      const msg = getErrorMessage(err, t("branchLabTestForm.failedToSave"));
       setError(msg);
       toast.error(msg);
     } finally {
@@ -159,7 +161,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       <div className="space-y-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Lab Test *
+            {t("branchLabTestForm.labTestLabel")}
           </label>
           <select
             value={config.test_id}
@@ -167,7 +169,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
             disabled={!!editItem}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50"
           >
-            <option value="">Select a test</option>
+            <option value="">{t("branchLabTestForm.selectATest")}</option>
             {availableTests.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} ({labTestCategoryLabel(t.category)})
@@ -178,7 +180,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Price *
+              {t("branchLabTestForm.price")}
             </label>
             <input
               type="number"
@@ -192,7 +194,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Currency
+              {t("branchLabTestForm.currency")}
             </label>
             <input
               type="text"
@@ -205,7 +207,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Duration (minutes)
+            {t("branchLabTestForm.duration")}
           </label>
           <input
             type="number"
@@ -225,7 +227,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
               onChange={(e) => updateField("clinic_available", e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/10"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-400">Available at clinic</span>
+            <span className="text-sm text-gray-700 dark:text-gray-400">{t("branchLabTestForm.availableAtClinic")}</span>
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -234,7 +236,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
               onChange={(e) => updateField("home_collection_available", e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/10"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-400">Home collection available</span>
+            <span className="text-sm text-gray-700 dark:text-gray-400">{t("branchLabTestForm.homeCollectionAvailable")}</span>
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -243,7 +245,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
               onChange={(e) => updateField("prescription_required", e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/10"
             />
-            <span className="text-sm text-gray-700 dark:text-gray-400">Prescription required</span>
+            <span className="text-sm text-gray-700 dark:text-gray-400">{t("branchLabTestForm.prescriptionRequired")}</span>
           </label>
         </div>
       </div>
@@ -253,14 +255,14 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
           onClick={() => router.push(cancelHref)}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="submit"
           disabled={busy}
           className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {busy ? "Saving..." : editItem ? "Update" : "Configure"}
+          {busy ? t("auth.saving") : editItem ? t("labTestsPage.update") : t("branchLabTestForm.configure")}
         </button>
       </div>
     </form>

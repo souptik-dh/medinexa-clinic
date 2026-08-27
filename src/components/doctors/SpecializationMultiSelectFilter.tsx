@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import Checkbox from "@/components/form/input/Checkbox";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface SpecializationMultiSelectFilterProps {
   options: string[];
@@ -13,8 +14,10 @@ export default function SpecializationMultiSelectFilter({
   options,
   selected,
   onChange,
-  label = "Specialization",
+  label,
 }: SpecializationMultiSelectFilterProps) {
+  const { t } = useTranslation();
+  const resolvedLabel = label ?? t("specializationFilter.label");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +44,7 @@ export default function SpecializationMultiSelectFilter({
   return (
     <div ref={containerRef} className="relative w-full sm:w-64">
       <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-        {label}
+        {resolvedLabel}
       </label>
       <button
         type="button"
@@ -50,8 +53,8 @@ export default function SpecializationMultiSelectFilter({
       >
         <span className="truncate text-left">
           {selected.length === 0
-            ? "All specializations"
-            : `${selected.length} selected`}
+            ? t("specializationFilter.allSpecializations")
+            : t("specializationFilter.selectedCount", { count: selected.length })}
         </span>
         <svg
           className={`h-4 w-4 shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${
@@ -77,7 +80,7 @@ export default function SpecializationMultiSelectFilter({
               <button
                 type="button"
                 onClick={() => toggle(name)}
-                aria-label={`Remove ${name}`}
+                aria-label={t("specializationFilter.removeName", { name })}
                 className="rounded-full p-0.5 hover:bg-brand-500/20"
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -96,7 +99,7 @@ export default function SpecializationMultiSelectFilter({
             onClick={clearAll}
             className="text-theme-xs font-medium text-gray-500 hover:text-gray-700 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
           >
-            Clear all
+            {t("specializationFilter.clearAll")}
           </button>
         </div>
       )}
@@ -105,14 +108,14 @@ export default function SpecializationMultiSelectFilter({
         <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {options.length === 0 ? (
             <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-              No specializations available.
+              {t("specializationFilter.noSpecializationsAvailable")}
             </div>
           ) : (
             <>
               {selected.length > 0 && (
                 <div className="flex items-center justify-between border-b border-gray-100 px-3 py-1.5 dark:border-gray-800">
                   <span className="text-theme-xs text-gray-500 dark:text-gray-400">
-                    {selected.length} selected
+                    {t("specializationFilter.selectedCount", { count: selected.length })}
                   </span>
                   <button
                     type="button"

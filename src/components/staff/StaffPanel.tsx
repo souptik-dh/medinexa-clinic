@@ -21,8 +21,10 @@ import { StaffMember, staffApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function StaffPanel() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { can } = useAuth();
   const canManage = can("staff:manage");
@@ -52,11 +54,11 @@ export default function StaffPanel() {
       setItems(res.items);
     } catch (err) {
       setItems([]);
-      setError(getErrorMessage(err, "Failed to load staff"));
+      setError(getErrorMessage(err, t("staff.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const onBranchChange = (b: BranchSelectValue | null) => {
     setBranch(b);
@@ -73,7 +75,7 @@ export default function StaffPanel() {
   const create = async () => {
     if (!branch) return;
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     setBusy(true);
@@ -82,9 +84,9 @@ export default function StaffPanel() {
       await staffApi.create(branch.id, { name, email });
       closeModal();
       await load(branch);
-      toast.success("Staff member added successfully.");
+      toast.success(t("staff.addedSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to add staff member. Please try again.");
+      const message = getErrorMessage(err, t("staff.unableToAdd"));
       setError(message);
       toast.error(message);
     } finally {
@@ -95,18 +97,18 @@ export default function StaffPanel() {
   const remove = async (member: StaffMember) => {
     if (!branch) return;
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
-    if (!window.confirm(`Remove "${member.name}" from staff?`)) return;
+    if (!window.confirm(t("staff.removeConfirm", { name: member.name }))) return;
     setBusy(true);
     setError(null);
     try {
       await staffApi.remove(branch.id, member.id);
       await load(branch);
-      toast.success("Staff member removed successfully.");
+      toast.success(t("staff.removedSuccess"));
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to remove staff member. Please try again.");
+      const message = getErrorMessage(err, t("staff.unableToRemove"));
       setError(message);
       toast.error(message);
     } finally {
@@ -132,7 +134,7 @@ export default function StaffPanel() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Branch staff
+          {t("staff.branchStaff")}
         </h3>
         <BranchSelect value={branch?.id ?? ""} onChange={onBranchChange} />
       </div>
@@ -146,7 +148,7 @@ export default function StaffPanel() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Staff
+            {t("staff.title")}
             {branch && (
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {branch.name}
@@ -159,20 +161,20 @@ export default function StaffPanel() {
               disabled={busy || !branch}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
-              + Add staff
+              + {t("staff.addStaff")}
             </button>
           )}
         </div>
 
         {!branch ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Select a branch to manage its staff.
+            {t("staff.selectBranchHint")}
           </p>
         ) : loading ? (
           <TableSkeleton rows={5} cols={5} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No staff members at this branch yet.
+            {t("staff.noStaffAtBranch")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -180,19 +182,19 @@ export default function StaffPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Name
+                    {t("staff.name")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Email
+                    {t("staff.email")}
                   </TableCell>
                   <TableCell isHeader className="py-3 max-w-[280px] font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Permissions
+                    {t("staff.permissions")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400 whitespace-nowrap">
-                    Added
+                    {t("staff.added")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                    Actions
+                    {t("appointments.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -233,7 +235,7 @@ export default function StaffPanel() {
                             disabled={busy}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                           >
-                            Permissions
+                            {t("staff.permissions")}
                           </button>
                         )}
                         {canManage && (
@@ -242,7 +244,7 @@ export default function StaffPanel() {
                             disabled={busy}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            Remove
+                            {t("staff.remove")}
                           </button>
                         )}
                       </div>
@@ -264,15 +266,15 @@ export default function StaffPanel() {
       {/* Add staff modal */}
       <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Add staff member
+          {t("staff.addStaffMemberTitle")}
         </h5>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          A login instruction email is sent automatically to the address below.
+          {t("staff.loginInstructionHint")}
         </p>
         <div className="mt-6 space-y-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Name *
+              {t("staff.nameRequired")}
             </label>
             <input
               type="text"
@@ -283,7 +285,7 @@ export default function StaffPanel() {
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Email *
+              {t("staff.emailRequired")}
             </label>
             <input
               type="email"
@@ -298,14 +300,14 @@ export default function StaffPanel() {
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Close
+            {t("appointments.close")}
           </button>
           <button
             onClick={create}
             disabled={busy || !name || !email}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
-            {busy ? "Adding…" : "Add"}
+            {busy ? t("staff.adding") : t("common.add")}
           </button>
         </div>
       </Modal>

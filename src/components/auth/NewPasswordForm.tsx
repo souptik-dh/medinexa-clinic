@@ -8,10 +8,12 @@ import Button from "@/components/ui/button/Button";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField = "newPassword" | "confirmPassword";
 
 export default function NewPasswordForm() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
@@ -28,15 +30,15 @@ export default function NewPasswordForm() {
     setError(null);
     setSubmitted(true);
     if (!token) {
-      setError("This reset link is missing its token.");
+      setError(t("auth.missingToken"));
       return;
     }
     if (!newPassword.trim() || !confirmPassword.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("auth.passwordsDoNotMatch"));
       return;
     }
     setSubmitting(true);
@@ -48,7 +50,7 @@ export default function NewPasswordForm() {
       });
       setMessage(res.message);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to reset your password");
+      setError(err instanceof ApiError ? err.message : t("auth.unableToResetPassword"));
     } finally {
       setSubmitting(false);
     }
@@ -60,10 +62,10 @@ export default function NewPasswordForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Set a new password
+              {t("auth.newPasswordTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Choose a new password for your account.
+              {t("auth.newPasswordDesc")}
             </p>
           </div>
 
@@ -76,31 +78,31 @@ export default function NewPasswordForm() {
                 href="/signin"
                 className="block w-full rounded-lg bg-brand-500 px-4 py-3 text-center text-sm font-medium text-white hover:bg-brand-600"
               >
-                Go to sign in
+                {t("auth.goToSignIn")}
               </Link>
             </div>
           ) : !token ? (
             <div className="space-y-5">
               <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-                This reset link is missing its token.
+                {t("auth.missingToken")}
               </div>
               <Link
                 href="/reset-password"
                 className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Request a new link
+                {t("auth.requestNewLink")}
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <Label>
-                  New password <span className="text-error-500">*</span>
+                  {t("auth.newPassword")} <span className="text-error-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Min. 8 characters"
+                    placeholder={t("auth.passwordPlaceholder")}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     onBlur={() => touch("newPassword")}
@@ -124,11 +126,11 @@ export default function NewPasswordForm() {
               </div>
               <div>
                 <Label>
-                  Confirm password <span className="text-error-500">*</span>
+                  {t("auth.confirmPassword")} <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Re-enter your new password"
+                  placeholder={t("auth.confirmPasswordPlaceholder")}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   onBlur={() => touch("confirmPassword")}
@@ -148,7 +150,7 @@ export default function NewPasswordForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Saving..." : "Reset password"}
+                  {submitting ? t("auth.saving") : t("auth.resetPassword")}
                 </Button>
               </div>
             </form>

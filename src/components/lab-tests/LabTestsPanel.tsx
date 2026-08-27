@@ -25,10 +25,12 @@ import LabTestForm, {
 } from "@/components/lab-tests/LabTestForm";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const STATUS_OPTIONS: (LabTestStatus | "")[] = ["", "active", "inactive"];
 
 export default function LabTestsPanel() {
+  const { t } = useTranslation();
   const params = useParams<{ clinicId?: string }>();
   const clinicId = typeof params.clinicId === "string" ? params.clinicId : "";
   const [items, setItems] = useState<LabTest[]>([]);
@@ -61,11 +63,11 @@ export default function LabTestsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load lab tests"));
+      setError(getErrorMessage(err, t("labTests.failedToLoad")));
     } finally {
       setLoading(false);
     }
-  }, [clinicId, statusFilter, categoryFilter, search]);
+  }, [clinicId, statusFilter, categoryFilter, search, t]);
 
   useEffect(() => {
     load();
@@ -76,9 +78,9 @@ export default function LabTestsPanel() {
     try {
       await labTestsApi.toggleStatus(item.id, item.status === "active" ? "inactive" : "active");
       await load();
-      toast.success("Lab test status updated.");
+      toast.success(t("labTestsPage.statusUpdated"));
     } catch (err) {
-      toast.error(getErrorMessage(err, "Failed to update lab test status"));
+      toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdateStatus")));
     } finally {
       setTogglingId(null);
     }
@@ -88,7 +90,7 @@ export default function LabTestsPanel() {
     <div>
       <ClinicTabs />
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
-        <FilterField label="Status">
+        <FilterField label={t("dashboard.status")}>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as LabTestStatus | "")}
@@ -96,18 +98,18 @@ export default function LabTestsPanel() {
           >
             {STATUS_OPTIONS.map((s) => (
               <option key={s || "all"} value={s}>
-                {s === "" ? "All statuses" : s.charAt(0).toUpperCase() + s.slice(1)}
+                {s === "" ? t("appointments.allStatuses") : s === "active" ? t("status.active") : t("status.inactive")}
               </option>
             ))}
           </select>
         </FilterField>
-        <FilterField label="Category">
+        <FilterField label={t("labTests.category")}>
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value as LabTestCategory | "")}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
-            <option value="">All categories</option>
+            <option value="">{t("labTestsPage.allCategories")}</option>
             {categoryOptions.map((c) => (
               <option key={c.id ?? c.name} value={c.name}>
                 {c.name}
@@ -115,12 +117,12 @@ export default function LabTestsPanel() {
             ))}
           </select>
         </FilterField>
-        <FilterField label="Search">
+        <FilterField label={t("common.search")}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Test name..."
+            placeholder={t("labTestsPage.testNamePlaceholder")}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </FilterField>
@@ -128,13 +130,13 @@ export default function LabTestsPanel() {
           onClick={load}
           className="h-11 rounded-lg border border-gray-300 bg-white px-5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Refresh
+          {t("appointments.refresh")}
         </button>
         <button
           onClick={() => setCreateOpen(true)}
           className="flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
-          + New Test
+          {t("labTestsPage.newTest")}
         </button>
       </div>
 
@@ -149,7 +151,7 @@ export default function LabTestsPanel() {
           <TableSkeleton rows={5} cols={5} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No lab tests found.
+            {t("labTests.noLabTests")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -157,19 +159,19 @@ export default function LabTestsPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Name
+                    {t("patients.name")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Category
+                    {t("labTests.category")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Code
+                    {t("labTestsPage.code")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("dashboard.status")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                    Actions
+                    {t("appointments.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -199,7 +201,7 @@ export default function LabTestsPanel() {
                         size="sm"
                         color={item.status === "active" ? "success" : "dark"}
                       >
-                        {item.status === "active" ? "Active" : "Inactive"}
+                        {item.status === "active" ? t("status.active") : t("status.inactive")}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
@@ -208,7 +210,7 @@ export default function LabTestsPanel() {
                           onClick={() => setEditingTest(item)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
-                          Edit
+                          {t("common.edit")}
                         </button>
                         <button
                           onClick={() => handleToggleStatus(item)}
@@ -219,7 +221,7 @@ export default function LabTestsPanel() {
                               : "text-success-600 hover:bg-success-50 dark:hover:bg-success-500/10"
                           }`}
                         >
-                          {item.status === "active" ? "Deactivate" : "Activate"}
+                          {item.status === "active" ? t("labTestsPage.deactivate") : t("labTestsPage.activate")}
                         </button>
                       </div>
                     </TableCell>
@@ -235,21 +237,21 @@ export default function LabTestsPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        title="Add lab test"
+        title={t("labTests.addLabTest")}
       >
         <LabTestForm
           mode="create"
           initial={EMPTY_LAB_TEST_FORM}
-          submitLabel="Create"
+          submitLabel={t("labTestsPage.create")}
           onCancel={() => setCreateOpen(false)}
           onSubmit={async (payload) => {
             try {
               await labTestsApi.create({ ...payload, clinic_id: clinicId });
-              toast.success("Lab test created successfully.");
+              toast.success(t("labTestsPage.createdSuccess"));
               setCreateOpen(false);
               await load();
             } catch (err) {
-              toast.error(getErrorMessage(err, "Failed to create lab test"));
+              toast.error(getErrorMessage(err, t("labTestsPage.failedToCreate")));
               throw err;
             }
           }}
@@ -259,7 +261,7 @@ export default function LabTestsPanel() {
       <FormDrawer
         isOpen={editingTest !== null}
         onClose={() => setEditingTest(null)}
-        title="Edit lab test"
+        title={t("labTests.editLabTest")}
         description={editingTest?.name}
       >
         {editingTest && (
@@ -274,16 +276,16 @@ export default function LabTestsPanel() {
               instructions: editingTest.instructions ?? "",
               default_precautions: (editingTest.default_precautions ?? []).join(", "),
             }}
-            submitLabel="Update"
+            submitLabel={t("labTestsPage.update")}
             onCancel={() => setEditingTest(null)}
             onSubmit={async (payload) => {
               try {
                 await labTestsApi.update(editingTest.id, payload);
-                toast.success("Lab test updated successfully.");
+                toast.success(t("labTestsPage.updatedSuccess"));
                 setEditingTest(null);
                 await load();
               } catch (err) {
-                toast.error(getErrorMessage(err, "Failed to update lab test"));
+                toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdate")));
                 throw err;
               }
             }}

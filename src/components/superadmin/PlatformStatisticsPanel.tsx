@@ -6,8 +6,10 @@ import Badge from "@/components/ui/badge/Badge";
 import { ApiError, SuperAdminStatistics, superAdminApi } from "@/lib/api";
 import { formatCurrency, subscriptionStatusColor, subscriptionStatusLabel } from "@/lib/utils";
 import { StatGridSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function PlatformStatisticsPanel() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<SuperAdminStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,11 +21,11 @@ export default function PlatformStatisticsPanel() {
     try {
       setStats(await superAdminApi.statistics());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load statistics");
+      setError(err instanceof ApiError ? err.message : t("superAdmin.failedToLoadStatistics"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -34,11 +36,16 @@ export default function PlatformStatisticsPanel() {
     try {
       const res = await superAdminApi.processSubscriptions();
       toast.success(
-        `${res.message} (expired trials: ${res.result.expiredTrials}, expired subscriptions: ${res.result.expiredSubscriptions}, expiring notified: ${res.result.expiringNotified})`
+        t("superAdmin.sweepResult", {
+          message: res.message,
+          expiredTrials: res.result.expiredTrials,
+          expiredSubscriptions: res.result.expiredSubscriptions,
+          expiringNotified: res.result.expiringNotified,
+        })
       );
       load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to process subscriptions");
+      toast.error(err instanceof ApiError ? err.message : t("superAdmin.failedToProcessSubscriptions"));
     } finally {
       setProcessing(false);
     }
@@ -48,7 +55,7 @@ export default function PlatformStatisticsPanel() {
   if (error || !stats) {
     return (
       <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
-        {error ?? "Statistics unavailable."}
+        {error ?? t("superAdmin.statisticsUnavailable")}
       </div>
     );
   }
@@ -64,33 +71,33 @@ export default function PlatformStatisticsPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Platform-wide snapshot of clinics and subscription revenue.
+          {t("superAdmin.snapshot")}
         </p>
         <button
           onClick={runSweep}
           disabled={processing}
           className="inline-flex h-10 items-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
         >
-          {processing ? "Processing…" : "Run subscription sweep"}
+          {processing ? t("superAdmin.processingEllipsis") : t("superAdmin.runSweep")}
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Total clinics" value={stats.clinics.total.toLocaleString()} />
-        <StatCard label={`Expiring ≤ ${stats.clinics.expiring_window_days} days`} value={stats.clinics.expiring_within_days.toLocaleString()} />
-        <StatCard label="Lifetime collected" value={formatCurrency(stats.revenue_inr.total_collected)} />
-        <StatCard label="MRR estimate" value={formatCurrency(stats.mrr_estimate_inr)} />
+        <StatCard label={t("superAdmin.totalClinics")} value={stats.clinics.total.toLocaleString()} />
+        <StatCard label={t("superAdmin.expiringWithinDays", { days: stats.clinics.expiring_window_days })} value={stats.clinics.expiring_within_days.toLocaleString()} />
+        <StatCard label={t("superAdmin.lifetimeCollected")} value={formatCurrency(stats.revenue_inr.total_collected)} />
+        <StatCard label={t("superAdmin.mrrEstimate")} value={formatCurrency(stats.mrr_estimate_inr)} />
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Clinics by status
+          {t("superAdmin.clinicsByStatus")}
         </h3>
         <div className="mt-3 flex flex-wrap gap-3">
           {statuses.map((s) => (
             <Link key={s} href={`/super-admin/clinics?status=${s}`}>
               <Badge color={subscriptionStatusColor(s)}>
-                {subscriptionStatusLabel(s)}: {stats.clinics.by_status[s] ?? 0}
+                {subscriptionStatusLabel(s, t)}: {stats.clinics.by_status[s] ?? 0}
               </Badge>
             </Link>
           ))}
@@ -99,12 +106,12 @@ export default function PlatformStatisticsPanel() {
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Monthly collection ({stats.current_plan.currency})
+          {t("superAdmin.monthlyCollection", { currency: stats.current_plan.currency })}
         </h3>
         <div className="mt-4 space-y-2">
           {stats.revenue_inr.monthly_breakdown.length === 0 && (
             <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-              No collections recorded yet.
+              {t("superAdmin.noCollectionsYet")}
             </p>
           )}
           {stats.revenue_inr.monthly_breakdown.map((m) => {
@@ -124,7 +131,7 @@ export default function PlatformStatisticsPanel() {
                 <span className="w-28 shrink-0 text-right text-gray-800 dark:text-white/90">
                   {formatCurrency(m.amount)}
                 </span>
-                <span className="w-16 shrink-0 text-right text-xs text-gray-400">{m.count} pmt</span>
+                <span className="w-16 shrink-0 text-right text-xs text-gray-400">{m.count} {t("superAdmin.pmt")}</span>
               </div>
             );
           })}
@@ -132,16 +139,12 @@ export default function PlatformStatisticsPanel() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Current plan: <span className="font-medium text-gray-800 dark:text-white/90">{stats.current_plan.name}</span> ·{" "}
-        {formatCurrency(stats.current_plan.monthly_amount, stats.current_plan.currency)} / month ·{" "}
-        This month:{" "}
-        <span className="font-medium text-gray-800 dark:text-white/90">
-          {formatCurrency(stats.revenue_inr.current_month)}
-        </span>{" "}
-        · Previous month:{" "}
-        <span className="font-medium text-gray-800 dark:text-white/90">
-          {formatCurrency(stats.revenue_inr.previous_month)}
-        </span>
+        {t("superAdmin.currentPlanSummary", {
+          planName: stats.current_plan.name,
+          amount: formatCurrency(stats.current_plan.monthly_amount, stats.current_plan.currency),
+          current: formatCurrency(stats.revenue_inr.current_month),
+          previous: formatCurrency(stats.revenue_inr.previous_month),
+        })}
       </div>
     </div>
   );

@@ -590,7 +590,7 @@ export default function DoctorsPanel() {
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={inviteStatusColor(inv.status)}>
-                        {inviteStatusLabel(inv.status)}
+                        {inviteStatusLabel(inv.status, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">

@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/table";
 import { ApiError, SuperAdminPlanVersion, superAdminApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function SuperAdminPlansPanel() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<SuperAdminPlanVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +32,11 @@ export default function SuperAdminPlansPanel() {
       const res = await superAdminApi.plans();
       setItems(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load plans");
+      setError(err instanceof ApiError ? err.message : t("superAdminPlans.failedToLoadPlans"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -48,11 +50,11 @@ export default function SuperAdminPlansPanel() {
         currency: currency || undefined,
         trial_months: trialMonths === "" ? undefined : Number(trialMonths),
       });
-      toast.success(res.message || "New plan version published.");
+      toast.success(res.message || t("superAdminPlans.newPlanPublished"));
       setMonthlyAmount("");
       load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to publish plan");
+      toast.error(err instanceof ApiError ? err.message : t("superAdminPlans.failedToPublishPlan"));
     } finally {
       setPublishing(false);
     }
@@ -62,17 +64,15 @@ export default function SuperAdminPlansPanel() {
     <div className="space-y-4">
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Publish new price
+          {t("superAdminPlans.publishNewPrice")}
         </h3>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Publishing a new amount creates an immutable plan version. New clinics and
-          renewals use the active version; existing subscriptions keep their locked-in
-          amount.
+          {t("superAdminPlans.publishHint")}
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-40">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400">
-              Monthly amount
+              {t("superAdminPlans.monthlyAmount")}
             </label>
             <input
               type="number"
@@ -85,7 +85,7 @@ export default function SuperAdminPlansPanel() {
           </div>
           <div className="sm:w-28">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400">
-              Currency
+              {t("superAdminPlans.currency")}
             </label>
             <input
               value={currency}
@@ -95,7 +95,7 @@ export default function SuperAdminPlansPanel() {
           </div>
           <div className="sm:w-32">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400">
-              Trial months
+              {t("superAdminPlans.trialMonths")}
             </label>
             <input
               type="number"
@@ -110,7 +110,7 @@ export default function SuperAdminPlansPanel() {
             disabled={publishing || !monthlyAmount || Number(monthlyAmount) <= 0}
             className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
           >
-            {publishing ? "Publishing…" : "Publish"}
+            {publishing ? t("superAdminPlans.publishing") : t("superAdminPlans.publish")}
           </button>
         </div>
       </div>
@@ -119,7 +119,7 @@ export default function SuperAdminPlansPanel() {
         {error && <p className="p-6 text-sm text-error-500">{error}</p>}
         {!error && !loading && items.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No plan versions yet.
+            {t("superAdminPlans.noPlanVersionsYet")}
           </p>
         )}
         {items.length > 0 && (
@@ -127,12 +127,12 @@ export default function SuperAdminPlansPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Name</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Monthly</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Trial</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">State</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Effective from</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Created by</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.name")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.monthly")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.trial")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.state")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.effectiveFrom")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminPlans.createdBy")}</TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -142,10 +142,10 @@ export default function SuperAdminPlansPanel() {
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">
                       {formatCurrency(p.monthly_amount, p.currency)}
                     </TableCell>
-                    <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">{p.trial_months} mo</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">{t("superAdminPlans.monthsAbbrev", { count: p.trial_months })}</TableCell>
                     <TableCell className="px-4 py-3">
                       <Badge size="sm" color={p.is_active ? "success" : "light"}>
-                        {p.is_active ? "Active" : "Superseded"}
+                        {p.is_active ? t("status.active") : t("superAdminPlans.superseded")}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
@@ -161,7 +161,7 @@ export default function SuperAdminPlansPanel() {
           </div>
         )}
         {loading && (
-          <p className="py-8 text-center text-sm text-gray-400">Loading…</p>
+          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

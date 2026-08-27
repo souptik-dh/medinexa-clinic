@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError, DoctorSpecialization, doctorSpecializationsApi } from "@/lib/api";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export interface SpecializationValue {
   id: string;
@@ -28,6 +29,7 @@ export default function SpecializationPicker({
   error: hasRequiredError = false,
   hint,
 }: SpecializationPickerProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<DoctorSpecialization[]>([]);
@@ -100,7 +102,7 @@ export default function SpecializationPicker({
       const spec = await doctorSpecializationsApi.create(trimmedQuery);
       addExisting(spec);
     } catch (err) {
-      setApiError(err instanceof ApiError ? err.message : "Could not add specialization");
+      setApiError(err instanceof ApiError ? err.message : t("specializationPicker.couldNotAddSpecialization"));
     } finally {
       setCreating(false);
     }
@@ -139,7 +141,7 @@ export default function SpecializationPicker({
               <button
                 type="button"
                 onClick={() => removeAt(v.id)}
-                aria-label={`Remove ${v.name}`}
+                aria-label={t("specializationFilter.removeName", { name: v.name })}
                 className="rounded-full p-0.5 hover:bg-brand-500/20"
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -161,14 +163,14 @@ export default function SpecializationPicker({
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           disabled={disabled || atMax}
-          placeholder={value.length === 0 ? "Search specializations…" : ""}
+          placeholder={value.length === 0 ? t("specializationPicker.searchPlaceholder") : ""}
           className="min-w-[8rem] flex-1 bg-transparent px-1 py-1 text-sm text-gray-800 outline-hidden placeholder:text-gray-400 dark:text-white/90"
         />
       </div>
 
       {atMax && (
         <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
-          Up to {max} specializations.
+          {t("specializationPicker.upToMax", { max })}
         </p>
       )}
       {apiError && (
@@ -183,7 +185,7 @@ export default function SpecializationPicker({
       {open && !atMax && !disabled && (
         <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {loading && (
-            <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Searching…</div>
+            <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t("nmcDoctorSearch.searching")}</div>
           )}
           {!loading &&
             matches.map((m) => (
@@ -198,7 +200,7 @@ export default function SpecializationPicker({
             ))}
           {!loading && matches.length === 0 && !trimmedQuery && (
             <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-              Start typing to search specializations.
+              {t("specializationPicker.startTypingToSearch")}
             </div>
           )}
           {!loading && trimmedQuery && !exactMatch && (
@@ -216,12 +218,12 @@ export default function SpecializationPicker({
                   strokeLinecap="round"
                 />
               </svg>
-              {creating ? "Adding…" : `Add "${trimmedQuery}"`}
+              {creating ? t("doctors.adding") : t("specializationPicker.addQuery", { query: trimmedQuery })}
             </button>
           )}
           {!loading && matches.length === 0 && trimmedQuery && exactMatch && (
             <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
-              Already selected.
+              {t("specializationPicker.alreadySelected")}
             </div>
           )}
         </div>

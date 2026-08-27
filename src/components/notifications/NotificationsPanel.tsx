@@ -4,8 +4,10 @@ import Link from "next/link";
 import { ApiError, Notification, notificationsApi } from "@/lib/api";
 import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function NotificationsPanel() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -87,10 +89,10 @@ export default function NotificationsPanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Notifications
+            {t("notifications.title")}
             {unreadCount > 0 && (
               <span className="ml-2 rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-medium text-brand-500">
-                {unreadCount} unread
+                {unreadCount} {t("notifications.unread")}
               </span>
             )}
           </h3>
@@ -103,14 +105,14 @@ export default function NotificationsPanel() {
               onChange={(e) => setUnreadOnly(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500"
             />
-            Unread only
+            {t("notifications.unreadOnly")}
           </label>
           <button
             onClick={markAllRead}
             disabled={markingAll || unreadCount === 0}
             className="text-sm font-medium text-brand-500 hover:text-brand-600 disabled:opacity-50"
           >
-            Mark all read
+            {t("notifications.markAllRead")}
           </button>
         </div>
       </div>
@@ -126,7 +128,7 @@ export default function NotificationsPanel() {
           <ListSkeleton rows={6} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            {unreadOnly ? "No unread notifications." : "No notifications yet."}
+            {unreadOnly ? t("notifications.noUnreadNotifications") : t("notifications.noNotificationsYet")}
           </p>
         ) : (
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -141,7 +143,7 @@ export default function NotificationsPanel() {
                 >
                   <span>
                     <span className="block text-sm font-medium text-gray-800 dark:text-white/90">
-                      {notificationTypeLabel(item.type)}
+                      {notificationTypeLabel(item.type, t)}
                     </span>
                     <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
                       {timeAgo(item.created_at)}
@@ -163,7 +165,7 @@ export default function NotificationsPanel() {
               disabled={loadingMore}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
-              {loadingMore ? "Loading…" : "Load more"}
+              {loadingMore ? `${t("common.loading")}` : t("patients.loadMore")}
             </button>
           </div>
         )}

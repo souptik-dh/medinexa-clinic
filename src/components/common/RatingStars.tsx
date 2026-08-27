@@ -1,4 +1,6 @@
+"use client";
 import React from "react";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface RatingStarsProps {
   average: number | null;
@@ -36,12 +38,13 @@ export default function RatingStars({
   className = "",
   hideCount = false,
 }: RatingStarsProps) {
+  const { t } = useTranslation();
   const textClass = size === "sm" ? "text-theme-xs" : "text-sm";
 
   if (average === null || count <= 0) {
     return (
       <span className={`inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 ${textClass} ${className}`}>
-        No ratings yet
+        {t("reviews.noRatingsYet")}
       </span>
     );
   }

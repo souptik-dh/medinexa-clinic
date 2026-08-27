@@ -29,6 +29,7 @@ import {
   inviteStatusLabel,
   today,
 } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const APPOINTMENT_STATUSES: AppointmentStatus[] = [
   "pending",
@@ -53,6 +54,7 @@ const initials = (name: string): string =>
     .toUpperCase();
 
 export default function DoctorProfilePanel() {
+  const { t } = useTranslation();
   const params = useParams<{ branchId?: string; doctorId?: string }>();
   const branchId = typeof params.branchId === "string" ? params.branchId : "";
   const doctorId = typeof params.doctorId === "string" ? params.doctorId : "";
@@ -99,15 +101,15 @@ export default function DoctorProfilePanel() {
       const res = await doctorsApi.listByBranch(branchId);
       const found = res.items.find((d) => d.id === doctorId) ?? null;
       if (!found) {
-        setError("Doctor not found at this branch.");
+        setError(t("doctorProfile.doctorNotFoundAtBranch"));
       }
       setDoctor(found);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load doctor");
+      setError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadDoctor"));
     } finally {
       setLoading(false);
     }
-  }, [branchId, doctorId]);
+  }, [branchId, doctorId, t]);
 
   useEffect(() => {
     load();
@@ -122,7 +124,7 @@ export default function DoctorProfilePanel() {
       setAvailability(res);
     } catch (err) {
       setAvailability(null);
-      setAvailError(err instanceof ApiError ? err.message : "Failed to load availability");
+      setAvailError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadAvailability"));
     } finally {
       setAvailLoading(false);
     }
@@ -145,7 +147,7 @@ export default function DoctorProfilePanel() {
       } while (cursor);
       setBookings(all.filter((a) => a.doctor_id === doctorId && a.branch_id === branchId));
     } catch (err) {
-      setBookingsError(err instanceof ApiError ? err.message : "Failed to load bookings");
+      setBookingsError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadBookings"));
     } finally {
       setBookingsLoading(false);
     }
@@ -160,7 +162,7 @@ export default function DoctorProfilePanel() {
       const normalizedName = doctor.name.trim().toLowerCase();
       setInvites(res.items.filter((inv) => inv.name?.trim().toLowerCase() === normalizedName));
     } catch (err) {
-      setInvitesError(err instanceof ApiError ? err.message : "Failed to load invites");
+      setInvitesError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadInvites"));
     } finally {
       setInvitesLoading(false);
     }
@@ -175,7 +177,7 @@ export default function DoctorProfilePanel() {
       setRating(res.rating);
       setReviews(res.items);
     } catch (err) {
-      setReviewsError(err instanceof ApiError ? err.message : "Failed to load reviews");
+      setReviewsError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadReviews"));
     } finally {
       setReviewsLoading(false);
     }
@@ -207,7 +209,7 @@ export default function DoctorProfilePanel() {
       const res = await doctorsApi.uploadBranchDoctorPhoto(branchId, doctor.id, file);
       setDoctor((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
     } catch (err) {
-      setPhotoError(err instanceof ApiError ? err.message : "Photo upload failed");
+      setPhotoError(err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed"));
     } finally {
       setPhotoBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -226,13 +228,13 @@ export default function DoctorProfilePanel() {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-          {error ?? "Doctor not found."}
+          {error ?? t("doctorProfile.doctorNotFound")}
         </div>
         <Link
           href="/doctors"
           className="mt-4 inline-block text-sm font-medium text-brand-500 hover:text-brand-600"
         >
-          ← Back to doctors
+          {t("doctorProfile.backToDoctors")}
         </Link>
       </div>
     );
@@ -261,9 +263,9 @@ export default function DoctorProfilePanel() {
             {doctor.name}
           </h3>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-            <Badge color="primary">{doctor.specialization ?? "Doctor"}</Badge>
+            <Badge color="primary">{doctor.specialization ?? t("dashboard.doctor")}</Badge>
             <Badge color={doctor.slot_type === "sequential" ? "info" : "light"}>
-              {doctor.slot_type === "sequential" ? "Sequential booking" : "Fixed booking"}
+              {doctor.slot_type === "sequential" ? t("doctorProfile.sequentialBooking") : t("doctorProfile.fixedBooking")}
             </Badge>
           </div>
           {canViewReviews && (
@@ -273,10 +275,10 @@ export default function DoctorProfilePanel() {
           )}
         </div>
         <dl className="mt-6 space-y-3 border-t border-gray-100 pt-5 dark:border-gray-800">
-          <ProfileRow label="Phone" value={doctor.phone ?? "—"} />
-          <ProfileRow label="Fee" value={formatCurrency(doctor.fee_amount, doctor.currency)} />
+          <ProfileRow label={t("patients.phone")} value={doctor.phone ?? "—"} />
+          <ProfileRow label={t("dashboard.fee")} value={formatCurrency(doctor.fee_amount, doctor.currency)} />
           <ProfileRow
-            label="Certificate"
+            label={t("doctors.certificateLabel")}
             value={
               doctor.certificate_url ? (
                 <a
@@ -285,7 +287,7 @@ export default function DoctorProfilePanel() {
                   rel="noopener noreferrer"
                   className="text-brand-500 hover:underline"
                 >
-                  View
+                  {t("common.view")}
                 </a>
               ) : (
                 "—"
@@ -297,19 +299,19 @@ export default function DoctorProfilePanel() {
           href="/doctors"
           className="mt-6 block w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          ← Back to doctors
+          {t("doctorProfile.backToDoctors")}
         </Link>
       </div>
 
       {/* Invites & bookings totals */}
       <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Invites &amp; bookings
+          {t("doctorProfile.invitesAndBookings")}
         </h3>
 
         <div className="mt-5">
           <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-            Bookings at this branch
+            {t("doctorProfile.bookingsAtThisBranch")}
           </h4>
           {bookingsLoading ? (
             <Skeleton className="mt-3 h-8 w-64" />
@@ -318,12 +320,12 @@ export default function DoctorProfilePanel() {
           ) : (
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300">
-                Total: {bookings?.length ?? 0}
+                {t("doctorProfile.total", { count: bookings?.length ?? 0 })}
               </span>
               {bookingCounts &&
                 APPOINTMENT_STATUSES.filter((s) => bookingCounts[s] > 0).map((s) => (
                   <Badge key={s} size="sm" color={appointmentStatusColor(s)}>
-                    {appointmentStatusLabel(s)}: {bookingCounts[s]}
+                    {appointmentStatusLabel(s, t)}: {bookingCounts[s]}
                   </Badge>
                 ))}
             </div>
@@ -332,7 +334,7 @@ export default function DoctorProfilePanel() {
 
         <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-800">
           <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-            Invite record
+            {t("doctorProfile.inviteRecord")}
           </h4>
           {invitesLoading ? (
             <Skeleton className="mt-3 h-8 w-48" />
@@ -343,11 +345,11 @@ export default function DoctorProfilePanel() {
               {invites.map((inv) => (
                 <div key={inv.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <Badge size="sm" color={inviteStatusColor(inv.status)}>
-                    {inviteStatusLabel(inv.status)}
+                    {inviteStatusLabel(inv.status, t)}
                   </Badge>
                   {inv.created_at && (
                     <span className="text-gray-500 dark:text-gray-400">
-                      sent {inv.created_at.slice(0, 10)}
+                      {t("doctorProfile.sentOn", { date: inv.created_at.slice(0, 10) })}
                     </span>
                   )}
                 </div>
@@ -355,7 +357,7 @@ export default function DoctorProfilePanel() {
             </div>
           ) : (
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              No matching invite found for this branch (matched by name — may be inexact).
+              {t("doctorProfile.noMatchingInvite")}
             </p>
           )}
         </div>
@@ -366,7 +368,7 @@ export default function DoctorProfilePanel() {
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Patient reviews
+              {t("reviews.title")}
             </h3>
             {rating && <RatingStars average={rating.average} count={rating.count} />}
           </div>
@@ -376,7 +378,7 @@ export default function DoctorProfilePanel() {
             <p className="mt-4 text-sm text-error-600 dark:text-error-400">{reviewsError}</p>
           ) : !reviews || reviews.length === 0 ? (
             <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-              No reviews yet for this doctor at this branch.
+              {t("doctorProfile.noReviewsForDoctor")}
             </p>
           ) : (
             <ul className="mt-4 space-y-3">
@@ -410,10 +412,10 @@ export default function DoctorProfilePanel() {
       {canManage && (
         <div className="col-span-12 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-8">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Doctor photo
+            {t("doctorProfile.doctorPhoto")}
           </h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Shown to patients when they book a slot with this doctor.
+            {t("doctorProfile.photoHint")}
           </p>
 
           {photoError && (
@@ -435,24 +437,22 @@ export default function DoctorProfilePanel() {
               className="block w-full max-w-xs text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
             />
             {photoBusy && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">Uploading…</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{t("doctors.uploading")}</span>
             )}
           </div>
 
           <div className="mt-8 border-t border-gray-100 pt-6 dark:border-gray-800">
             <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-              Availability
+              {t("doctorProfile.availability")}
             </h4>
 
             {doctor.slot_type === "sequential" ? (
               <div className="mt-3">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  This doctor books as per bookings — patients don&apos;t pick a time slot.
-                  Each new appointment is automatically assigned the next open slot within
-                  the configured range.
+                  {t("doctorProfile.sequentialHint")}
                 </p>
                 <p className="mt-3 text-sm font-medium text-gray-800 dark:text-white/90">
-                  Next available slot: {formatNextSlot(doctor.next_available_slot)}
+                  {t("doctorProfile.nextAvailableSlot", { value: formatNextSlot(doctor.next_available_slot) })}
                 </p>
               </div>
             ) : (
@@ -460,7 +460,7 @@ export default function DoctorProfilePanel() {
                 <div className="mt-3 flex flex-wrap items-end gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Date
+                      {t("schedule.date")}
                     </label>
                     <input
                       type="date"
@@ -474,7 +474,7 @@ export default function DoctorProfilePanel() {
                     disabled={availLoading || !date}
                     className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
                   >
-                    {availLoading ? "Checking…" : "Check"}
+                    {availLoading ? t("doctorProfile.checking") : t("doctorProfile.check")}
                   </button>
                 </div>
 
@@ -486,12 +486,12 @@ export default function DoctorProfilePanel() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     {availability.status === "leave" ? (
                       <p className="text-sm text-error-600 dark:text-error-400">
-                        Doctor is on leave for this date
+                        {t("doctorProfile.doctorOnLeave")}
                         {availability.leave?.reason ? ` — ${availability.leave.reason}` : ""}.
                       </p>
                     ) : availability.slots.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        No slots configured for this date.
+                        {t("doctorProfile.noSlotsConfigured")}
                       </p>
                     ) : (
                       availability.slots.map((slot) => (

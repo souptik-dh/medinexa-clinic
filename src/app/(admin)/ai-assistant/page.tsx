@@ -3,19 +3,10 @@ import React, { useEffect } from "react";
 import { useAiChat } from "@/context/AiChatContext";
 import MessageBubble from "@/components/ai/MessageBubble";
 import ConfirmationDialog from "@/components/ai/ConfirmationDialog";
-
-const QUICK_ACTIONS = [
-  { label: "Today's Appointments", message: "Show me today's appointments" },
-  { label: "My Patients", message: "List my patients" },
-  { label: "Find a Doctor", message: "Find a doctor" },
-  { label: "Notifications", message: "Check my notifications" },
-  { label: "Subscription", message: "What's my subscription status?" },
-  { label: "Lab Tests", message: "Show lab test appointments" },
-  { label: "Staff List", message: "Show staff members" },
-  { label: "Help", message: "What can you do?" },
-];
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function AiAssistantPage() {
+  const { t } = useTranslation();
   const {
     messages,
     isLoading,
@@ -25,6 +16,17 @@ export default function AiAssistantPage() {
     respondConfirmation,
   } = useAiChat();
 
+  const QUICK_ACTIONS = [
+    { label: t("aiAssistant.quickActions.todaysAppointments"), message: t("aiAssistant.quickActions.todaysAppointmentsMsg") },
+    { label: t("aiAssistant.quickActions.myPatients"), message: t("aiAssistant.quickActions.myPatientsMsg") },
+    { label: t("aiAssistant.quickActions.findADoctor"), message: t("aiAssistant.quickActions.findADoctorMsg") },
+    { label: t("aiAssistant.quickActions.notifications"), message: t("aiAssistant.quickActions.notificationsMsg") },
+    { label: t("aiAssistant.quickActions.subscription"), message: t("aiAssistant.quickActions.subscriptionMsg") },
+    { label: t("aiAssistant.quickActions.labTests"), message: t("aiAssistant.quickActions.labTestsMsg") },
+    { label: t("aiAssistant.quickActions.staffList"), message: t("aiAssistant.quickActions.staffListMsg") },
+    { label: t("aiAssistant.quickActions.help"), message: t("aiAssistant.quickActions.helpMsg") },
+  ];
+
   useEffect(() => {
     openChat();
   }, [openChat]);
@@ -33,11 +35,10 @@ export default function AiAssistantPage() {
     <>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white/90">
-          AI Assistant
+          {t("aiAssistant.title")}
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Your intelligent healthcare assistant. Ask questions, manage data, and
-          navigate your dashboard.
+          {t("aiAssistant.pageSubtitle")}
         </p>
       </div>
 
@@ -74,7 +75,7 @@ export default function AiAssistantPage() {
       {messages.length > 0 && (
         <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
           <h2 className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">
-            Recent Conversation
+            {t("aiAssistant.recentConversation")}
           </h2>
           <div className="space-y-3">
             {messages.slice(-6).map((msg) => (
@@ -95,7 +96,7 @@ export default function AiAssistantPage() {
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-400 [animation-delay:-0.15s]" />
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-400" />
                 </div>
-                <span>Thinking...</span>
+                <span>{t("aiAssistant.thinking")}</span>
               </div>
             )}
           </div>

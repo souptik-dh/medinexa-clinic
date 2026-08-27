@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LabTestCategory, labTestsApi } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // Fixed-category legacy values, kept as starting suggestions for a clinic
 // with no lab tests yet. Category itself is free text (see labTestsApi.categories()).
@@ -71,6 +72,7 @@ interface LabTestFormProps {
 }
 
 export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit }: LabTestFormProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [form, setForm] = useState<LabTestFormValues>(initial);
   const [busy, setBusy] = useState(false);
@@ -97,16 +99,16 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
     e.preventDefault();
     if (mode === "edit") {
       if (!form.name.trim()) {
-        setError("Name is required.");
+        setError(t("labTestForm.nameRequired"));
         return;
       }
       if (!form.code.trim()) {
-        setError("Code is required.");
+        setError(t("labTestForm.codeRequired"));
         return;
       }
     }
     if (!form.category.trim()) {
-      setError("Category is required.");
+      setError(t("labTestForm.categoryRequired"));
       return;
     }
     const precautions = form.default_precautions
@@ -114,11 +116,11 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       .map((p) => p.trim())
       .filter(Boolean);
     if (precautions.length > 50) {
-      setError("You can add at most 50 precautions.");
+      setError(t("labTestForm.maxPrecautions"));
       return;
     }
     if (precautions.some((p) => p.length > 255)) {
-      setError("Each precaution must be 255 characters or fewer.");
+      setError(t("labTestForm.precautionTooLong"));
       return;
     }
     setBusy(true);
@@ -151,7 +153,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Name *
+                {t("labTestForm.name")}
               </label>
               <input
                 type="text"
@@ -163,13 +165,13 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                Code *
+                {t("labTestForm.code")}
               </label>
               <input
                 type="text"
                 value={form.code}
                 onChange={(e) => updateField("code", e.target.value)}
-                placeholder="e.g. ECG"
+                placeholder={t("labTestForm.codePlaceholder")}
                 maxLength={50}
                 className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
@@ -178,7 +180,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
         )}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Description
+            {t("labTestForm.description")}
           </label>
           <textarea
             value={form.description}
@@ -190,7 +192,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Category *
+            {t("labTestForm.category")}
           </label>
           {mode === "create" ? (
             <>
@@ -199,7 +201,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
                 list="lab-test-category-options"
                 value={form.category}
                 onChange={(e) => updateField("category", e.target.value)}
-                placeholder="Pick a category or type a new one and press Enter"
+                placeholder={t("labTestForm.categoryPlaceholder")}
                 maxLength={100}
                 className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
@@ -209,7 +211,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
                 ))}
               </datalist>
               <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                Not in the list? Just type the new category name — it&apos;ll be created along with this test.
+                {t("labTestForm.categoryHint")}
               </p>
             </>
           ) : (
@@ -234,26 +236,26 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Instructions
+            {t("labTestForm.instructions")}
           </label>
           <textarea
             value={form.instructions}
             onChange={(e) => updateField("instructions", e.target.value)}
             rows={2}
             maxLength={2000}
-            placeholder="e.g. Fast for 8 hours before the test"
+            placeholder={t("labTestForm.instructionsPlaceholder")}
             className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Precautions
+            {t("labTestForm.precautions")}
           </label>
           <input
             type="text"
             value={form.default_precautions}
             onChange={(e) => updateField("default_precautions", e.target.value)}
-            placeholder="Comma-separated, e.g. Remove metallic jewelry, Fasting required"
+            placeholder={t("labTestForm.precautionsPlaceholder")}
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
@@ -264,14 +266,14 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
           onClick={() => (onCancel ? onCancel() : cancelHref && router.push(cancelHref))}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           type="submit"
           disabled={busy}
           className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {busy ? "Saving..." : submitLabel}
+          {busy ? t("auth.saving") : submitLabel}
         </button>
       </div>
     </form>

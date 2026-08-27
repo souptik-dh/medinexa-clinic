@@ -6,10 +6,12 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type RequiredField = "email";
 
 export default function ForgotPasswordForm() {
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export default function ForgotPasswordForm() {
     setError(null);
     setSubmitted(true);
     if (!email.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
@@ -29,7 +31,7 @@ export default function ForgotPasswordForm() {
       const res = await authApi.forgotPassword(email);
       setMessage(res.message);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Unable to request a password reset");
+      setError(err instanceof ApiError ? err.message : t("auth.unableToRequestReset"));
     } finally {
       setSubmitting(false);
     }
@@ -41,10 +43,10 @@ export default function ForgotPasswordForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Forgot password?
+              {t("auth.forgotPasswordTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Enter your account email and we will send you a link to reset your password.
+              {t("auth.forgotPasswordDesc")}
             </p>
           </div>
 
@@ -57,14 +59,14 @@ export default function ForgotPasswordForm() {
                 href="/signin"
                 className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Back to sign in
+                {t("auth.backToSignIn")}
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <Label>
-                  Email <span className="text-error-500">*</span>
+                  {t("auth.email")} <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="email"
@@ -84,16 +86,16 @@ export default function ForgotPasswordForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Sending..." : "Send reset link"}
+                  {submitting ? t("auth.sending") : t("auth.sendResetLink")}
                 </Button>
               </div>
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400">
-                Remembered your password?{" "}
+                {t("auth.rememberedPassword")}{" "}
                 <Link
                   href="/signin"
                   className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
                 >
-                  Sign In
+                  {t("auth.signIn")}
                 </Link>
               </p>
             </form>

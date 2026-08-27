@@ -26,6 +26,7 @@ import {
   formatCurrency,
   formatDateTime,
 } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const STATUS_FILTERS: (AppointmentStatus | "")[] = [
   "",
@@ -37,6 +38,7 @@ const STATUS_FILTERS: (AppointmentStatus | "")[] = [
 ];
 
 export default function PrescriptionsPanel() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<Appointment[]>([]);
   const [status, setStatus] = useState<AppointmentStatus | "">("");
   const [loading, setLoading] = useState(true);
@@ -58,11 +60,11 @@ export default function PrescriptionsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load appointments");
+      setError(err instanceof ApiError ? err.message : t("appointments.failedToLoadAppointments"));
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, t]);
 
   useEffect(() => {
     load();
@@ -78,7 +80,7 @@ export default function PrescriptionsPanel() {
       setPrescription(res);
     } catch (err) {
       setPrescriptionError(
-        err instanceof ApiError ? err.message : "Failed to load prescription"
+        err instanceof ApiError ? err.message : t("prescriptions.failedToLoadPrescription")
       );
     }
   };
@@ -91,7 +93,7 @@ export default function PrescriptionsPanel() {
       const blob = await prescriptionsApi.pdf(active.id);
       downloadBlob(blob, `prescription-${active.id.slice(0, 8)}.pdf`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Download failed");
+      setError(err instanceof ApiError ? err.message : t("prescriptions.downloadFailed"));
     } finally {
       setBusy(false);
     }
@@ -103,7 +105,7 @@ export default function PrescriptionsPanel() {
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
         <div className="sm:w-48">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Status
+            {t("dashboard.status")}
           </label>
           <select
             value={status}
@@ -112,7 +114,7 @@ export default function PrescriptionsPanel() {
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s || "all"} value={s}>
-                {s === "" ? "All statuses" : appointmentStatusLabel(s)}
+                {s === "" ? t("appointments.allStatuses") : appointmentStatusLabel(s, t)}
               </option>
             ))}
           </select>
@@ -121,7 +123,7 @@ export default function PrescriptionsPanel() {
           onClick={load}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
-          Refresh
+          {t("appointments.refresh")}
         </button>
       </div>
 
@@ -133,13 +135,13 @@ export default function PrescriptionsPanel() {
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white/90">
-          Prescriptions
+          {t("prescriptions.title")}
         </h3>
         {loading ? (
           <TableSkeleton rows={6} cols={5} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No appointments match the current filter.
+            {t("prescriptions.noAppointmentsMatch")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -147,19 +149,19 @@ export default function PrescriptionsPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Scheduled
+                    {t("dashboard.scheduled")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Doctor
+                    {t("dashboard.doctor")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Fee
+                    {t("dashboard.fee")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("dashboard.status")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                    Actions
+                    {t("appointments.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -191,7 +193,7 @@ export default function PrescriptionsPanel() {
                           onClick={() => viewPrescription(appt)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
-                          View
+                          {t("appointments.view")}
                         </button>
                       </div>
                     </TableCell>
@@ -208,7 +210,7 @@ export default function PrescriptionsPanel() {
         {active && (
           <div>
             <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Prescription
+              {t("prescriptions.prescriptionTitle")}
             </h5>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {active.scheduled_date} at {active.scheduled_time} ·{" "}
@@ -227,7 +229,7 @@ export default function PrescriptionsPanel() {
                   {prescription.scan_url && (
                     <div>
                       <p className="mb-1.5 text-sm font-medium text-gray-700 dark:text-gray-400">
-                        Scan
+                        {t("prescriptions.scan")}
                       </p>
                       <a
                         href={prescription.scan_url}
@@ -235,23 +237,22 @@ export default function PrescriptionsPanel() {
                         rel="noreferrer"
                         className="text-brand-500 underline hover:text-brand-600"
                       >
-                        Open scan image
+                        {t("prescriptions.openScanImage")}
                       </a>
                     </div>
                   )}
                   <div>
                     <p className="mb-1.5 text-sm font-medium text-gray-700 dark:text-gray-400">
-                      Digitized text
+                      {t("prescriptions.digitizedText")}
                     </p>
                     <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 font-mono text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
-                      {prescription.digitized_text ??
-                        "Text is redacted for staff and clinic owners. Only the prescribing doctor and the patient see the digitized text."}
+                      {prescription.digitized_text ?? t("prescriptions.redactedText")}
                     </pre>
                   </div>
                   <p className="text-theme-xs text-gray-400 dark:text-gray-500">
-                    Finalized {formatDateTime(prescription.finalized_at)}
+                    {t("prescriptions.finalized", { date: formatDateTime(prescription.finalized_at) })}
                     {prescription.ocr_confidence !== null &&
-                      ` · OCR confidence ${prescription.ocr_confidence}%`}
+                      t("prescriptions.ocrConfidence", { value: prescription.ocr_confidence })}
                   </p>
                 </div>
               )}
@@ -262,14 +263,14 @@ export default function PrescriptionsPanel() {
                 onClick={closeModal}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Close
+                {t("appointments.close")}
               </button>
               <button
                 onClick={downloadPdf}
                 disabled={busy || !!prescriptionError}
                 className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {busy ? "Downloading…" : "Download PDF"}
+                {busy ? t("prescriptions.downloading") : t("prescriptions.downloadPdf")}
               </button>
             </div>
           </div>

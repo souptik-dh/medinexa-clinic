@@ -19,6 +19,7 @@ import DatePicker from "@/components/form/date-picker";
 import { formatDate, today } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 function formatDateOnly(d: Date): string {
   const y = d.getFullYear();
@@ -56,6 +57,7 @@ export default function DoctorAssignmentEditPanel({
   onDone,
   onCancel,
 }: DoctorAssignmentEditPanelProps = {}) {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams<{ branchId?: string; doctorId?: string }>();
   const branchId =
@@ -109,7 +111,7 @@ export default function DoctorAssignmentEditPanel({
       const res = await doctorsApi.listByBranch(branchId);
       const found = res.items.find((d) => d.id === doctorId) ?? null;
       if (!found) {
-        setError("Doctor not found at this branch.");
+        setError(t("doctorProfile.doctorNotFoundAtBranch"));
       } else {
         setDoctor(found);
         setFee(String(found.fee_amount));
@@ -119,11 +121,11 @@ export default function DoctorAssignmentEditPanel({
         setSlotsDirty(false);
       }
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load doctor"));
+      setError(getErrorMessage(err, t("doctorProfile.failedToLoadDoctor")));
     } finally {
       setLoading(false);
     }
-  }, [branchId, doctorId]);
+  }, [branchId, doctorId, t]);
 
   useEffect(() => {
     load();
@@ -145,11 +147,11 @@ export default function DoctorAssignmentEditPanel({
       setExceptions(res.items);
     } catch (err) {
       setExceptions([]);
-      setExceptionsError(getErrorMessage(err, "Failed to load leave dates"));
+      setExceptionsError(getErrorMessage(err, t("doctorAssignmentEdit.failedToLoadLeaveDates")));
     } finally {
       setExceptionsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (doctor) loadExceptions(doctor.assignment_id);
@@ -160,7 +162,7 @@ export default function DoctorAssignmentEditPanel({
     if (exceptionMode === "single" && !newExceptionDate) return;
     if (exceptionMode === "range" && rangeDates.length === 0) return;
     if (rangeDates.length > MAX_RANGE_DAYS) {
-      setExceptionsError(`That range spans ${rangeDates.length} days — please pick ${MAX_RANGE_DAYS} days or fewer at a time.`);
+      setExceptionsError(t("doctorAssignmentEdit.rangeSpanError", { days: rangeDates.length, max: MAX_RANGE_DAYS }));
       return;
     }
     setExceptionBusy(true);
@@ -176,9 +178,9 @@ export default function DoctorAssignmentEditPanel({
       });
       setNewExceptionReason("");
       await loadExceptions(doctor.assignment_id);
-      toast.success("Leave date(s) added successfully.");
+      toast.success(t("doctorAssignmentEdit.leaveDatesAdded"));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not add leave date(s)");
+      const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotAddLeave"));
       setExceptionsError(message);
       toast.error(message);
     } finally {
@@ -193,9 +195,9 @@ export default function DoctorAssignmentEditPanel({
     try {
       await doctorsApi.removeException(doctor.assignment_id, exception.id);
       await loadExceptions(doctor.assignment_id);
-      toast.success("Leave date removed successfully.");
+      toast.success(t("doctorAssignmentEdit.leaveDateRemoved"));
     } catch (err) {
-      const message = getErrorMessage(err, "Could not remove leave date");
+      const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotRemoveLeave"));
       setExceptionsError(message);
       toast.error(message);
     } finally {
@@ -217,7 +219,7 @@ export default function DoctorAssignmentEditPanel({
       const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
       setCertificate(res.certificate_url);
     } catch (err) {
-      setError(getErrorMessage(err, "Certificate upload failed"));
+      setError(getErrorMessage(err, t("doctors.certificateUploadFailed")));
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -227,12 +229,12 @@ export default function DoctorAssignmentEditPanel({
   const save = async () => {
     if (!doctor) return;
     if (!canManage) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     const amount = Number(fee);
     if (!isDoctorSelf && (!amount || amount <= 0)) {
-      setError("Enter a valid fee amount greater than 0.");
+      setError(t("doctorAssignmentEdit.invalidFeeAmount"));
       return;
     }
     if (slotsDirty) {
@@ -252,14 +254,14 @@ export default function DoctorAssignmentEditPanel({
         slot_type: slotType,
         ...(slotsDirty ? { slot_template: slots } : {}),
       });
-      toast.success("Assignment updated successfully.");
+      toast.success(t("doctorAssignmentEdit.assignmentUpdated"));
       if (onDone) {
         onDone();
       } else {
         router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
       }
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to update assignment. Please try again.");
+      const message = getErrorMessage(err, t("doctorAssignmentEdit.unableToUpdateAssignment"));
       setError(message);
       toast.error(message);
     } finally {
@@ -270,7 +272,7 @@ export default function DoctorAssignmentEditPanel({
   if (!canManage) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        You do not have permission to edit doctor assignments.
+        {t("doctorAssignmentEdit.noPermissionEditAssignments")}
       </div>
     );
   }
@@ -287,13 +289,13 @@ export default function DoctorAssignmentEditPanel({
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-          {error ?? "Doctor not found."}
+          {error ?? t("doctorProfile.doctorNotFound")}
         </div>
         <button
           onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
           className="mt-4 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Back to doctors
+          {t("doctorProfile.backToDoctors")}
         </button>
       </div>
     );
@@ -302,10 +304,10 @@ export default function DoctorAssignmentEditPanel({
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
       <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-        Edit assignment — {doctor.name}
+        {t("doctorAssignmentEdit.editAssignmentTitle", { name: doctor.name })}
       </h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Update this doctor&apos;s consultation fee and certificate for this branch.
+        {t("doctorAssignmentEdit.updateFeeAndCertificate")}
       </p>
 
       {error && (
@@ -317,7 +319,7 @@ export default function DoctorAssignmentEditPanel({
       <div className="mt-6 space-y-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Fee amount {!isDoctorSelf && "*"}
+            {t("appointments.feeAmountLabel")} {!isDoctorSelf && "*"}
           </label>
           <input
             type="number"
@@ -329,13 +331,13 @@ export default function DoctorAssignmentEditPanel({
           />
           {isDoctorSelf && (
             <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
-              Set by the clinic — you can&apos;t change your own consultation fee.
+              {t("doctorAssignmentEdit.setByClinicHint")}
             </p>
           )}
         </div>
         <div>
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Certificate
+            {t("doctors.certificateLabel")}
           </label>
           <div className="flex items-center gap-3">
             <input
@@ -352,10 +354,10 @@ export default function DoctorAssignmentEditPanel({
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
               {uploadingCertificate
-                ? "Uploading…"
+                ? t("doctors.uploading")
                 : certificate
-                  ? "Replace certificate"
-                  : "Upload certificate"}
+                  ? t("doctors.replaceCertificate")
+                  : t("doctors.uploadCertificate")}
             </button>
             {certificate ? (
               <a
@@ -364,11 +366,11 @@ export default function DoctorAssignmentEditPanel({
                 rel="noopener noreferrer"
                 className="text-sm text-brand-500 hover:underline"
               >
-                View certificate
+                {t("doctors.viewCertificate")}
               </a>
             ) : (
               <span className="text-sm text-warning-600 dark:text-orange-400">
-                ⚠ Pending — no certificate uploaded
+                {t("doctorAssignmentEdit.pendingNoCertificate")}
               </span>
             )}
           </div>
@@ -376,28 +378,26 @@ export default function DoctorAssignmentEditPanel({
 
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-white/[0.02]">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            Assignment period
+            {t("doctorAssignmentEdit.assignmentPeriod")}
           </p>
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            <span className="font-medium">Start date:</span>{" "}
+            <span className="font-medium">{t("doctorAssignmentEdit.startDateLabel")}</span>{" "}
             {doctor.start_date ? formatDate(doctor.start_date) : "—"}
             <span className="mx-2 text-gray-300 dark:text-gray-700">·</span>
-            <span className="font-medium">End date:</span>{" "}
-            {doctor.end_date ? formatDate(doctor.end_date) : "Ongoing"}
+            <span className="font-medium">{t("doctorAssignmentEdit.endDateLabel")}</span>{" "}
+            {doctor.end_date ? formatDate(doctor.end_date) : t("doctorMySchedule.ongoing")}
           </p>
           <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-            Derived from the slot template below (earliest start, latest end) — edit the slot
-            rows to change it, this isn&apos;t set directly.
+            {t("doctorAssignmentEdit.derivedFromSlotHint")}
           </p>
         </div>
 
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Leave / unavailable dates
+            {t("doctorAssignmentEdit.leaveUnavailableDates")}
           </label>
           <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-            Mark individual dates within the schedule below where this doctor is unavailable
-            (holiday, leave, etc.) — the recurring weekly pattern is skipped only on these dates.
+            {t("doctorAssignmentEdit.leaveDatesHint")}
           </p>
 
           {exceptionsError && (
@@ -414,7 +414,7 @@ export default function DoctorAssignmentEditPanel({
               return <ListSkeleton rows={3} />;
             }
             if (activeExceptions.length === 0) {
-              return <p className="text-sm text-gray-500 dark:text-gray-400">No leave dates added.</p>;
+              return <p className="text-sm text-gray-500 dark:text-gray-400">{t("doctorAssignmentEdit.noLeaveDatesAdded")}</p>;
             }
             return (
               <ul className="mb-4 space-y-2">
@@ -440,7 +440,7 @@ export default function DoctorAssignmentEditPanel({
                       disabled={exceptionBusy}
                       className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
                     >
-                      Remove
+                      {t("schedule.remove")}
                     </button>
                   </li>
                 ))}
@@ -450,14 +450,14 @@ export default function DoctorAssignmentEditPanel({
 
           <div className="mb-3 flex gap-3">
             <SlotTypeOption
-              label="Single date"
-              description="Mark one date unavailable."
+              label={t("schedule.singleDate")}
+              description={t("doctorAssignmentEdit.singleDateDescAssignment")}
               selected={exceptionMode === "single"}
               onClick={() => setExceptionMode("single")}
             />
             <SlotTypeOption
-              label="Date range"
-              description="Mark every date in a range unavailable, with the same reason."
+              label={t("schedule.dateRange")}
+              description={t("doctorAssignmentEdit.dateRangeDescAssignment")}
               selected={exceptionMode === "range"}
               onClick={() => setExceptionMode("range")}
             />
@@ -468,8 +468,8 @@ export default function DoctorAssignmentEditPanel({
               <div>
                 <DatePicker
                   id="exception-date"
-                  label="Date"
-                  placeholder="Select a date"
+                  label={t("schedule.date")}
+                  placeholder={t("schedule.selectDate")}
                   defaultDate={newExceptionDate || undefined}
                   onChange={(_, dateStr) => {
                     if (dateStr) setNewExceptionDate(dateStr);
@@ -481,8 +481,8 @@ export default function DoctorAssignmentEditPanel({
                 <div>
                   <DatePicker
                     id="exception-range-from"
-                    label="From"
-                    placeholder="Select a date"
+                    label={t("appointments.from")}
+                    placeholder={t("schedule.selectDate")}
                     defaultDate={rangeFrom || undefined}
                     onChange={(_, dateStr) => {
                       if (dateStr) {
@@ -495,8 +495,8 @@ export default function DoctorAssignmentEditPanel({
                 <div>
                   <DatePicker
                     id="exception-range-to"
-                    label="To"
-                    placeholder="Select a date"
+                    label={t("appointments.to")}
+                    placeholder={t("schedule.selectDate")}
                     defaultDate={rangeTo || undefined}
                     onChange={(_, dateStr) => {
                       if (dateStr) setRangeTo(dateStr);
@@ -507,13 +507,15 @@ export default function DoctorAssignmentEditPanel({
             )}
             <div className="flex-1">
               <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
-                Reason (optional, applied to {exceptionMode === "range" ? "every date in the range" : "this date"})
+                {t("doctorAssignmentEdit.reasonOptionalFor", {
+                  scope: exceptionMode === "range" ? t("doctorAssignmentEdit.everyDateInRange") : t("doctorAssignmentEdit.thisDate"),
+                })}
               </label>
               <input
                 type="text"
                 value={newExceptionReason}
                 onChange={(e) => setNewExceptionReason(e.target.value)}
-                placeholder="On leave"
+                placeholder={t("doctorAssignmentEdit.onLeavePlaceholder")}
                 className={inputClass}
               />
             </div>
@@ -526,28 +528,30 @@ export default function DoctorAssignmentEditPanel({
               className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
               {exceptionBusy
-                ? "Adding…"
+                ? t("schedule.adding")
                 : exceptionMode === "range"
-                  ? `Add ${rangeDates.length || ""} date${rangeDates.length === 1 ? "" : "s"}`
-                  : "Add"}
+                  ? (rangeDates.length === 1
+                      ? t("doctorAssignmentEdit.addDate", { count: rangeDates.length })
+                      : t("doctorAssignmentEdit.addDates", { count: rangeDates.length || "" }))
+                  : t("doctorAssignmentEdit.addSingle")}
             </button>
           </div>
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Booking type
+            {t("doctorAssignmentEdit.bookingType")}
           </label>
           <div className="flex gap-3">
             <SlotTypeOption
-              label="Fixed"
-              description="Patients pick a specific time slot."
+              label={t("doctors.fixed")}
+              description={t("doctors.fixedDesc")}
               selected={slotType === "fixed"}
               onClick={() => setSlotType("fixed")}
             />
             <SlotTypeOption
-              label="Sequential"
-              description="As per bookings — patients get the next free slot in the range, no time picker."
+              label={t("doctors.sequential")}
+              description={t("doctors.sequentialDesc")}
               selected={slotType === "sequential"}
               onClick={() => setSlotType("sequential")}
             />
@@ -556,11 +560,10 @@ export default function DoctorAssignmentEditPanel({
 
         <div>
           <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            {slotType === "sequential" ? "Booking range(s)" : "Weekly schedule"}
+            {slotType === "sequential" ? t("doctorAssignmentEdit.bookingRanges") : t("doctorAssignmentEdit.weeklySchedule")}
           </label>
           <p className="mb-3 text-theme-xs text-gray-500 dark:text-gray-400">
-            Click a day to add or remove it. Leave untouched to keep this doctor&apos;s current
-            schedule.
+            {t("doctorAssignmentEdit.clickDayHintAssignment")}
           </p>
           <SlotWeekEditor
             slots={slots}
@@ -576,14 +579,14 @@ export default function DoctorAssignmentEditPanel({
           onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
-          Cancel
+          {t("common.cancel")}
         </button>
         <button
           onClick={save}
           disabled={busy}
           className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {busy ? "Saving…" : "Save changes"}
+          {busy ? t("auth.saving") : t("settings.saveChanges")}
         </button>
       </div>
     </div>

@@ -2,8 +2,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ApiError, DoctorProfile, doctorsApi } from "@/lib/api";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function DoctorPhotoCard() {
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<DoctorProfile | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,11 +22,11 @@ export default function DoctorPhotoCard() {
       setProfile(p);
       setPhotoUrl(p.photo_url ?? null);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load doctor profile");
+      setError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadDoctorProfile"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -39,9 +41,9 @@ export default function DoctorPhotoCard() {
     try {
       const res = await doctorsApi.uploadPhoto(file);
       setPhotoUrl(res.photo_url);
-      setOk("Photo uploaded.");
+      setOk(t("doctorProfile.photoUploaded"));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Photo upload failed");
+      setError(err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed"));
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -55,9 +57,9 @@ export default function DoctorPhotoCard() {
       const p = await doctorsApi.me();
       setProfile(p);
       setPhotoUrl(p.photo_url ?? null);
-      setOk("Photo URL refreshed.");
+      setOk(t("doctorProfile.photoUrlRefreshed"));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to refresh photo URL");
+      setError(err instanceof ApiError ? err.message : t("doctorProfile.failedToRefreshPhotoUrl"));
     }
   };
 
@@ -71,10 +73,10 @@ export default function DoctorPhotoCard() {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
       <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-        Doctor photo
+        {t("doctorProfile.doctorPhoto")}
       </h3>
       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Shown to patients when they book a slot. Photos are stored on Cloudinary.
+        {t("doctorProfile.photoHintCloudinary")}
       </p>
 
       {error && (
@@ -90,7 +92,7 @@ export default function DoctorPhotoCard() {
 
       {loading ? (
         <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-          Loading profile…
+          {t("doctorProfile.loadingProfile")}
         </p>
       ) : (
         <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -120,7 +122,7 @@ export default function DoctorPhotoCard() {
               />
               {uploading && (
                 <span className="text-sm text-gray-500 dark:text-gray-400">
-                  Uploading…
+                  {t("doctors.uploading")}
                 </span>
               )}
             </div>
@@ -130,7 +132,7 @@ export default function DoctorPhotoCard() {
                 disabled={uploading}
                 className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {uploading ? "Uploading…" : "Upload photo"}
+                {uploading ? t("doctors.uploading") : t("doctorProfile.uploadPhoto")}
               </button>
               {photoUrl && (
                 <button
@@ -138,7 +140,7 @@ export default function DoctorPhotoCard() {
                   disabled={uploading}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
-                  Refresh preview
+                  {t("doctorProfile.refreshPreview")}
                 </button>
               )}
             </div>

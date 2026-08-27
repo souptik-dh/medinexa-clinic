@@ -5,11 +5,13 @@ import { SubscriptionDetailResponse, subscriptionsApi } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { useClinicId } from "@/hooks/useClinicId";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "@/hooks/useTranslation";
 
 // Announcement banner shown across the clinic portal while the clinic is
 // inside its free-trial window - surfaces the plan name, price and trial
 // length (GET /clinics/:id/subscription is reachable while on trial).
 export default function SubscriptionTrialBanner() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const clinicId = useClinicId();
   const [detail, setDetail] = useState<SubscriptionDetailResponse | null>(null);
@@ -43,11 +45,11 @@ export default function SubscriptionTrialBanner() {
       <p className="flex-1">
         <span className="font-semibold">{plan.name}</span>
         {" · "}
-        {formatCurrency(plan.monthly_amount, plan.currency)} / month
-        {plan.trial_months ? ` (${plan.trial_months}-month free trial)` : ""}
+        {t("billing.monthPrice", { amount: formatCurrency(plan.monthly_amount, plan.currency) })}
+        {plan.trial_months ? t("billing.trialMonths", { months: plan.trial_months }) : ""}
         {subscription && (
           <span className="ml-2 text-xs opacity-80">
-            {subscription.days_remaining} day{subscription.days_remaining === 1 ? "" : "s"} left
+            {t("subscription.daysLeft", { days: subscription.days_remaining })}
           </span>
         )}
       </p>
@@ -56,14 +58,14 @@ export default function SubscriptionTrialBanner() {
           href="/billing"
           className="rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-600"
         >
-          Go to Billing
+          {t("subscription.goToBilling")}
         </Link>
         <button
           onClick={() => setDismissed(true)}
-          aria-label="Dismiss"
+          aria-label={t("subscription.dismiss")}
           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:text-brand-300 dark:hover:bg-brand-500/15"
         >
-          Dismiss
+          {t("subscription.dismiss")}
         </button>
       </div>
     </div>

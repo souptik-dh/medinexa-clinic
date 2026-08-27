@@ -443,7 +443,7 @@ export default function ClinicOverviewPanel() {
                         size="sm"
                         color={appointmentStatusColor(a.status)}
                       >
-                        {appointmentStatusLabel(a.status)}
+                        {appointmentStatusLabel(a.status, t)}
                       </Badge>
                     </TableCell>
                   </TableRow>

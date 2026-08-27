@@ -5,10 +5,12 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { Notification, notificationsApi } from "@/lib/api";
 import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const POLL_INTERVAL_MS = 30000;
 
 export default function NotificationDropdown() {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -109,10 +111,10 @@ export default function NotificationDropdown() {
       >
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-gray-700">
           <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            Notification
+            {t("notifications.title")}
             {unreadCount > 0 && (
               <span className="ml-2 rounded-full bg-brand-500/15 px-2 py-0.5 text-xs font-medium text-brand-500">
-                {unreadCount} new
+                {unreadCount} {t("notifications.new")}
               </span>
             )}
           </h5>
@@ -123,7 +125,7 @@ export default function NotificationDropdown() {
                 disabled={markingAll}
                 className="text-xs font-medium text-brand-500 transition hover:text-brand-600 disabled:opacity-50"
               >
-                Mark all read
+                {t("notifications.markAllRead")}
               </button>
             )}
             <button
@@ -151,7 +153,7 @@ export default function NotificationDropdown() {
           <ListSkeleton rows={4} />
         ) : items.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No notifications
+            {t("notifications.noNotifications")}
           </p>
         ) : (
           <ul className="flex flex-col h-auto overflow-y-auto custom-scrollbar">
@@ -170,7 +172,7 @@ export default function NotificationDropdown() {
                   <span className="block w-full">
                     <span className="mb-1.5 block text-theme-sm text-gray-500 dark:text-gray-400">
                       <span className="font-medium text-gray-800 dark:text-white/90">
-                        {notificationTypeLabel(item.type)}
+                        {notificationTypeLabel(item.type, t)}
                       </span>
                     </span>
                     <span className="flex items-center gap-2 text-theme-xs text-gray-500 dark:text-gray-400">
@@ -187,7 +189,7 @@ export default function NotificationDropdown() {
           onClick={closeDropdown}
           className="block px-4 py-2 mt-3 text-sm font-medium text-center text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
         >
-          View all notifications
+          {t("notifications.viewAll")}
         </Link>
       </Dropdown>
     </div>

@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/table";
 import { ApiError, SuperAdminGrantItem, superAdminApi } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function SuperAdminAdminsPanel() {
+  const { t } = useTranslation();
   const [items, setItems] = useState<SuperAdminGrantItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +29,11 @@ export default function SuperAdminAdminsPanel() {
       const res = await superAdminApi.superAdmins();
       setItems(res.items);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load super admins");
+      setError(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToLoadSuperAdmins"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -41,25 +43,25 @@ export default function SuperAdminAdminsPanel() {
     setGranting(true);
     try {
       const res = await superAdminApi.grantSuperAdmin(email.trim());
-      toast.success(res.message || `${email} is now a super admin.`);
+      toast.success(res.message || t("superAdminAdmins.isNowSuperAdmin", { email }));
       setEmail("");
       load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to grant super admin");
+      toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToGrant"));
     } finally {
       setGranting(false);
     }
   };
 
   const revoke = async (userId: string, userEmail: string) => {
-    if (!window.confirm(`Revoke super admin access for ${userEmail}?`)) return;
+    if (!window.confirm(t("superAdminAdmins.revokeConfirm", { email: userEmail }))) return;
     setRevokingId(userId);
     try {
       await superAdminApi.revokeSuperAdmin(userId);
-      toast.success("Super admin access revoked.");
+      toast.success(t("superAdminAdmins.accessRevoked"));
       load();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to revoke");
+      toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToRevoke"));
     } finally {
       setRevokingId(null);
     }
@@ -70,7 +72,7 @@ export default function SuperAdminAdminsPanel() {
       <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end sm:p-6">
         <div className="flex-1">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400">
-            Grant by email
+            {t("superAdminAdmins.grantByEmail")}
           </label>
           <input
             type="email"
@@ -85,7 +87,7 @@ export default function SuperAdminAdminsPanel() {
           disabled={granting || !email.includes("@")}
           className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
         >
-          {granting ? "Granting…" : "Grant"}
+          {granting ? t("superAdminAdmins.granting") : t("superAdminAdmins.grant")}
         </button>
       </div>
 
@@ -93,7 +95,7 @@ export default function SuperAdminAdminsPanel() {
         {error && <p className="p-6 text-sm text-error-500">{error}</p>}
         {!error && !loading && items.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No grants recorded.
+            {t("superAdminAdmins.noGrantsRecorded")}
           </p>
         )}
         {items.length > 0 && (
@@ -101,10 +103,10 @@ export default function SuperAdminAdminsPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">User</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Granted by</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actions</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAdmins.user")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("dashboard.status")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAdmins.grantedBy")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("appointments.actions")}</TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -116,7 +118,7 @@ export default function SuperAdminAdminsPanel() {
                     </TableCell>
                     <TableCell className="px-4 py-3">
                       <Badge size="sm" color={a.revoked ? "error" : "success"}>
-                        {a.revoked ? "Revoked" : a.account_status || "Active"}
+                        {a.revoked ? t("superAdminAdmins.revoked") : a.account_status || t("status.active")}
                       </Badge>
                     </TableCell>
                     <TableCell className="px-4 py-3 text-xs text-gray-400">
@@ -130,7 +132,7 @@ export default function SuperAdminAdminsPanel() {
                           disabled={revokingId === a.user_id}
                           className="rounded-lg border border-error-500/40 px-3 py-1.5 text-xs font-medium text-error-500 hover:bg-error-50 disabled:opacity-60 dark:hover:bg-error-500/10"
                         >
-                          {revokingId === a.user_id ? "Revoking…" : "Revoke"}
+                          {revokingId === a.user_id ? t("superAdminAdmins.revoking") : t("superAdminAdmins.revokeBtn")}
                         </button>
                       )}
                     </TableCell>
@@ -141,7 +143,7 @@ export default function SuperAdminAdminsPanel() {
           </div>
         )}
         {loading && (
-          <p className="py-8 text-center text-sm text-gray-400">Loading…</p>
+          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

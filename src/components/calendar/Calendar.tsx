@@ -18,6 +18,7 @@ import {
   formatDateTime,
   relationshipLabel,
 } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface CalendarEvent extends EventInput {
   extendedProps: {
@@ -36,6 +37,7 @@ const statusColor: Record<Appointment["status"], CalendarEvent["extendedProps"][
 };
 
 const Calendar: React.FC = () => {
+  const { t } = useTranslation();
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +102,7 @@ const Calendar: React.FC = () => {
             onClick={load}
             className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
           >
-            Retry
+            {t("dashboard.retry")}
           </button>
         </div>
       ) : (
@@ -131,35 +133,35 @@ const Calendar: React.FC = () => {
           <div className="px-2">
             <div className="flex items-center justify-between gap-3">
               <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                Appointment
+                {t("calendar.appointmentTitle")}
               </h5>
-            
+
             </div>
               <Badge size="sm" color={appointmentStatusColor(selected.status)}>
-                {appointmentStatusLabel(selected.status)}
+                {appointmentStatusLabel(selected.status, t)}
               </Badge>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {formatDateTime(selected.created_at)}
             </p>
             <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Detail
-                label="Patient"
+                label={t("dashboard.patient")}
                 value={
                   selected.patient_details
                     ? `${selected.patient_details.name}${
                         selected.patient_details.relationship !== "self"
-                          ? ` (${relationshipLabel(selected.patient_details.relationship)})`
+                          ? ` (${relationshipLabel(selected.patient_details.relationship, t)})`
                           : ""
                       }`
                     : "—"
                 }
               />
-              <Detail label="Date" value={selected.scheduled_date} />
-              <Detail label="Time" value={`${selected.scheduled_time} · ${selected.duration_minutes} min`} />
-              <Detail label="Doctor" value={selected.doctor_name ?? selected.doctor_id} />
-              <Detail label="Branch" value={selected.branch_name ?? selected.branch_id} />
-              <Detail label="Fee" value={formatCurrency(selected.fee_amount, selected.currency)} />
-              <Detail label="Payment" value={selected.payment_method ?? "Not paid"} />
+              <Detail label={t("schedule.date")} value={selected.scheduled_date} />
+              <Detail label={t("calendar.time")} value={`${selected.scheduled_time} · ${selected.duration_minutes} min`} />
+              <Detail label={t("dashboard.doctor")} value={selected.doctor_name ?? selected.doctor_id} />
+              <Detail label={t("appointments.branch")} value={selected.branch_name ?? selected.branch_id} />
+              <Detail label={t("dashboard.fee")} value={formatCurrency(selected.fee_amount, selected.currency)} />
+              <Detail label={t("calendar.payment")} value={selected.payment_method ?? t("calendar.notPaid")} />
             </dl>
             <div className="mt-6 flex justify-end">
               <Link
@@ -167,7 +169,7 @@ const Calendar: React.FC = () => {
                 onClick={closeModal}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
               >
-                Manage in Appointments
+                {t("calendar.manageInAppointments")}
               </Link>
             </div>
           </div>

@@ -32,6 +32,7 @@ import {
   today,
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type Action = "confirm" | "pay" | "complete" | "cancel";
 
@@ -46,6 +47,7 @@ const STATUS_FILTERS: (AppointmentStatus | "")[] = [
 ];
 
 export default function AppointmentsPanel() {
+  const { t } = useTranslation();
   const { can } = useAuth();
   const [items, setItems] = useState<Appointment[]>([]);
   const [status, setStatus] = useState<AppointmentStatus | "">("");
@@ -90,11 +92,11 @@ export default function AppointmentsPanel() {
       });
       setItems(res.items);
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load appointments"));
+      setError(getErrorMessage(err, t("appointments.failedToLoadAppointments")));
     } finally {
       setLoading(false);
     }
-  }, [status, dateFrom, dateTo]);
+  }, [status, dateFrom, dateTo, t]);
 
   useEffect(() => {
     load();
@@ -120,16 +122,16 @@ export default function AppointmentsPanel() {
   };
 
   const ACTION_SUCCESS_MESSAGE: Record<Action, string> = {
-    confirm: "Appointment confirmed successfully.",
-    pay: "Payment recorded successfully.",
-    complete: "Appointment marked as completed successfully.",
-    cancel: "Appointment cancelled successfully.",
+    confirm: t("appointments.confirmSuccess"),
+    pay: t("appointments.paySuccess"),
+    complete: t("appointments.completeSuccess"),
+    cancel: t("appointments.cancelSuccess"),
   };
 
   const runAction = async () => {
     if (!active || !action) return;
     if (!can(ACTION_PERMISSION[action])) {
-      toast.error("You do not have permission to perform this action.");
+      toast.error(t("appointments.noPermission"));
       return;
     }
     if (busy) return;
@@ -143,7 +145,7 @@ export default function AppointmentsPanel() {
       } else if (action === "pay") {
         const amount = Number(feeAmount);
         if (!amount || amount <= 0) {
-          throw new ApiError("Please enter a valid fee amount", "VALIDATION_ERROR", 400);
+          throw new ApiError(t("appointments.invalidFeeAmount"), "VALIDATION_ERROR", 400);
         }
         await appointmentsApi.pay(
           active.id,
@@ -157,7 +159,7 @@ export default function AppointmentsPanel() {
       await load();
       toast.success(ACTION_SUCCESS_MESSAGE[action]);
     } catch (err) {
-      const message = getErrorMessage(err, "Unable to complete this action. Please try again.");
+      const message = getErrorMessage(err, t("appointments.actionFailed"));
       setError(message);
       toast.error(message);
     } finally {
@@ -192,7 +194,7 @@ export default function AppointmentsPanel() {
       const full = await appointmentsApi.get(appt.id);
       setDetail(full);
     } catch (err) {
-      setDetailError(getErrorMessage(err, "Failed to load appointment"));
+      setDetailError(getErrorMessage(err, t("appointments.failedToLoadAppointment")));
     } finally {
       setDetailLoading(false);
     }
@@ -224,14 +226,14 @@ export default function AppointmentsPanel() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Book for patient
+            {t("appointments.bookForPatient")}
           </button>
         </div>
       )}
 
       {/* Filters */}
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
-        <FilterField label="Status">
+        <FilterField label={t("dashboard.status")}>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as AppointmentStatus | "")}
@@ -239,12 +241,12 @@ export default function AppointmentsPanel() {
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s || "all"} value={s}>
-                {s === "" ? "All statuses" : appointmentStatusLabel(s)}
+                {s === "" ? t("appointments.allStatuses") : appointmentStatusLabel(s, t)}
               </option>
             ))}
           </select>
         </FilterField>
-        <FilterField label="From">
+        <FilterField label={t("appointments.from")}>
           <input
             type="date"
             value={dateFrom}
@@ -252,7 +254,7 @@ export default function AppointmentsPanel() {
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </FilterField>
-        <FilterField label="To">
+        <FilterField label={t("appointments.to")}>
           <input
             type="date"
             value={dateTo}
@@ -264,7 +266,7 @@ export default function AppointmentsPanel() {
           onClick={load}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
-          Refresh
+          {t("appointments.refresh")}
         </button>
       </div>
 
@@ -279,7 +281,7 @@ export default function AppointmentsPanel() {
           <TableSkeleton rows={5} cols={7} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No appointments match the current filters.
+            {t("appointments.noAppointmentsMatch")}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -287,25 +289,25 @@ export default function AppointmentsPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Scheduled
+                    {t("dashboard.scheduled")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Patient
+                    {t("dashboard.patient")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Doctor
+                    {t("dashboard.doctor")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Branch
+                    {t("appointments.branch")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Fee
+                    {t("dashboard.fee")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Status
+                    {t("dashboard.status")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                    Actions
+                    {t("appointments.actions")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -326,7 +328,7 @@ export default function AppointmentsPanel() {
                       </p>
                       {appt.patient_details && appt.patient_details.relationship !== "self" && (
                         <Badge size="sm" color="light">
-                          {relationshipLabel(appt.patient_details.relationship)}
+                          {relationshipLabel(appt.patient_details.relationship, t)}
                         </Badge>
                       )}
                     </TableCell>
@@ -341,7 +343,7 @@ export default function AppointmentsPanel() {
                     </TableCell>
                     <TableCell className="py-3">
                       <Badge size="sm" color={appointmentStatusColor(appt.status)}>
-                        {appointmentStatusLabel(appt.status)}
+                        {appointmentStatusLabel(appt.status, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="py-3">
@@ -349,28 +351,28 @@ export default function AppointmentsPanel() {
                         <button
                           onClick={() => viewDetail(appt)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
-                          title="View details"
+                          title={t("appointments.view")}
                         >
-                          View
+                          {t("appointments.view")}
                         </button>
                         {canConfirm(appt) && can("appointments:confirm") && (
-                          <ActionButton label="Confirm" color="brand" onClick={() => openAction(appt, "confirm")} />
+                          <ActionButton label={t("appointments.confirm")} color="brand" onClick={() => openAction(appt, "confirm")} />
                         )}
                         {canPay(appt) && can("appointments:payment") && (
-                          <ActionButton label="Pay" color="brand" onClick={() => openAction(appt, "pay")} />
+                          <ActionButton label={t("appointments.pay")} color="brand" onClick={() => openAction(appt, "pay")} />
                         )}
                         {canComplete(appt) && can("appointments:complete") && (
-                          <ActionButton label="Complete" color="success" onClick={() => openAction(appt, "complete")} />
+                          <ActionButton label={t("appointments.complete")} color="success" onClick={() => openAction(appt, "complete")} />
                         )}
                         {canCancel(appt) && can("appointments:cancel") && (
-                          <ActionButton label="Cancel" color="error" onClick={() => openAction(appt, "cancel")} />
+                          <ActionButton label={t("appointments.cancel")} color="error" onClick={() => openAction(appt, "cancel")} />
                         )}
                         <button
                           onClick={() => showHistory(appt)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
-                          title="Status history"
+                          title={t("appointments.statusHistory")}
                         >
-                          History
+                          {t("appointments.history")}
                         </button>
                       </div>
                     </TableCell>
@@ -392,7 +394,7 @@ export default function AppointmentsPanel() {
         {active && action && (
           <div>
             <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              {actionLabel(action)} appointment
+              {t(`appointments.${action}Appointment`)}
             </h5>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               {active.scheduled_date} at {active.scheduled_time} ·{" "}
@@ -403,7 +405,7 @@ export default function AppointmentsPanel() {
               <div className="mt-6 space-y-4">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                    Fee amount
+                    {t("appointments.feeAmount")}
                   </label>
                   <input
                     type="number"
@@ -414,20 +416,20 @@ export default function AppointmentsPanel() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                    Method
+                    {t("appointments.method")}
                   </label>
                   <select
                     value={method}
                     onChange={(e) => setMethod(e.target.value as "cash" | "upi")}
                     className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                   >
-                    <option value="cash">Cash</option>
-                    <option value="upi">UPI</option>
+                    <option value="cash">{t("appointments.cash")}</option>
+                    <option value="upi">{t("appointments.upi")}</option>
                   </select>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                    Reference no (optional)
+                    {t("appointments.referenceNoOptional")}
                   </label>
                   <input
                     type="text"
@@ -442,7 +444,7 @@ export default function AppointmentsPanel() {
             {action === "cancel" && (
               <div className="mt-6">
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  Cancellation reason
+                  {t("appointments.cancellationReason")}
                 </label>
                 <textarea
                   value={reason}
@@ -455,10 +457,8 @@ export default function AppointmentsPanel() {
 
             {action !== "pay" && action !== "cancel" && (
               <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-                {action === "confirm" &&
-                  "Mark this appointment as confirmed. Requires status 'pending'."}
-                {action === "complete" &&
-                  "Mark this appointment as completed. Requires status 'paid'."}
+                {action === "confirm" && t("appointments.markConfirmed")}
+                {action === "complete" && t("appointments.markCompleted")}
               </p>
             )}
 
@@ -467,14 +467,14 @@ export default function AppointmentsPanel() {
                 onClick={closeModal}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Close
+                {t("appointments.close")}
               </button>
               <button
                 onClick={runAction}
                 disabled={busy}
                 className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {busy ? "Working…" : actionLabel(action)}
+                {busy ? t("appointments.working") : t(`appointments.${action}`)}
               </button>
             </div>
           </div>
@@ -484,7 +484,7 @@ export default function AppointmentsPanel() {
       {/* History modal */}
       <Modal isOpen={isOpen && !!history} onClose={closeModal} className="max-w-[560px] p-6 lg:p-8">
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Status history
+          {t("appointments.statusHistory")}
         </h5>
         <div className="mt-5 space-y-3">
           {history?.map((h, i) => (
@@ -516,7 +516,7 @@ export default function AppointmentsPanel() {
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Close
+            {t("appointments.close")}
           </button>
         </div>
       </Modal>
@@ -528,7 +528,7 @@ export default function AppointmentsPanel() {
         className="max-w-[560px] p-6 lg:p-8"
       >
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Appointment details
+          {t("appointments.appointmentDetails")}
         </h5>
 
         {detailLoading ? (
@@ -550,17 +550,17 @@ export default function AppointmentsPanel() {
                 </p>
               </div>
               <Badge size="sm" color={appointmentStatusColor(detail.status)}>
-                {appointmentStatusLabel(detail.status)}
+                {appointmentStatusLabel(detail.status, t)}
               </Badge>
             </div>
 
             <dl className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
               <DetailRow
-                label="Doctor"
+                label={t("dashboard.doctor")}
                 value={detail.doctor_name ?? active?.doctor_name ?? shortId(detail.doctor_id)}
               />
               <DetailRow
-                label="Branch"
+                label={t("appointments.branch")}
                 value={detail.branch_name ?? active?.branch_name ?? shortId(detail.branch_id)}
               />
             </dl>
@@ -568,19 +568,19 @@ export default function AppointmentsPanel() {
             {detail.patient_details && detail.patient_details.relationship !== "self" && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
                 <div className="flex items-center gap-2">
-                  <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Visiting patient</h6>
+                  <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">{t("appointments.visitingPatient")}</h6>
                   <Badge size="sm" color="light">
-                    {relationshipLabel(detail.patient_details.relationship)}
+                    {relationshipLabel(detail.patient_details.relationship, t)}
                   </Badge>
                 </div>
                 <dl className="mt-2 space-y-2">
-                  <DetailRow label="Name" value={detail.patient_details.name} />
-                  <DetailRow label="Phone" value={detail.patient_details.phone ?? "—"} />
+                  <DetailRow label={t("appointments.name")} value={detail.patient_details.name} />
+                  <DetailRow label={t("appointments.phone")} value={detail.patient_details.phone ?? "—"} />
                   {detail.patient_details.age != null && (
-                    <DetailRow label="Age" value={String(detail.patient_details.age)} />
+                    <DetailRow label={t("appointments.age")} value={String(detail.patient_details.age)} />
                   )}
                   {detail.patient_details.gender && (
-                    <DetailRow label="Gender" value={detail.patient_details.gender} />
+                    <DetailRow label={t("appointments.gender")} value={detail.patient_details.gender} />
                   )}
                 </dl>
               </div>
@@ -588,13 +588,13 @@ export default function AppointmentsPanel() {
 
             <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
               <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                {detail.patient_details && detail.patient_details.relationship !== "self" ? "Booked by" : "Patient"}
+                {detail.patient_details && detail.patient_details.relationship !== "self" ? t("appointments.bookedBy") : t("appointments.patient")}
               </h6>
               <dl className="mt-2 space-y-2">
-                <DetailRow label="Name" value={detail.patient.name} />
-                <DetailRow label="Email" value={detail.patient.email} />
-                <DetailRow label="Phone" value={detail.patient.phone ?? "—"} />
-                <DetailRow label="Address" value={detail.patient.address ?? "—"} />
+                <DetailRow label={t("appointments.name")} value={detail.patient.name} />
+                <DetailRow label={t("appointments.email")} value={detail.patient.email} />
+                <DetailRow label={t("appointments.phone")} value={detail.patient.phone ?? "—"} />
+                <DetailRow label={t("appointments.address")} value={detail.patient.address ?? "—"} />
               </dl>
             </div>
           </div>
@@ -605,7 +605,7 @@ export default function AppointmentsPanel() {
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
-            Close
+            {t("appointments.close")}
           </button>
         </div>
       </Modal>
@@ -653,10 +653,6 @@ function ActionButton({
       {label}
     </button>
   );
-}
-
-function actionLabel(action: Action): string {
-  return action.charAt(0).toUpperCase() + action.slice(1);
 }
 
 function shortId(id: string): string {

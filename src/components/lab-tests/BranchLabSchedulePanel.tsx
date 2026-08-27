@@ -8,6 +8,7 @@ import LabScheduleWeekEditor, {
   LabScheduleEntry,
 } from "@/components/lab-tests/LabScheduleWeekEditor";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 function toEntry(item: LabTestSchedule): LabScheduleEntry {
   return {
@@ -47,6 +48,7 @@ function dedupeEntries(list: LabScheduleEntry[]): LabScheduleEntry[] {
 export default function BranchLabSchedulePanel({
   branchId: branchIdProp,
 }: { branchId?: string } = {}) {
+  const { t } = useTranslation();
   const params = useParams<{ branchId?: string }>();
   const branchId =
     branchIdProp ?? (typeof params.branchId === "string" ? params.branchId : "");
@@ -67,11 +69,11 @@ export default function BranchLabSchedulePanel({
       setOriginal(loaded);
       setEntries(dedupeEntries(loaded));
     } catch (err) {
-      setError(getErrorMessage(err, "Failed to load schedule"));
+      setError(getErrorMessage(err, t("labSchedule.failedToLoadSchedule")));
     } finally {
       setLoading(false);
     }
-  }, [branchId]);
+  }, [branchId, t]);
 
   useEffect(() => {
     load();
@@ -119,12 +121,12 @@ export default function BranchLabSchedulePanel({
         ),
       ]);
 
-      toast.success("Lab schedule updated successfully.");
+      toast.success(t("labSchedule.updatedSuccess"));
       await load();
     } catch (err) {
       const msg = getErrorMessage(
         err,
-        "Failed to save schedule changes"
+        t("labSchedule.failedToSaveChanges")
       );
       setError(msg);
       toast.error(msg);
@@ -158,7 +160,7 @@ export default function BranchLabSchedulePanel({
                 disabled={!dirty || saving}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Discard Changes
+                {t("labSchedule.discardChanges")}
               </button>
               <button
                 type="button"
@@ -166,7 +168,7 @@ export default function BranchLabSchedulePanel({
                 disabled={!dirty || saving}
                 className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? t("auth.saving") : t("settings.saveChanges")}
               </button>
             </div>
           </>

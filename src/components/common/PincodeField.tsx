@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect } from "react";
 import { usePincodeLookup, PostOffice } from "@/hooks/usePincodeLookup";
+import { useTranslation } from "@/hooks/useTranslation";
 
 interface PincodeFieldProps {
   value: string;
@@ -29,6 +30,7 @@ export default function PincodeField({
   error: hasError = false,
   hint,
 }: PincodeFieldProps) {
+  const { t } = useTranslation();
   const { results, loading, error, lookup, clear } = usePincodeLookup();
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function PincodeField({
           disabled={loading || !value || disabled}
           className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
         >
-          {loading ? "Checking…" : "Validate"}
+          {loading ? t("common.checkingEllipsis") : t("clinicForm.validate")}
         </button>
       </div>
       {error && (

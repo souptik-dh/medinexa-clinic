@@ -12,10 +12,12 @@ import {
 import { ApiError, Patient, patientsApi } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { formatDate } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const PAGE_SIZE = 20;
 
 export default function PatientsPanel() {
+  const { t } = useTranslation();
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [items, setItems] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
@@ -48,13 +50,13 @@ export default function PatientsPanel() {
         setOffset(nextOffset);
       } catch (err) {
         if (!append) setItems([]);
-        setError(err instanceof ApiError ? err.message : "Failed to load patients");
+        setError(err instanceof ApiError ? err.message : t("patients.failedToLoad"));
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [search, type]
+    [search, type, t]
   );
 
   useEffect(() => {
@@ -75,27 +77,27 @@ export default function PatientsPanel() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Patients
+          {t("patients.title")}
         </h3>
         <BranchSelect value={branch?.id ?? ""} onChange={onBranchChange} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-64">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Search
+              {t("common.search")}
             </label>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, email or phone"
+              placeholder={t("patients.searchPlaceholder")}
               disabled={!branch}
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50"
             />
           </div>
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Type
+              {t("patients.type")}
             </label>
             <select
               value={type}
@@ -103,9 +105,9 @@ export default function PatientsPanel() {
               disabled={!branch}
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 disabled:opacity-50"
             >
-              <option value="">All patients</option>
-              <option value="new">New</option>
-              <option value="old">Returning</option>
+              <option value="">{t("patients.allPatients")}</option>
+              <option value="new">{t("patients.new")}</option>
+              <option value="old">{t("patients.returning")}</option>
             </select>
           </div>
         </div>
@@ -120,7 +122,7 @@ export default function PatientsPanel() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            Patients
+            {t("patients.title")}
             {branch && (
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {branch.name}
@@ -131,13 +133,13 @@ export default function PatientsPanel() {
 
         {!branch ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Select a branch to view its patients.
+            {t("patients.selectBranchHint")}
           </p>
         ) : loading ? (
           <TableSkeleton rows={6} cols={7} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No patients found for this branch.
+            {t("patients.noPatientsForBranch")}
           </p>
         ) : (
           <>
@@ -146,25 +148,25 @@ export default function PatientsPanel() {
                 <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                   <TableRow>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Name
+                      {t("patients.name")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Contact
+                      {t("patients.contact")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Address
+                      {t("patients.address")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Visits
+                      {t("patients.visits")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Type
+                      {t("patients.type")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      First visit
+                      {t("patients.firstVisit")}
                     </TableCell>
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                      Last visit
+                      {t("patients.lastVisit")}
                     </TableCell>
                   </TableRow>
                 </TableHeader>
@@ -192,7 +194,7 @@ export default function PatientsPanel() {
                       </TableCell>
                       <TableCell className="py-3">
                         <Badge size="sm" color={patient.is_new_patient ? "info" : "success"}>
-                          {patient.is_new_patient ? "New" : "Returning"}
+                          {patient.is_new_patient ? t("patients.new") : t("patients.returning")}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
@@ -214,7 +216,7 @@ export default function PatientsPanel() {
                   disabled={loadingMore}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
-                  {loadingMore ? "Loading…" : "Load more"}
+                  {loadingMore ? t("common.loading") : t("patients.loadMore")}
                 </button>
               </div>
             )}

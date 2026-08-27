@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useTranslation } from "@/hooks/useTranslation";
 
 type Mode = "owner" | "staff" | "doctor";
 type RequiredField =
@@ -20,6 +21,7 @@ type RequiredField =
   | "otp";
 
 export default function SignInForm() {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>("owner");
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
@@ -44,7 +46,7 @@ export default function SignInForm() {
     setError(null);
     setSubmitted(true);
     if (!email.trim() || !password.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
@@ -52,7 +54,7 @@ export default function SignInForm() {
       await login(email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in");
+      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
     } finally {
       setSubmitting(false);
     }
@@ -63,7 +65,7 @@ export default function SignInForm() {
     setError(null);
     setSubmitted(true);
     if (!doctorEmail.trim() || !doctorPassword.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
@@ -71,7 +73,7 @@ export default function SignInForm() {
       await doctorLogin(doctorEmail, doctorPassword);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in");
+      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
     } finally {
       setSubmitting(false);
     }
@@ -83,16 +85,16 @@ export default function SignInForm() {
     setMessage(null);
     setSubmitted(true);
     if (!staffEmail.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
     try {
       await staffLogin(staffEmail);
-      setMessage("If an account exists for this email, an OTP has been sent.");
+      setMessage(t("auth.otpSentMessage"));
       setStage("verify");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to request an OTP");
+      setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
     } finally {
       setSubmitting(false);
     }
@@ -103,7 +105,7 @@ export default function SignInForm() {
     setError(null);
     setSubmitted(true);
     if (!otp.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
@@ -111,7 +113,7 @@ export default function SignInForm() {
       await verifyStaffOtp(staffEmail, otp);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to verify the OTP");
+      setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
     } finally {
       setSubmitting(false);
     }
@@ -141,20 +143,20 @@ export default function SignInForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Sign In
+              {t("auth.signIn")}
             </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {mode === "owner"
-                  ? "Enter your clinic owner email and password to sign in!"
+                  ? t("auth.signInClinicOwner")
                   : mode === "doctor"
-                    ? "Enter your doctor account email and password to sign in!"
-                    : "Sign in as branch staff using a one-time password."}
+                    ? t("auth.signInDoctor")
+                    : t("auth.signInStaff")}
               </p>
           </div>
 
           {sessionExpired && (
             <div className="mb-5 rounded-lg border border-warning-500/30 bg-warning-50 px-4 py-3 text-sm text-warning-600 dark:bg-warning-500/10 dark:text-warning-400">
-              Your session has expired. Please sign in again.
+              {t("auth.sessionExpired")}
             </div>
           )}
 
@@ -164,14 +166,14 @@ export default function SignInForm() {
               onClick={() => switchMode("owner")}
               className={tabClass("owner")}
             >
-              Clinic owner
+              {t("auth.clinicOwner")}
             </button>
             <button
               type="button"
               onClick={() => switchMode("staff")}
               className={tabClass("staff")}
             >
-              Staff
+              {t("auth.staff")}
             </button>
             {/* <button
               type="button"
@@ -187,7 +189,7 @@ export default function SignInForm() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                   <Label>
-                    Email <span className="text-error-500">*</span>{" "}
+                    {t("auth.email")} <span className="text-error-500">*</span>{" "}
                   </Label>
                   <Input
                     placeholder="owner@example.com"
@@ -202,12 +204,12 @@ export default function SignInForm() {
                 </div>
                 <div>
                   <Label>
-                    Password <span className="text-error-500">*</span>{" "}
+                    {t("auth.password")} <span className="text-error-500">*</span>{" "}
                   </Label>
                   <div className="relative">
                     <Input
                       type={showPassword ? "text" : "password"}
-                      placeholder="Enter your password"
+                      placeholder={t("auth.enterPasswordPlaceholder")}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       onBlur={() => touch("password")}
@@ -233,14 +235,14 @@ export default function SignInForm() {
                   <div className="flex items-center gap-3">
                     <Checkbox checked={isChecked} onChange={setIsChecked} />
                     <span className="block font-normal text-gray-700 text-theme-sm dark:text-gray-400">
-                      Keep me logged in
+                      {t("auth.keepMeLoggedIn")}
                     </span>
                   </div>
                   <Link
                     href="/reset-password"
                     className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
                   >
-                    Forgot password?
+                    {t("auth.forgotPassword")}
                   </Link>
                 </div>
                 {error && (
@@ -250,7 +252,7 @@ export default function SignInForm() {
                 )}
                 <div>
                   <Button className="w-full" size="sm" disabled={submitting}>
-                    {submitting ? "Signing in..." : "Sign in"}
+                    {submitting ? t("auth.signingIn") : t("auth.signIn")}
                   </Button>
                 </div>
               </form>
@@ -259,7 +261,7 @@ export default function SignInForm() {
             <form onSubmit={handleDoctorSubmit} className="space-y-6">
               <div>
                 <Label>
-                  Email <span className="text-error-500">*</span>{" "}
+                  {t("auth.email")} <span className="text-error-500">*</span>{" "}
                 </Label>
                 <Input
                   placeholder="doctor@example.com"
@@ -278,12 +280,12 @@ export default function SignInForm() {
               </div>
               <div>
                 <Label>
-                  Password <span className="text-error-500">*</span>{" "}
+                  {t("auth.password")} <span className="text-error-500">*</span>{" "}
                 </Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    placeholder={t("auth.enterPasswordPlaceholder")}
                     value={doctorPassword}
                     onChange={(e) => setDoctorPassword(e.target.value)}
                     onBlur={() => touch("doctorPassword")}
@@ -312,7 +314,7 @@ export default function SignInForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Signing in..." : "Sign in"}
+                  {submitting ? t("auth.signingIn") : t("auth.signIn")}
                 </Button>
               </div>
             </form>
@@ -320,7 +322,7 @@ export default function SignInForm() {
             <form onSubmit={handleOtpRequest} className="space-y-6">
               <div>
                 <Label>
-                  Email <span className="text-error-500">*</span>{" "}
+                  {t("auth.email")} <span className="text-error-500">*</span>{" "}
                 </Label>
                 <Input
                   placeholder="staff@clinic.com"
@@ -344,16 +346,16 @@ export default function SignInForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Sending OTP..." : "Send OTP"}
+                  {submitting ? t("auth.sendingOtp") : t("auth.sendOtp")}
                 </Button>
               </div>
             </form>
           ) : (
             <form onSubmit={handleOtpVerify} className="space-y-6">
               <div>
-                <Label>OTP <span className="text-error-500">*</span> </Label>
+                <Label>{t("auth.otp")} <span className="text-error-500">*</span> </Label>
                 <Input
-                  placeholder="6-digit code"
+                  placeholder={t("auth.sixDigitCode")}
                   type="text"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
@@ -365,7 +367,7 @@ export default function SignInForm() {
                   <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
                 ) : (
                   <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                    Enter the code sent to {staffEmail}.
+                    {t("auth.enterOtpSentTo", { email: staffEmail })}
                   </p>
                 )}
               </div>
@@ -381,7 +383,7 @@ export default function SignInForm() {
               )}
               <div className="space-y-3">
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Verifying..." : "Verify & sign in"}
+                  {submitting ? t("auth.verifying") : t("auth.verifyAndSignIn")}
                 </Button>
                 <button
                   type="button"
@@ -393,7 +395,7 @@ export default function SignInForm() {
                   }}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
-                  Back
+                  {t("auth.back")}
                 </button>
               </div>
             </form>
@@ -402,12 +404,12 @@ export default function SignInForm() {
           {mode === "owner" && (
             <div className="mt-5">
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
-                Don&apos;t have an account? {""}
+                {t("auth.dontHaveAccount")} {""}
                 <Link
                   href="/signup"
                   className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
                 >
-                  Sign Up
+                  {t("auth.signUp")}
                 </Link>
               </p>
             </div>

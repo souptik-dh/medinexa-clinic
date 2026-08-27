@@ -67,7 +67,26 @@ export const appointmentStatusColor = (status: AppointmentStatus): UiBadgeColor 
   }
 };
 
-export const appointmentStatusLabel = (status: AppointmentStatus): string => {
+/** A `t` function like the one `useTranslation()` returns. Optional on every
+ * label helper below so these still work (in English) from non-component
+ * code and existing tests that call them without a translator. */
+export type Translator = (key: string, params?: Record<string, string | number>) => string;
+
+const RELATIONSHIP_KEYS: Record<string, string> = {
+  self: "status.self",
+  father: "status.father",
+  mother: "status.mother",
+  spouse: "status.spouse",
+  sibling: "status.sibling",
+  child: "status.child",
+  other: "appointments.other",
+};
+
+export const appointmentStatusLabel = (status: AppointmentStatus, t?: Translator): string => {
+  if (t) {
+    const key = status === "no_show" ? "status.noShow" : `status.${status}`;
+    return t(key);
+  }
   switch (status) {
     case "no_show":
       return "No show";
@@ -76,7 +95,9 @@ export const appointmentStatusLabel = (status: AppointmentStatus): string => {
   }
 };
 
-export const relationshipLabel = (relationship: PatientRelationship): string => {
+export const relationshipLabel = (relationship: PatientRelationship, t?: Translator): string => {
+  const key = RELATIONSHIP_KEYS[relationship];
+  if (t && key) return t(key);
   switch (relationship) {
     case "self":
       return "Self";
@@ -85,7 +106,30 @@ export const relationshipLabel = (relationship: PatientRelationship): string => 
   }
 };
 
-export const notificationTypeLabel = (type: string): string => {
+const NOTIFICATION_TYPE_KEYS: Record<string, string> = {
+  new_booking: "notificationTypes.newBooking",
+  booking_confirmed: "notificationTypes.bookingConfirmed",
+  payment_received: "notificationTypes.paymentReceived",
+  consultation_completed: "notificationTypes.consultationCompleted",
+  prescription_ready: "notificationTypes.prescriptionReady",
+  doctor_invited: "notificationTypes.doctorInvited",
+  doctor_invite_accepted: "notificationTypes.doctorInviteAccepted",
+  appointment_cancelled: "notificationTypes.appointmentCancelled",
+  lab_test_booked: "notificationTypes.labTestBooked",
+  lab_test_approved: "notificationTypes.labTestApproved",
+  lab_test_rejected: "notificationTypes.labTestRejected",
+  lab_test_cancelled: "notificationTypes.labTestCancelled",
+  lab_test_completed: "notificationTypes.labTestCompleted",
+  lab_test_payment_success: "notificationTypes.labTestPaymentSuccess",
+  subscription_expiring: "notificationTypes.subscriptionExpiring",
+  subscription_expired: "notificationTypes.subscriptionExpired",
+  subscription_activated: "notificationTypes.subscriptionActivated",
+  subscription_deactivated: "notificationTypes.subscriptionDeactivated",
+};
+
+export const notificationTypeLabel = (type: string, t?: Translator): string => {
+  const key = NOTIFICATION_TYPE_KEYS[type];
+  if (t && key) return t(key);
   return type
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -135,7 +179,8 @@ export const inviteStatusColor = (status: InviteStatus): UiBadgeColor => {
   }
 };
 
-export const inviteStatusLabel = (status: InviteStatus): string => {
+export const inviteStatusLabel = (status: InviteStatus, t?: Translator): string => {
+  if (t) return t(`doctors.${status}`);
   return status.charAt(0).toUpperCase() + status.slice(1);
 };
 
@@ -214,11 +259,29 @@ export const labTestAppointmentStatusColor = (status: LabTestAppointmentStatus):
   }
 };
 
-export const labTestAppointmentStatusLabel = (status: LabTestAppointmentStatus): string => {
+const LAB_TEST_APPOINTMENT_STATUS_KEYS: Record<LabTestAppointmentStatus, string> = {
+  PENDING: "status.pendingCaps",
+  APPROVED: "status.approved",
+  REJECTED: "status.rejected",
+  COMPLETED: "status.completedCaps",
+  CANCELLED: "status.cancelledCaps",
+};
+
+export const labTestAppointmentStatusLabel = (status: LabTestAppointmentStatus, t?: Translator): string => {
+  if (t) return t(LAB_TEST_APPOINTMENT_STATUS_KEYS[status] ?? `status.${status}`);
   return status.charAt(0) + status.slice(1).toLowerCase();
 };
 
-export const labTestPaymentStatusLabel = (status: LabTestPaymentStatus): string => {
+const LAB_TEST_PAYMENT_STATUS_KEYS: Record<LabTestPaymentStatus, string> = {
+  PAID: "status.paidCaps",
+  PENDING: "status.pendingCaps",
+  UNPAID: "status.unpaid",
+  REFUNDED: "status.refunded",
+  FAILED: "status.failed",
+};
+
+export const labTestPaymentStatusLabel = (status: LabTestPaymentStatus, t?: Translator): string => {
+  if (t) return t(LAB_TEST_PAYMENT_STATUS_KEYS[status] ?? `status.${status}`);
   return status.charAt(0) + status.slice(1).toLowerCase();
 };
 
@@ -277,7 +340,16 @@ export const subscriptionStatusColor = (status: SubscriptionStatus): UiBadgeColo
   }
 };
 
-export const subscriptionStatusLabel = (status: SubscriptionStatus): string => {
+const SUBSCRIPTION_STATUS_KEYS: Record<SubscriptionStatus, string> = {
+  TRIAL: "status.trial",
+  ACTIVE: "status.active",
+  EXPIRING: "status.expiring",
+  EXPIRED: "status.expired",
+  INACTIVE: "status.inactive",
+};
+
+export const subscriptionStatusLabel = (status: SubscriptionStatus, t?: Translator): string => {
+  if (t) return t(SUBSCRIPTION_STATUS_KEYS[status] ?? `status.${status}`);
   switch (status) {
     case "TRIAL":
       return "Free trial";

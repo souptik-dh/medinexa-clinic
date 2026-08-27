@@ -9,8 +9,10 @@ import {
 } from "@/components/ui/table";
 import { ApiError, AuditLogEntry, superAdminApi } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function SuperAdminAuditLogsPanel() {
+  const { t } = useTranslation();
   const [action, setAction] = useState("");
   const [resourceType, setResourceType] = useState("");
   const [from, setFrom] = useState("");
@@ -37,12 +39,12 @@ export default function SuperAdminAuditLogsPanel() {
         setCursor(res.next_cursor ?? undefined);
       } catch (err) {
         if (!append) setItems([]);
-        setError(err instanceof ApiError ? err.message : "Failed to load audit logs");
+        setError(err instanceof ApiError ? err.message : t("superAdminAuditLogs.failedToLoadAuditLogs"));
       } finally {
         setLoading(false);
       }
     },
-    [action, resourceType, from, to]
+    [action, resourceType, from, to, t]
   );
 
   useEffect(() => {
@@ -55,13 +57,13 @@ export default function SuperAdminAuditLogsPanel() {
         <input
           value={action}
           onChange={(e) => setAction(e.target.value)}
-          placeholder="Action e.g. clinic.deactivated"
+          placeholder={t("superAdminAuditLogs.actionPlaceholder")}
           className="h-11 sm:w-64 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
         <input
           value={resourceType}
           onChange={(e) => setResourceType(e.target.value)}
-          placeholder="Resource type e.g. subscription"
+          placeholder={t("superAdminAuditLogs.resourceTypePlaceholder")}
           className="h-11 sm:w-56 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
         <input
@@ -82,7 +84,7 @@ export default function SuperAdminAuditLogsPanel() {
         {error && <p className="p-6 text-sm text-error-500">{error}</p>}
         {!error && items.length === 0 && !loading && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No audit entries found.
+            {t("superAdminAuditLogs.noAuditEntries")}
           </p>
         )}
         {items.length > 0 && (
@@ -90,11 +92,11 @@ export default function SuperAdminAuditLogsPanel() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Time</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Actor</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Action</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Resource</TableCell>
-                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">IP</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAuditLogs.time")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAuditLogs.actor")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAuditLogs.action")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAuditLogs.resource")}</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{t("superAdminAuditLogs.ip")}</TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -104,7 +106,7 @@ export default function SuperAdminAuditLogsPanel() {
                       {formatDateTime(log.created_at)}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      {log.actor?.email ?? "system"}
+                      {log.actor?.email ?? t("superAdminAuditLogs.system")}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-white/90">
                       {log.action}
@@ -127,14 +129,14 @@ export default function SuperAdminAuditLogsPanel() {
                   disabled={loading}
                   className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
                 >
-                  {loading ? "Loading…" : "Load more"}
+                  {loading ? t("common.loading") : t("patients.loadMore")}
                 </button>
               </div>
             )}
           </div>
         )}
         {loading && items.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-400">Loading…</p>
+          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

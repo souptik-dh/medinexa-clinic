@@ -9,12 +9,14 @@ import Button from "@/components/ui/button/Button";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useTranslation } from "@/hooks/useTranslation";
 
 const REDIRECT_DELAY_MS = 2000;
 
 type RequiredField = "inviteCode" | "password" | "confirmPassword";
 
 export default function AcceptDoctorInviteForm() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
@@ -46,11 +48,11 @@ export default function AcceptDoctorInviteForm() {
     setError(null);
     setSubmitted(true);
     if (!inviteCode.trim() || !password.trim() || !confirmPassword.trim()) {
-      setError("Please fill in all required fields.");
+      setError(t("auth.pleaseFillRequired"));
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("auth.passwordsDoNotMatch"));
       return;
     }
     activationInFlight.current = true;
@@ -64,9 +66,9 @@ export default function AcceptDoctorInviteForm() {
       });
       setRegNo(res.doctor.reg_no ?? "");
       setDone(true);
-      toast.success("Account activated successfully.");
+      toast.success(t("auth.accountActivated"));
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Unable to accept this invite";
+      const message = err instanceof ApiError ? err.message : t("auth.unableToAcceptInvite");
       setError(message);
       toast.error(message);
       activationInFlight.current = false;
@@ -81,10 +83,10 @@ export default function AcceptDoctorInviteForm() {
         <div>
           <div className="mb-5 sm:mb-8">
             <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
-              Accept your invitation
+              {t("auth.acceptInviteTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Set a password to activate your Jido Healthcare doctor account.
+              {t("auth.acceptInviteDesc")}
             </p>
           </div>
 
@@ -104,16 +106,16 @@ export default function AcceptDoctorInviteForm() {
                 </div>
                 <div>
                   <p className="text-base font-semibold text-success-700 dark:text-success-500">
-                    Account activated successfully
+                    {t("auth.accountActivated")}
                   </p>
                   <p className="mt-1 text-sm text-success-700/80 dark:text-success-500/80">
-                    Redirecting you to sign in…
+                    {t("auth.redirectingToSignIn")}
                   </p>
                 </div>
               </div>
               {regNo && (
                 <div>
-                  <Label>Registration number</Label>
+                  <Label>{t("auth.registrationNumber")}</Label>
                   <Input type="text" value={regNo} disabled />
                 </div>
               )}
@@ -121,29 +123,28 @@ export default function AcceptDoctorInviteForm() {
           ) : !email ? (
             <div className="space-y-5">
               <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-                This invite link is missing your email address. Use the link from your invitation
-                email, or ask the clinic to resend it.
+                {t("auth.missingInviteEmail")}
               </div>
               <Link
                 href="/signin"
                 className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                Back to sign in
+                {t("auth.backToSignIn")}
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <Label>Email</Label>
+                <Label>{t("auth.email")}</Label>
                 <Input type="email" value={email} disabled />
               </div>
               <div>
                 <Label>
-                  Invite code <span className="text-error-500">*</span>
+                  {t("auth.inviteCode")} <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="text"
-                  placeholder="Code from your invitation email"
+                  placeholder={t("auth.inviteCodePlaceholder")}
                   value={inviteCode}
                   onChange={(e) => setInviteCode(e.target.value)}
                   onBlur={() => touch("inviteCode")}
@@ -157,22 +158,22 @@ export default function AcceptDoctorInviteForm() {
                 />
               </div>
               <div>
-                <Label>Registration number</Label>
+                <Label>{t("auth.registrationNumber")}</Label>
                 <Input
                   type="text"
-                  placeholder="MC-123456 (optional)"
+                  placeholder={t("auth.registrationNoPlaceholder")}
                   value={regNo}
                   onChange={(e) => setRegNo(e.target.value)}
                 />
               </div>
               <div>
                 <Label>
-                  Password <span className="text-error-500">*</span>
+                  {t("auth.password")} <span className="text-error-500">*</span>
                 </Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
-                    placeholder="Min. 8 characters"
+                    placeholder={t("auth.passwordPlaceholder")}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onBlur={() => touch("password")}
@@ -196,11 +197,11 @@ export default function AcceptDoctorInviteForm() {
               </div>
               <div>
                 <Label>
-                  Confirm password <span className="text-error-500">*</span>
+                  {t("auth.confirmPassword")} <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Re-enter your password"
+                  placeholder={t("auth.confirmPasswordPlaceholder")}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   onBlur={() => touch("confirmPassword")}
@@ -220,7 +221,7 @@ export default function AcceptDoctorInviteForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? "Activating..." : "Activate account"}
+                  {submitting ? t("auth.activating") : t("auth.activateAccount")}
                 </Button>
               </div>
             </form>

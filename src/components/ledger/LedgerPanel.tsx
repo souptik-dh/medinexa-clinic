@@ -11,8 +11,10 @@ import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, LedgerEntry, clinicsApi, ledgerApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function LedgerPanel() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
 
@@ -32,9 +34,9 @@ export default function LedgerPanel() {
         setClinicId((prev) => prev || res.items[0]?.id || "");
       })
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Failed to load clinics");
+        setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
       });
-  }, [isOwner]);
+  }, [isOwner, t]);
 
   const load = useCallback(async () => {
     if (!clinicId) {
@@ -48,11 +50,11 @@ export default function LedgerPanel() {
       setItems(res.items);
     } catch (err) {
       setItems([]);
-      setError(err instanceof ApiError ? err.message : "Failed to load ledger");
+      setError(err instanceof ApiError ? err.message : t("ledger.failedToLoad"));
     } finally {
       setLoading(false);
     }
-  }, [clinicId, month]);
+  }, [clinicId, month, t]);
 
   useEffect(() => {
     load();
@@ -61,7 +63,7 @@ export default function LedgerPanel() {
   if (!isOwner) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-        Only clinic owners can view the payment ledger.
+        {t("ledger.ownerOnlyNotice")}
       </div>
     );
   }
@@ -75,19 +77,19 @@ export default function LedgerPanel() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          Payment ledger
+          {t("ledger.title")}
         </h3>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-64">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Clinic
+              {t("billing.clinic")}
             </label>
             <select
               value={clinicId}
               onChange={(e) => setClinicId(e.target.value)}
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
-              <option value="">Select clinic</option>
+              <option value="">{t("billing.selectClinic")}</option>
               {clinics.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -97,7 +99,7 @@ export default function LedgerPanel() {
           </div>
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Month
+              {t("ledger.month")}
             </label>
             <input
               type="month"
@@ -111,7 +113,7 @@ export default function LedgerPanel() {
               onClick={() => setMonth("")}
               className="h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
-              Clear month
+              {t("ledger.clearMonth")}
             </button>
           )}
         </div>
@@ -131,7 +133,7 @@ export default function LedgerPanel() {
               className="rounded-2xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-800 dark:bg-white/[0.03]"
             >
               <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Total ({currency})
+                {t("ledger.totalCurrency", { currency })}
               </p>
               <p className="mt-1 text-xl font-semibold text-gray-800 dark:text-white/90">
                 {formatCurrency(total, currency)}
@@ -144,13 +146,13 @@ export default function LedgerPanel() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         {!clinicId ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Select a clinic to view its payment ledger.
+            {t("ledger.selectClinicHint")}
           </p>
         ) : loading ? (
           <TableSkeleton rows={5} cols={5} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            No payments recorded for this clinic{month ? " in this month" : ""}.
+            {t("ledger.noPaymentsRecorded", { suffix: month ? t("ledger.inThisMonth") : "" })}
           </p>
         ) : (
           <div className="max-w-full overflow-x-auto">
@@ -158,19 +160,19 @@ export default function LedgerPanel() {
               <TableHeader className="border-gray-100 dark:border-gray-800 border-y">
                 <TableRow>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Branch
+                    {t("ledger.branch")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Period
+                    {t("ledger.period")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Total
+                    {t("ledger.total")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Payments
+                    {t("ledger.payments")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Updated
+                    {t("ledger.updated")}
                   </TableCell>
                 </TableRow>
               </TableHeader>
