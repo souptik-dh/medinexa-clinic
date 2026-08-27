@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { corsJson, corsPreflight } from "@/lib/cors";
 import { fetchNmcSessionCookie, invalidateNmcCookie, nmcHttps } from "@/lib/nmc";
 
 const DETAILS_PATH =
@@ -51,27 +52,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const doctorId = (body.doctorId ?? "").trim();
   const registrationNo = (body.registrationNo ?? "").trim();
   if (!doctorId || !registrationNo) {
-    return NextResponse.json(
+    return corsJson(
       { error: "doctorId and registrationNo are required." },
-      { status: 400 }
+      400
     );
   }
 
   let cookie = await fetchNmcSessionCookie();
   try {
     const result = await fetchDoctorDetails(cookie, doctorId, registrationNo);
-    return NextResponse.json({ result });
+    return corsJson({ result });
   } catch {
     invalidateNmcCookie();
     cookie = await fetchNmcSessionCookie();
     try {
       const result = await fetchDoctorDetails(cookie, doctorId, registrationNo);
-      return NextResponse.json({ result });
+      return corsJson({ result });
     } catch {
-      return NextResponse.json(
-        { error: "Unable to fetch doctor details from NMC." },
-        { status: 502 }
-      );
+      return corsJson({ error: "Unable to fetch doctor details from NMC." }, 502);
     }
   }
+}
+
+export async function OPTIONS(): Promise<NextResponse> {
+  return corsPreflight();
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { corsJson, corsPreflight } from "@/lib/cors";
 import { fetchNmcSessionCookie, invalidateNmcCookie, nmcHttps } from "@/lib/nmc";
 
 const SEARCH_PATH = "/MCIRest/open/getPaginatedData";
@@ -102,9 +103,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const name = (body.name ?? "").trim();
   const registrationNo = (body.registrationNo ?? "").trim();
   if (!name && !registrationNo) {
-    return NextResponse.json(
+    return corsJson(
       { error: "Enter a registration number or a doctor name." },
-      { status: 400 }
+      400
     );
   }
 
@@ -119,12 +120,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!isSearchPayload(payload)) {
-    return NextResponse.json(
+    return corsJson(
       {
         error:
           "NMC returned no results. Try a different registration number or a single keyword name.",
       },
-      { status: 404 }
+      404
     );
   }
 
@@ -132,5 +133,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .map(mapSearchResult)
     .filter((r): r is NmcDoctorResult => r !== null);
 
-  return NextResponse.json({ results });
+  return corsJson({ results });
+}
+
+export async function OPTIONS(): Promise<NextResponse> {
+  return corsPreflight();
 }
