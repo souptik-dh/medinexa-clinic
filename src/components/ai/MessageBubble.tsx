@@ -51,10 +51,20 @@ function renderMarkdown(text: string): string {
     }
   }
 
-  html = processed.join("\n");
-  html = html.replace(/\n/g, "<br />");
+  const BLOCK_RE = /^<(h2|\/h2|h3|\/h3|div|\/div|table|\/table|thead|\/thead|tbody|\/tbody|tr|\/tr|th|\/th|td|\/td|ul|\/ul|li|\/li)/i;
+  const nonEmptyLines = processed.filter((line) => line.trim() !== "");
 
-  return html;
+  const parts: string[] = [];
+  for (let idx = 0; idx < nonEmptyLines.length; idx++) {
+    const line = nonEmptyLines[idx];
+    parts.push(line);
+    const next = nonEmptyLines[idx + 1];
+    if (next && !BLOCK_RE.test(line.trim()) && !BLOCK_RE.test(next.trim())) {
+      parts.push("<br />");
+    }
+  }
+
+  return parts.join("");
 }
 
 export default function MessageBubble({ message }: Props) {
@@ -90,7 +100,7 @@ export default function MessageBubble({ message }: Props) {
         </div>
         <div className="max-w-[85%]">
           <div
-            className="rounded-lg bg-white px-3.5 py-2.5 text-sm text-gray-700 shadow-theme-xs dark:bg-gray-800 dark:text-gray-300"
+            className="rounded-md bg-white px-3.5 py-2.5 text-sm text-gray-700 shadow-theme-xs dark:bg-gray-800 dark:text-gray-300"
             dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
           />
 

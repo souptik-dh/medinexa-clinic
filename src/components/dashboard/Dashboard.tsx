@@ -237,7 +237,7 @@ export default function Dashboard() {
                       </span>
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {shortId(appt.doctor_id)}
+                      {appt.doctor_name ?? shortId(appt.doctor_id)}
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                       {formatCurrency(appt.fee_amount, appt.currency)}

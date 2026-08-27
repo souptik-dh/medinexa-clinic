@@ -15,6 +15,7 @@ import {
   checkRateLimit,
   checkToolCallRateLimit,
 } from "./rate-limiter";
+import { notificationTypeLabel, timeAgo } from "@/lib/utils";
 
 function generateId(): string {
   const ts = Date.now();
@@ -462,6 +463,7 @@ function formatToolResult(
   const REPORT_TOOLS = [
     "get_sales_report", "get_patient_report", "get_booking_report",
     "get_lab_test_report", "get_business_summary", "get_analytics",
+    "get_dashboard_stats",
   ];
   if (REPORT_TOOLS.includes(toolId) && typeof data === "object" && !Array.isArray(data)) {
     return `### ${toolName}\n\n` + formatReportResult(toolId, data as Record<string, unknown>);
@@ -469,6 +471,13 @@ function formatToolResult(
 
   if (toolId === "get_subscription" && typeof data === "object" && !Array.isArray(data)) {
     return formatSubscriptionResult(data as Record<string, unknown>);
+  }
+
+  if (toolId === "get_notifications" && typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    const items = (obj.items ?? []) as Record<string, unknown>[];
+    const unreadCount = typeof obj.unread_count === "number" ? obj.unread_count : undefined;
+    return formatNotificationsResult(items, unreadCount);
   }
 
   // Unwrap common API response envelopes
@@ -499,6 +508,33 @@ function formatToolResult(
   }
 
   return `**${toolName}** completed successfully.`;
+}
+
+function formatNotificationsResult(items: Record<string, unknown>[], unreadCount?: number): string {
+  if (items.length === 0) {
+    return "You have no notifications.";
+  }
+
+  const lines: string[] = ["### Notifications\n"];
+  lines.push(
+    `Found **${items.length}** notification${items.length === 1 ? "" : "s"}` +
+      (unreadCount !== undefined ? `, **${unreadCount}** unread.` : ".") +
+      "\n"
+  );
+
+  const displayItems = items.slice(0, 10);
+  for (const item of displayItems) {
+    const label = notificationTypeLabel(String(item.type ?? "notification"));
+    const isUnread = !item.read_at;
+    const when = item.created_at ? timeAgo(String(item.created_at)) : "";
+    lines.push(`- ${isUnread ? "🔵 " : ""}**${label}**${when ? ` — ${when}` : ""}`);
+  }
+
+  if (items.length > 10) {
+    lines.push(`\n_...and ${items.length - 10} more_`);
+  }
+
+  return lines.join("\n");
 }
 
 function formatArrayResult(toolName: string, items: unknown[]): string {

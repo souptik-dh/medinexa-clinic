@@ -61,6 +61,33 @@ function hasRequiredRole(user: AiUser, roles?: string[]): boolean {
   return roles.includes(user.role);
 }
 
+/**
+ * Clamps a clinic scope to the caller's own clinic. Only sys_admin may
+ * cross clinic boundaries (e.g. by passing an explicit clinicId param) -
+ * every other role is always pinned to their own clinicId, regardless of
+ * what a tool parameter requests.
+ */
+function resolveClinicId(user: AiUser, requestedClinicId?: unknown): string | undefined {
+  if (user.role === "sys_admin") {
+    return (requestedClinicId as string | undefined) ?? user.clinicId ?? undefined;
+  }
+  return user.clinicId ?? undefined;
+}
+
+/**
+ * Clamps a branch scope to the caller's own branch. branch_staff and
+ * doctor accounts are always pinned to their own branchId - a requested
+ * branchId param is ignored for them so they can't escalate into another
+ * branch's data by simply passing a different ID. clinic_owner/sys_admin
+ * may target any branch (their own clinic scope is enforced separately).
+ */
+function resolveBranchId(user: AiUser, requestedBranchId?: unknown): string | undefined {
+  if (user.role === "branch_staff" || user.role === "doctor") {
+    return user.branchId ?? undefined;
+  }
+  return (requestedBranchId as string | undefined) ?? user.branchId ?? undefined;
+}
+
 export function checkToolPermissions(
   user: AiUser,
   toolId: string
@@ -120,7 +147,10 @@ const toolHandlers: Record<string, ToolHandler> = {
         q.set("date_to", d);
       }
     }
-    if (user.clinicId) q.set("clinic_id", user.clinicId);
+    const clinicId = resolveClinicId(user);
+    const branchId = resolveBranchId(user);
+    if (clinicId) q.set("clinic_id", clinicId);
+    if (branchId) q.set("branch_id", branchId);
     q.set("limit", String(params.limit ?? 20));
     return apiRequest(`/appointments?${q}`, {}, token);
   },
@@ -156,7 +186,7 @@ const toolHandlers: Record<string, ToolHandler> = {
   },
 
   search_branches: async (user, params, token) => {
-    const clinicId = params.clinicId ?? user.clinicId;
+    const clinicId = resolveClinicId(user, params.clinicId);
     if (clinicId) {
       return apiRequest(`/clinics/${clinicId}/branches`, {}, token);
     }
@@ -198,15 +228,19 @@ const toolHandlers: Record<string, ToolHandler> = {
     return apiRequest(`/clinic/lab-test-appointments?${q}`, {}, token);
   },
 
-  get_dashboard_stats: async (_user, _params, token) => {
-    return apiRequest("/super-admin/statistics", {}, token);
+  get_dashboard_stats: async (user, params, token) => {
+    // Must stay clinic/branch-scoped - this tool is available to clinic
+    // owners and permitted staff, so it must never reach the super-admin
+    // statistics endpoint (that one is platform-wide and sys_admin-only;
+    // see get_platform_stats).
+    return toolHandlers.get_business_summary(user, params, token);
   },
 
   get_reviews: async (user, params, token) => {
     if (params.doctorId) {
       return apiRequest(`/doctors/${params.doctorId}/reviews`, {}, token);
     }
-    const branchId = params.branchId ?? user.branchId;
+    const branchId = resolveBranchId(user, params.branchId);
     if (branchId) {
       return apiRequest(`/branches/${branchId}/reviews`, {}, token);
     }
@@ -214,14 +248,15 @@ const toolHandlers: Record<string, ToolHandler> = {
   },
 
   get_staff_list: async (user, params, token) => {
-    const branchId = params.branchId ?? user.branchId;
+    const branchId = resolveBranchId(user, params.branchId);
+    const canSeeOtherBranches = user.role === "clinic_owner" || user.role === "sys_admin";
 
     if (branchId) {
       const result = await apiRequest(`/branches/${branchId}/staff`, {}, token) as Record<string, unknown>;
       const items = result?.items ?? result?.staff ?? [];
       if (Array.isArray(items) && items.length > 0) return result;
 
-      if (user.clinicId) {
+      if (canSeeOtherBranches && user.clinicId) {
         const branchesRes = await apiRequest(`/clinics/${user.clinicId}/branches?limit=50`, {}, token) as Record<string, unknown>;
         const branches = (branchesRes?.items ?? []) as { id: string; name?: string }[];
         const allStaff: unknown[] = [];
@@ -243,7 +278,7 @@ const toolHandlers: Record<string, ToolHandler> = {
       return result;
     }
 
-    if (user.clinicId) {
+    if (canSeeOtherBranches && user.clinicId) {
       const branchesRes = await apiRequest(`/clinics/${user.clinicId}/branches?limit=50`, {}, token) as Record<string, unknown>;
       const branches = (branchesRes?.items ?? []) as { id: string; name?: string }[];
       const allStaff: unknown[] = [];
@@ -267,7 +302,7 @@ const toolHandlers: Record<string, ToolHandler> = {
   },
 
   get_branch_schedule: async (user, params, token) => {
-    const branchId = params.branchId ?? user.branchId;
+    const branchId = resolveBranchId(user, params.branchId);
     if (!branchId) return { message: "No branch context available" };
     return apiRequest(`/branches/${branchId}/schedule`, {}, token);
   },
@@ -336,8 +371,8 @@ const toolHandlers: Record<string, ToolHandler> = {
       }
     }
 
-    const clinicId = params.clinicId ?? user.clinicId;
-    const branchId = params.branchId ?? user.branchId;
+    const clinicId = resolveClinicId(user, params.clinicId);
+    const branchId = resolveBranchId(user, params.branchId);
 
     const q = new URLSearchParams();
     q.set("date_from", dateFrom);
@@ -423,7 +458,7 @@ const toolHandlers: Record<string, ToolHandler> = {
 
   get_patient_report: async (user, params, token) => {
     const period = String(params.period ?? "monthly");
-    const branchId = params.branchId ?? user.branchId;
+    const branchId = resolveBranchId(user, params.branchId);
 
     if (!branchId) {
       return { message: "No branch context available for patient report." };
@@ -518,7 +553,10 @@ const toolHandlers: Record<string, ToolHandler> = {
     q.set("date_from", dateFrom);
     q.set("date_to", dateTo);
     q.set("limit", "200");
-    if (user.clinicId) q.set("clinic_id", user.clinicId);
+    const bookingClinicId = resolveClinicId(user);
+    const bookingBranchId = resolveBranchId(user, params.branchId);
+    if (bookingClinicId) q.set("clinic_id", bookingClinicId);
+    if (bookingBranchId) q.set("branch_id", bookingBranchId);
 
     const appointRes = await apiRequest(`/appointments?${q}`, {}, token) as Record<string, unknown>;
     const appointments = (appointRes?.items ?? []) as Record<string, unknown>[];
@@ -614,8 +652,8 @@ const toolHandlers: Record<string, ToolHandler> = {
     q.set("date_from", dateFrom);
     q.set("date_to", dateTo);
     q.set("limit", "200");
-    if (params.branchId) q.set("branch_id", String(params.branchId));
-    else if (user.branchId) q.set("branch_id", user.branchId);
+    const labReportBranchId = resolveBranchId(user, params.branchId);
+    if (labReportBranchId) q.set("branch_id", labReportBranchId);
 
     const labRes = await apiRequest(`/clinic/lab-test-appointments?${q}`, {}, token) as Record<string, unknown>;
     const appointments = (labRes?.items ?? []) as Record<string, unknown>[];
@@ -690,7 +728,10 @@ const toolHandlers: Record<string, ToolHandler> = {
     q.set("date_from", dateFrom);
     q.set("date_to", dateTo);
     q.set("limit", "200");
-    if (user.clinicId) q.set("clinic_id", user.clinicId);
+    const summaryClinicId = resolveClinicId(user);
+    const summaryBranchId = resolveBranchId(user);
+    if (summaryClinicId) q.set("clinic_id", summaryClinicId);
+    if (summaryBranchId) q.set("branch_id", summaryBranchId);
 
     const [appointRes, notifRes] = await Promise.all([
       apiRequest(`/appointments?${q}`, {}, token) as Promise<Record<string, unknown>>,
@@ -791,12 +832,16 @@ const toolHandlers: Record<string, ToolHandler> = {
     const current = getPeriodDates(period, 0);
     const previous = getPeriodDates(period, 1);
 
+    const analyticsClinicId = resolveClinicId(user);
+    const analyticsBranchId = resolveBranchId(user);
+
     async function fetchAppointments(from: string, to: string) {
       const q = new URLSearchParams();
       q.set("date_from", from);
       q.set("date_to", to);
       q.set("limit", "200");
-      if (user.clinicId) q.set("clinic_id", user.clinicId);
+      if (analyticsClinicId) q.set("clinic_id", analyticsClinicId);
+      if (analyticsBranchId) q.set("branch_id", analyticsBranchId);
       const res = await apiRequest(`/appointments?${q}`, {}, token) as Record<string, unknown>;
       return (res?.items ?? []) as Record<string, unknown>[];
     }

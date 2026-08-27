@@ -192,6 +192,7 @@ export const AI_TOOLS: ToolDefinition[] = [
     description: "View payment ledger entries",
     category: "read",
     requiredPermissions: [],
+    requiredRole: ["clinic_owner", "sys_admin"],
     requiresConfirmation: false,
     parameters: [
       { name: "limit", type: "number", required: false, description: "Max results" },
