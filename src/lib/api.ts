@@ -34,9 +34,13 @@ export interface AuthTokens {
 export interface ClinicOwnerAuthResponse extends AuthTokens {
   user: User;
   clinic?: Clinic;
+  // True when this account has never set a password - OTP remains the only
+  // login method until the owner sets one via authApi.setPassword.
+  requires_password_setup?: boolean;
 }
 
 export interface DoctorInviteAcceptResponse extends AuthTokens {
+  user?: User;
   doctor: {
     id: string;
     name: string;
@@ -64,15 +68,10 @@ export interface DoctorAssignmentSummary {
   end_date: string | null;
 }
 
-// POST /auth/clinic-owner/register leaves the account `pending` until the
-// emailed verification link is followed, so unlike login it returns null
-// tokens and a message instead of a usable session.
-export interface ClinicOwnerRegisterResponse {
+// POST /auth/clinic-owner/register now returns tokens immediately (phone-verified).
+export interface ClinicOwnerRegisterResponse extends AuthTokens {
   user: User;
-  access_token: string | null;
-  refresh_token: string | null;
   clinic?: Clinic;
-  message?: string;
 }
 
 // POST /auth/patient/register returns tokens immediately (no email
@@ -545,7 +544,7 @@ export interface StaffMember {
   id: string;
   branch_id: string;
   name: string;
-  email: string;
+  phone: string;
   added_by: string;
   permissions?: string[];
   created_at: string;
@@ -1108,6 +1107,23 @@ export interface Prescription {
   updated_at: string;
 }
 
+export interface Receipt {
+  id: string;
+  receipt_number: string;
+  source_type: "appointment" | "lab_test_appointment";
+  source_id: string;
+  event_type: "booking_confirmed" | "payment_received" | "completed";
+  patient_id: string;
+  clinic_id: string;
+  branch_id: string;
+  amount: number | null;
+  currency: string;
+  payment_method: string | null;
+  reference_no: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ScanJobResponse {
   job_id: string;
   status: "processing" | "done" | "failed";
@@ -1462,38 +1478,145 @@ export interface SuperAdminPlanVersion {
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  async registerClinicOwner(input: {
+  // ── Clinic owner: registration (2-step OTP) ──────────────────────────
+  async sendClinicOwnerOtp(input: {
     name: string;
-    email: string;
-    phone?: string;
-    password: string;
-    clinicName?: string;
-  }): Promise<ClinicOwnerRegisterResponse> {
-    return apiFetch<ClinicOwnerRegisterResponse>("/auth/clinic-owner/register", {
+    clinicName: string;
+    phone: string;
+    email?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    return apiFetch<{ ok: boolean; message: string }>("/auth/clinic-owner/send-otp", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
     });
   },
 
-  async verifyEmail(token: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>("/auth/verify-email", {
+  async registerClinicOwner(input: {
+    name: string;
+    clinicName: string;
+    phone: string;
+    email?: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse & { clinic?: Clinic }> {
+    return apiFetch<ClinicOwnerAuthResponse & { clinic?: Clinic }>("/auth/clinic-owner/register", {
       method: "POST",
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(input),
       skipAuth: true,
     });
   },
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
+  // ── Clinic owner: login (2-step OTP) ─────────────────────────────────
+  async sendClinicOwnerLoginOtp(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/clinic-owner/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyClinicOwnerOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async loginClinicOwnerWithPassword(input: {
+    phone: string;
+    password: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/login-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Doctor: login (2-step OTP) ───────────────────────────────────────
+  async sendDoctorLoginOtp(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/doctor/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyDoctorOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<DoctorAuthResponse> {
+    return apiFetch<DoctorAuthResponse>("/auth/doctor/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Branch staff: login (2-step OTP by phone) ────────────────────────
+  async branchStaffLogin(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/branch-staff/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyStaffOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/branch-staff/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Doctor: accept invite (phone + OTP) ──────────────────────────────
+  async acceptDoctorInvite(input: {
+    phone: string;
+    invite_code: string;
+    otp: string;
+    email?: string;
+    password?: string;
+    reg_no?: string;
+  }): Promise<DoctorInviteAcceptResponse> {
+    return apiFetch<DoctorInviteAcceptResponse>("/auth/doctor/accept-invite", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Verify phone (for invite pre-verification) ───────────────────────
+  async sendVerifyPhoneOtp(input: {
+    phone: string;
+    email?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    return apiFetch<{ ok: boolean; message: string }>("/auth/verify-phone/send", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Password reset (2-step OTP by phone) ─────────────────────────────
+  async forgotPassword(phone: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/forgot-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ phone }),
       skipAuth: true,
     });
   },
 
   async resetPassword(input: {
-    token: string;
+    phone: string;
+    otp: string;
     new_password: string;
     confirm_password: string;
   }): Promise<{ message: string }> {
@@ -1504,49 +1627,28 @@ export const authApi = {
     });
   },
 
-  async acceptDoctorInvite(input: {
-    email: string;
-    invite_code: string;
-    password: string;
-    reg_no?: string;
-  }): Promise<DoctorInviteAcceptResponse> {
-    return apiFetch<DoctorInviteAcceptResponse>("/auth/doctor/accept-invite", {
+  // Auth required. Lets an already-logged-in user (who signed in via OTP
+  // with no password on file) set one without re-verifying by OTP again.
+  async setPassword(input: {
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/set-password", {
       method: "POST",
       body: JSON.stringify(input),
-      skipAuth: true,
     });
   },
 
-  async loginClinicOwner(input: {
-    email: string;
-    password: string;
-  }): Promise<ClinicOwnerAuthResponse> {
-    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/login", {
+  // ── Email verification (unchanged) ───────────────────────────────────
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/verify-email", {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ token }),
       skipAuth: true,
     });
   },
 
-  async loginDoctor(input: {
-    email: string;
-    password: string;
-  }): Promise<DoctorAuthResponse> {
-    return apiFetch<DoctorAuthResponse>("/auth/doctor/login", {
-      method: "POST",
-      body: JSON.stringify(input),
-      skipAuth: true,
-    });
-  },
-
-  async branchStaffLogin(email: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>("/auth/branch-staff/login", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-      skipAuth: true,
-    });
-  },
-
+  // ── Patient (unchanged for now — phone-based changes are backend-only) ─
   async registerPatient(input: {
     name: string;
     email: string;
@@ -1570,22 +1672,12 @@ export const authApi = {
     });
   },
 
+  // ── Super admin: phone + password ────────────────────────────────────
   async loginSuperAdmin(input: {
-    email: string;
+    phone: string;
     password: string;
   }): Promise<SuperAdminAuthResponse> {
     return apiFetch<SuperAdminAuthResponse>("/auth/super-admin/login", {
-      method: "POST",
-      body: JSON.stringify(input),
-      skipAuth: true,
-    });
-  },
-
-  async verifyStaffOtp(input: {
-    email: string;
-    otp: string;
-  }): Promise<ClinicOwnerAuthResponse> {
-    return apiFetch<ClinicOwnerAuthResponse>("/auth/branch-staff/verify-otp", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
@@ -1887,7 +1979,7 @@ export const staffApi = {
 
   async create(
     branchId: string,
-    input: { name: string; email: string; permissions?: BranchStaffPermission[] }
+    input: { name: string; phone: string; permissions?: BranchStaffPermission[] }
   ): Promise<StaffMember> {
     return apiFetch<StaffMember>(`/branches/${branchId}/staff`, {
       method: "POST",
@@ -2403,6 +2495,52 @@ export const prescriptionsApi = {
       );
     }
     return res.blob();
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Receipts
+// ---------------------------------------------------------------------------
+
+async function fetchPdfBlob(path: string): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let envelope: ErrorEnvelope | null = null;
+    try {
+      envelope = (await res.json()) as ErrorEnvelope;
+    } catch {
+      // non-JSON body
+    }
+    const err = envelope?.error;
+    throw new ApiError(
+      err?.message || `Request failed with status ${res.status}`,
+      err?.code || "INTERNAL_ERROR",
+      res.status,
+      err?.field ?? null,
+      err?.request_id ?? null
+    );
+  }
+  return res.blob();
+}
+
+export const receiptsApi = {
+  async list(appointmentId: string): Promise<{ data: Receipt[] }> {
+    return apiFetch<{ data: Receipt[] }>(`/appointments/${appointmentId}/receipts`);
+  },
+
+  async listLabTest(appointmentId: string): Promise<{ data: Receipt[] }> {
+    return apiFetch<{ data: Receipt[] }>(`/lab-test-appointments/${appointmentId}/receipts`);
+  },
+
+  async pdf(appointmentId: string, receiptId: string): Promise<Blob> {
+    return fetchPdfBlob(`/appointments/${appointmentId}/receipts/${receiptId}/pdf`);
+  },
+
+  async pdfLabTest(appointmentId: string, receiptId: string): Promise<Blob> {
+    return fetchPdfBlob(`/lab-test-appointments/${appointmentId}/receipts/${receiptId}/pdf`);
   },
 };
 

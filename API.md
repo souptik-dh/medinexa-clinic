@@ -27,14 +27,15 @@ Live implementation reference for the MediBook API. Every endpoint below documen
 14. [Payment ledger](#payment-ledger)
 15. [Prescriptions](#prescriptions)
 16. [Medical documents](#medical-documents)
-17. [Notifications](#notifications)
-18. [Files (signed URLs)](#files-signed-urls)
-19. [Subscriptions & billing](#subscriptions--billing)
-20. [Super Admin platform](#super-admin-platform)
-21. [Webhooks](#webhooks)
-22. [Error codes](#error-codes)
-23. [Status transition table](#status-transition-table)
-24. [Lab test status transitions](#lab-test-status-transitions)
+17. [Medications](#medications)
+18. [Notifications](#notifications)
+19. [Files (signed URLs)](#files-signed-urls)
+20. [Subscriptions & billing](#subscriptions--billing)
+21. [Super Admin platform](#super-admin-platform)
+22. [Webhooks](#webhooks)
+23. [Error codes](#error-codes)
+24. [Status transition table](#status-transition-table)
+25. [Lab test status transitions](#lab-test-status-transitions)
 
 ---
 
@@ -56,6 +57,13 @@ Every non-2xx response uses the same envelope:
 ```
 
 `code` is stable `UPPER_SNAKE_CASE`; `field` is present for validation errors; `request_id` is a short traceable ID.
+
+### Phone numbers
+
+All phone numbers are Indian and normalized on input to `+91XXXXXXXXXX` (10 digits starting
+6–9). Store, lookup, and compare phones in this normalized form. The phone is the primary
+login identifier; email is optional. When an OTP is issued it is sent over **both SMS and
+email** (dual channel) if an email is on file — see [Authentication](#authentication).
 
 ### Pagination
 
@@ -83,7 +91,7 @@ ISO 8601 UTC — e.g. `2026-08-09T14:30:00Z`. Scheduling `date` is `YYYY-MM-DD`,
 Limits are per authenticated user (`Authorization` token) unless the endpoint keys by IP instead. Endpoints with no explicit limit fall back to a default that only applies to authenticated requests — an unauthenticated call to such an endpoint is not rate limited at the API layer (it will typically fail auth first anyway).
 
 - **Default (no explicit limit), authenticated:** `200/min` per user.
-- **Auth endpoints** (`POST /auth/*` registration, login, OTP, password reset, refresh, accept-invite): `20/min` per IP. `POST /auth/logout` is `100/min` per user (it requires an existing session token).
+- **Auth endpoints** (public: registration, OTP send/verify, login, password reset, accept-invite): `20/min` per IP. **Authenticated** OTP-password helpers — `POST /auth/set-password`, `POST /auth/verify-phone` — use the `200/min` default per user. `POST /auth/logout` is `100/min` per user.
 - **`GET /health`:** `120/min` per IP.
 - **Booking & payment actions** — `POST /appointments`, `PATCH /appointments/:id/payment`, `POST /lab-test-appointments`, `POST /lab-test-appointments/:id/payment`, `POST /clinic/lab-test-appointments/:id/payment/collect`: `20/min`.
 - **Sensitive/admin-config writes** — password/email change, photo & document/signature uploads, lab test & branch-test-schedule catalog CRUD (`clinic/lab-tests*`, `clinic/branches/:branchId/lab-tests*`, `clinic/branches/:branchId/lab-test-schedules*`): `10/min`.
@@ -156,9 +164,81 @@ Auth: none. Unauthenticated liveness/readiness check — pings the database and 
 
 ## Authentication
 
+> **Phone + OTP sign-in.** All account login is now **phone-number + one-time code (OTP)**
+> based. The phone number is the primary login identifier (normalized to Indian
+> `+91XXXXXXXXXX`, 10 digits starting 6–9); email is optional and used only as an
+> additional OTP delivery channel (SMS + email dual-channel) when it's on file.
+> Passwords remain **optional** — an OTP always works as a fallback. After an OTP login,
+> an account without a password reports `requires_password_setup: true` and the user may
+> set one via [`POST /auth/set-password`](#post-authset-password).
+
+### POST /auth/patient/send-otp
+
+Public. Rate limited 20/min per IP. **Step 1 of the patient two-step flow.** Takes a phone
+(and optional email) and sends a one-time code to the phone and email. Used for both
+registration (no account yet) and OTP-only login (when the phone already has an active
+patient account). The email is only an OTP delivery channel, not a verification lookup.
+
+**Request body**
+
+```json
+{ "phone": "+919876543210", "email": "aisha@example.com" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `phone` | string | required, normalized to `+91XXXXXXXXXX` |
+| `email` | string? | optional, additional OTP delivery channel |
+| `name` | string? | optional, 1–255 (used for registration context) |
+
+**Response `200`**
+
+```json
+{
+  "ok": true,
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### POST /auth/patient/verify-otp
+
+Public. Rate limited 20/min per IP. **Step 2 of the patient OTP login.** Verifies the code
+sent by the login step (purpose `patient_login`) and issues tokens. Returns
+`requires_password_setup: true` when the account has no password yet.
+
+**Request body**
+
+```json
+{ "phone": "+919876543210", "otp": "482913" }
+```
+
+**Response `200`**
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "user": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Aisha Verma",
+    "email": "aisha@example.com",
+    "phone": "+919876543210",
+    "role": "patient"
+  },
+  "requires_password_setup": true
+}
+```
+
+**Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `401 ACCOUNT_NOT_FOUND`.
+
 ### POST /auth/patient/register
 
-Public. Rate limited 20/min per IP.
+Public. Rate limited 20/min per IP. **Patient registration, step 2.** The client first calls
+[`POST /auth/patient/send-otp`](#post-authpatientsend-otp), then submits the full profile
+with the OTP. The phone (already verified via OTP) becomes the login identifier; email is
+optional; no password is required at registration (the user can set one later).
 
 **Request body**
 
@@ -174,15 +254,15 @@ Public. Rate limited 20/min per IP.
   "pin_code": "400058",
   "state": "Maharashtra",
   "post_office": "Andheri West HO",
-  "password": "password123"
+  "otp": "482913"
 }
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | required, 1–255 chars |
-| `email` | string | required, lowercase, must be valid |
-| `phone` | string? | optional, max 32 |
+| `email` | string? | optional, lowercase, must be valid |
+| `phone` | string | required, normalized to `+91XXXXXXXXXX` |
 | `address` | string | required, 1–500 chars |
 | `nearby_location` | string? | optional, max 500 |
 | `city` | string? | optional, max 255 |
@@ -190,7 +270,7 @@ Public. Rate limited 20/min per IP.
 | `pin_code` | string? | optional, max 20 |
 | `state` | string? | optional, max 255 |
 | `post_office` | string? | optional, max 255 |
-| `password` | string | required, 8–128 chars |
+| `otp` | string | required, the code delivered by `send-otp` |
 
 **Response `201`**
 
@@ -215,57 +295,43 @@ Public. Rate limited 20/min per IP.
 }
 ```
 
-**Errors:** `409 EMAIL_ALREADY_REGISTERED`, `400 VALIDATION_ERROR`.
-
-### POST /auth/clinic-owner/register
-
-Public. Rate limited 20/min per IP. In addition to creating the `clinic_owner` user, it auto-creates an initial clinic (named after the owner) in the same transaction.
-
-The account is created with `status = 'pending'`. No usable `access_token`/`refresh_token` is issued — a welcome email with a verification link is sent instead, and the account cannot log in until the link is followed (see [`POST /auth/verify-email`](#post-authverify-email)).
-
-**Request body**
-
-```json
-{ "name": "Suresh Nair", "email": "owner@example.com", "phone": "+919876543211", "password": "password123" }
-```
-
-**Response `201`**
-
-```json
-{
-  "user": {
-    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-    "name": "Suresh Nair",
-    "email": "owner@example.com",
-    "phone": "+919876543211",
-    "role": "clinic_owner"
-  },
-  "access_token": null,
-  "refresh_token": null,
-  "clinic": {
-    "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-    "name": "Suresh Nair",
-    "description": null,
-    "owner_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-    "created_at": "2026-08-09T12:00:00.000Z"
-  },
-  "message": "Registration successful. Check your email to verify your account before logging in."
-}
-```
-
-**Errors:** `409 EMAIL_ALREADY_REGISTERED`, `400 VALIDATION_ERROR`.
+**Errors:** `400 INVALID_OTP`, `409 PHONE_ALREADY_REGISTERED`, `409 EMAIL_ALREADY_REGISTERED`, `400 VALIDATION_ERROR`.
 
 ### POST /auth/patient/login
 
-Public. Rate limited 20/min per IP.
+Public. Rate limited 20/min per IP. **Patient login, step 1.** Takes a registered phone and
+sends a one-time code (purpose `patient_login`); it deliberately does **not** reveal
+whether the phone is registered. Verify with `POST /auth/patient/verify-otp`.
 
 **Request body**
 
 ```json
-{ "email": "aisha@example.com", "password": "password123" }
+{ "phone": "+919876543210" }
 ```
 
-**Response `200`** — same shape as register (without a status change):
+**Response `200`**
+
+```json
+{
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### POST /auth/patient/login-password
+
+Public. Rate limited 20/min per IP. **Alternative to the OTP flow above** — for a patient
+who has already set a password via [`POST /auth/set-password`](#post-authset-password).
+Logs in directly with phone + password, no OTP round-trip.
+
+**Request body**
+
+```json
+{ "phone": "+919876543210", "password": "password123" }
+```
+
+**Response `200`**
 
 ```json
 {
@@ -281,20 +347,171 @@ Public. Rate limited 20/min per IP.
 }
 ```
 
-**Errors:** `401 INVALID_CREDENTIALS`, `403 INVITE_NOT_ACCEPTED` (pending account), `401 ACCOUNT_DISABLED`.
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS` (wrong phone/password, including an account with no password set yet — use the OTP flow instead), `401 ACCOUNT_DISABLED`.
+
+### POST /auth/clinic-owner/send-otp
+
+Public. Rate limited 20/min per IP. **Clinic owner registration, step 1.** Validates the
+details and sends a one-time code (purpose `phone_verification`) to the phone/email.
+
+**Request body**
+
+```json
+{ "name": "Suresh Nair", "clinicName": "Sunrise Clinic", "email": "owner@example.com", "phone": "+919876543211" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | required, 1–255 |
+| `clinicName` | string | required, 1–255 |
+| `email` | string? | optional, additional OTP delivery channel |
+| `phone` | string | required, normalized to `+91XXXXXXXXXX` |
+
+**Response `200`**
+
+```json
+{
+  "ok": true,
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+### POST /auth/clinic-owner/register
+
+Public. Rate limited 20/min per IP. **Clinic owner registration, step 2.** Verifies the OTP
+and creates the `clinic_owner` user plus an initial clinic (named after the owner) in the
+same transaction. Phone-first: the phone is verified via OTP, email is optional, and the
+account is activated immediately (no email verification gate). Tokens are issued on
+registration.
+
+**Request body**
+
+```json
+{ "name": "Suresh Nair", "clinicName": "Sunrise Clinic", "email": "owner@example.com", "phone": "+919876543211", "otp": "482913" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | required |
+| `clinicName` | string | required |
+| `email` | string? | optional |
+| `phone` | string | required |
+| `otp` | string | required, the code delivered by `clinic-owner/send-otp` |
+
+**Response `201`**
+
+```json
+{
+  "user": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Suresh Nair",
+    "email": "owner@example.com",
+    "phone": "+919876543211",
+    "role": "clinic_owner"
+  },
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "clinic": {
+    "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Sunrise Clinic",
+    "description": null,
+    "owner_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "created_at": "2026-08-09T12:00:00.000Z"
+  }
+}
+```
+
+**Errors:** `400 INVALID_OTP`, `409 PHONE_ALREADY_REGISTERED`, `409 EMAIL_ALREADY_REGISTERED`, `400 VALIDATION_ERROR`.
 
 ### POST /auth/clinic-owner/login
 
-Same shape as patient login; requires `role = clinic_owner`.
+Public. Rate limited 20/min per IP. **Clinic owner login, step 1.** Takes a registered phone
+and sends a one-time code (purpose `clinic_owner_login`). Verify with
+`POST /auth/clinic-owner/verify-otp`.
 
-**Errors:** `401 INVALID_CREDENTIALS`, `403 EMAIL_NOT_VERIFIED` (registered but the verification link hasn't been followed yet), `401 ACCOUNT_DISABLED`.
+**Request body**
+
+```json
+{ "phone": "+919876543211" }
+```
+
+**Response `200`**
+
+```json
+{
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+### POST /auth/clinic-owner/verify-otp
+
+Public. Rate limited 20/min per IP. **Clinic owner login, step 2.** Verifies the OTP and
+issues tokens, plus the owned clinic summary.
+
+**Request body**
+
+```json
+{ "phone": "+919876543211", "otp": "482913" }
+```
+
+**Response `200`**
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "user": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Suresh Nair",
+    "email": "owner@example.com",
+    "phone": "+919876543211",
+    "role": "clinic_owner"
+  },
+  "requires_password_setup": false,
+  "clinic": { "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d", "name": "Sunrise Clinic", "description": null }
+}
+```
+
+**Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `401 ACCOUNT_NOT_FOUND`.
+
+### POST /auth/clinic-owner/login-password
+
+Public. Rate limited 20/min per IP. **Alternative to the OTP flow above** — for an owner
+who has already set a password via [`POST /auth/set-password`](#post-authset-password).
+Logs in directly with phone + password, no OTP round-trip. Returns the owned clinic
+summary, same as `verify-otp`.
+
+**Request body**
+
+```json
+{ "phone": "+919876543211", "password": "password123" }
+```
+
+**Response `200`**
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "user": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Suresh Nair",
+    "email": "owner@example.com",
+    "phone": "+919876543211",
+    "role": "clinic_owner"
+  },
+  "clinic": { "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d", "name": "Sunrise Clinic", "description": null }
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS` (wrong phone/password, including an account with no password set yet — use the OTP flow instead), `403 PHONE_NOT_VERIFIED` (registration OTP never completed), `401 ACCOUNT_DISABLED`.
 
 ### POST /auth/verify-email
 
-Public. Rate limited 20/min per IP. Single-use, 24h-expiry token; shared by two flows:
-
-1. **Signup verification** — activates a `clinic_owner` account (`status: 'pending'` → `'active'`) using the token from the welcome email sent by `POST /auth/clinic-owner/register`.
-2. **Email change** — confirms a pending email change requested via `POST /patients/me/change-email`; on success, updates `users.email` to the new address instead of touching `status`.
+Public. Rate limited 20/min per IP. Single-use, 24h-expiry token. With phone-first sign-in,
+email is no longer required to activate an account, so this endpoint remains for:
+**confirming a pending email change** requested via `POST /patients/me/change-email` — on
+success it updates `users.email` to the new address.
 
 The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERIFICATION_TOKEN}` — `VERIFY_EMAIL_URL` defaults to `https://healthcare.jido.co.in`.
 
@@ -308,28 +525,59 @@ The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERI
 
 ```json
 {
-  "message": "Your email has been verified. You can now log in."
+  "message": "Your email address has been updated."
 }
 ```
-
-For the email-change flow, `message` is `"Your email address has been updated."` instead.
 
 **Errors:** `400 VALIDATION_ERROR`, `400 VERIFICATION_TOKEN_INVALID`, `409 EMAIL_ALREADY_REGISTERED` (new email was claimed by someone else in the meantime), `410 VERIFICATION_TOKEN_EXPIRED`.
 
 ### POST /auth/doctor/login
 
+Public. Rate limited 20/min per IP. **Doctor login, step 1.** Takes a registered phone and
+sends a one-time code (purpose `doctor_login`). Verify with
+`POST /auth/doctor/verify-otp`.
+
 **Request body**
 
 ```json
-{ "email": "dr.smith@example.com", "password": "password123" }
+{ "phone": "+919900000001" }
 ```
 
-**Response `200`** — returns a `doctor` object instead of `user`:
+**Response `200`**
+
+```json
+{
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### POST /auth/doctor/verify-otp
+
+Public. Rate limited 20/min per IP. **Doctor login, step 2.** Verifies the OTP and returns
+tokens plus the doctor clinical profile and specializations.
+
+**Request body**
+
+```json
+{ "phone": "+919900000001", "otp": "482913" }
+```
+
+**Response `200`** — returns a `doctor` object plus the `user`:
 
 ```json
 {
   "access_token": "<jwt>",
   "refresh_token": "<opaque>",
+  "requires_password_setup": false,
+  "user": {
+    "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+    "name": "Dr. Smith",
+    "email": null,
+    "phone": "+919900000001",
+    "role": "doctor"
+  },
   "doctor": {
     "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Dr. Smith",
@@ -341,21 +589,27 @@ For the email-change flow, `message` is `"Your email address has been updated."`
 }
 ```
 
-**Errors:** `401 INVALID_CREDENTIALS`, `403 INVITE_NOT_ACCEPTED`, `401 ACCOUNT_DISABLED`.
+**Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `401 ACCOUNT_NOT_FOUND`.
 
 ### POST /auth/doctor/accept-invite
 
 Public, but requires possession of a valid invite code. Rate limited 20/min per IP.
 This is the **only** endpoint that activates a doctor account.
 
-On success, an in-app `doctor_invite_accepted` notification is created for whoever sent the invite **and** for the clinic owner (deduped if they're the same person), and the clinic owner is emailed that the doctor has joined.
+The doctor's **phone** is the primary invite identifier and must be verified with a
+`phone_verification` OTP first (sent via `POST /auth/verify-phone/send` or any OTP-send
+endpoint). A password is optional.
+
+On success, an in-app `doctor_invite_accepted` notification is created for whoever sent the invite **and** for the clinic owner (deduped if they're the same person), and the clinic owner is emailed (and SMS'd) that the doctor has joined.
 
 **Request body**
 
 ```json
 {
+  "phone": "+919900000001",
   "email": "dr.smith@example.com",
   "invite_code": "K7QX2Z9P",
+  "otp": "482913",
   "password": "password123",
   "reg_no": "MC-123456",
   "smc_name": "Medical Council of India",
@@ -365,9 +619,11 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
 
 | Field | Type | Notes |
 |---|---|---|
-| `email` | string | required, must match a pending invite |
+| `phone` | string | required, normalized to `+91XXXXXXXXXX`; must match/pair with a pending invite |
+| `email` | string? | optional |
 | `invite_code` | string | required, 1–32 chars |
-| `password` | string | required, 8–128 chars |
+| `otp` | string | required, the `phone_verification` code for the phone |
+| `password` | string? | optional (8–128). If omitted, `requires_password_setup: true` and OTP remains the login method |
 | `reg_no` | string? | optional registration number, max 64, unique — ignored if the invite already has one set (from invite creation) |
 | `smc_name` | string? | max 255 — ignored if the invite already has one set |
 | `doctor_degree` | string? | max 100 — ignored if the invite already has one set |
@@ -378,6 +634,7 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
 {
   "access_token": "<jwt>",
   "refresh_token": "<opaque>",
+  "requires_password_setup": false,
   "doctor": {
     "id": "c6b9d2e1-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Dr. Smith",
@@ -392,28 +649,27 @@ On success, an in-app `doctor_invite_accepted` notification is created for whoev
 }
 ```
 
-**Errors:** `404 INVITE_NOT_FOUND`, `410 INVITE_EXPIRED`, `409 INVITE_ALREADY_ACCEPTED`, `409 EMAIL_ALREADY_REGISTERED`, `409 REG_NO_ALREADY_REGISTERED`.
+**Errors:** `404 INVITE_NOT_FOUND`, `410 INVITE_EXPIRED`, `409 INVITE_ALREADY_ACCEPTED`, `401 INVALID_OTP`/`410 OTP_EXPIRED`, `409 PHONE_ALREADY_REGISTERED`, `409 EMAIL_ALREADY_REGISTERED`, `409 REG_NO_ALREADY_REGISTERED`.
 
 ### POST /auth/branch-staff/login
 
-Requests a passwordless OTP for an existing staff account. Rate limited 20/min per IP.
-Rejects any email that is not an active `branch_staff` account with `403 NOT_BRANCH_STAFF` — this reveals whether an email is registered as branch staff (a deliberate trade-off; the OTP-sent response itself does not reveal anything further).
+Public. Rate limited 20/min per IP. Requests a passwordless OTP for an existing staff account by **phone number**. Rejects any phone that is not an active `branch_staff` account with `403 NOT_BRANCH_STAFF` — this reveals whether a phone is registered as branch staff (a deliberate trade-off; the OTP-sent response itself does not reveal anything further).
 
 **Request body**
 
 ```json
-{ "email": "staff@clinic.com" }
+{ "phone": "+919876543212" }
 ```
 
 **Response `200`**
 
 ```json
 {
-  "message": "If an account exists for this email, an OTP has been sent."
+  "message": "If an account exists for this phone number, an OTP has been sent."
 }
 ```
 
-**Errors:** `403 NOT_BRANCH_STAFF` — "Access Denied: This email address is not registered as Branch Staff."
+**Errors:** `403 NOT_BRANCH_STAFF` — "Access Denied: If an account exists for this phone number, it is not registered as Branch Staff."
 
 ### POST /auth/branch-staff/verify-otp
 
@@ -422,7 +678,7 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
 **Request body**
 
 ```json
-{ "email": "staff@clinic.com", "otp": "482913" }
+{ "phone": "+919876543212", "otp": "482913" }
 ```
 
 **Response `200`**
@@ -434,9 +690,11 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
   "user": {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Rohit Sharma",
+    "phone": "+919876543212",
     "email": "staff@clinic.com",
     "role": "branch_staff",
-    "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f"
+    "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
   }
 }
 ```
@@ -445,21 +703,22 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
 
 ### POST /auth/forgot-password
 
-Public. Rate limited 20/min per IP. Requests a password reset link for the given email. Always returns the same message (does not reveal whether the email exists). A reset token is only issued when the email belongs to an **active** account with a password (`patient`, `clinic_owner`, or `doctor`); passwordless `branch_staff` accounts are skipped.
-
-The reset link is emailed as `{RESET_PASSWORD_URL}/new_password?token={RESET_TOKEN}` — `RESET_PASSWORD_URL` defaults to `https://medinexa-clinic.onrender.com`. Tokens are single-use and expire after 1 hour.
+Public. Rate limited 20/min per IP. **Password reset, step 1.** Takes a registered **phone
+number**. If an **active** account with a password exists for it, a one-time code is sent
+(purpose `phone_verification`, SMS + email). Always returns the same message (does not
+reveal whether the phone exists). Branch-staff accounts have no password and are skipped.
 
 **Request body**
 
 ```json
-{ "email": "aisha@example.com" }
+{ "phone": "+919876543210" }
 ```
 
 **Response `200`**
 
 ```json
 {
-  "message": "If an account exists for this email, a password reset link has been sent."
+  "message": "If an account exists for this phone number, an OTP has been sent."
 }
 ```
 
@@ -467,17 +726,19 @@ The reset link is emailed as `{RESET_PASSWORD_URL}/new_password?token={RESET_TOK
 
 ### POST /auth/reset-password
 
-Public. Rate limited 20/min per IP. Sets a new password using a valid, unexpired reset token. The token is invalidated (single-use) once the password is successfully updated.
+Public. Rate limited 20/min per IP. **Password reset, step 2.** Verifies the phone OTP and
+sets a new password on the account owning that phone.
 
 **Request body**
 
 ```json
-{ "token": "<reset_token>", "new_password": "newpassword123", "confirm_password": "newpassword123" }
+{ "phone": "+919876543210", "otp": "482913", "new_password": "newpassword123", "confirm_password": "newpassword123" }
 ```
 
 | Field | Type | Notes |
 |---|---|---|
-| `token` | string | required, the token from the reset email link |
+| `phone` | string | required, normalized to `+91XXXXXXXXXX` |
+| `otp` | string | required, the code sent by `forgot-password` |
 | `new_password` | string | required, 8–128 chars |
 | `confirm_password` | string | required, must match `new_password` |
 
@@ -489,16 +750,88 @@ Public. Rate limited 20/min per IP. Sets a new password using a valid, unexpired
 }
 ```
 
-**Errors:** `400 VALIDATION_ERROR` (including password mismatch), `400 RESET_TOKEN_INVALID`, `410 RESET_TOKEN_EXPIRED`.
+**Errors:** `400 VALIDATION_ERROR` (including password mismatch), `401 INVALID_OTP`, `410 OTP_EXPIRED`, `401 ACCOUNT_NOT_FOUND`.
 
-### POST /auth/super-admin/login
+### POST /auth/set-password
 
-Public endpoint, but only succeeds for an account with `role = sys_admin` **and** an active grant in `super_admins` — see [Super Admin platform](#super-admin-platform). Same password credentials as any other login; this is a separate entry point, not a separate credential. Rate limited `10/min` per IP.
+Auth required (any role). Allows an authenticated user to set (or reset) their password
+after logging in via OTP without one. The current session stays valid — tokens are not
+revoked.
 
 **Request body**
 
 ```json
-{ "email": "admin@medinexa.io", "password": "password123" }
+{ "new_password": "newpassword123", "confirm_password": "newpassword123" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `new_password` | string | required, 8–128 chars |
+| `confirm_password` | string | required, must match `new_password` |
+
+**Response `200`**
+
+```json
+{
+  "message": "Your password has been set. You can now log in with your password."
+}
+```
+
+**Errors:** `401 UNAUTHORIZED`, `400 VALIDATION_ERROR` (including password mismatch).
+
+### POST /auth/verify-phone/send
+
+Public. Rate limited 20/min per IP. Sends a phone-verification OTP (purpose
+`phone_verification`) to a phone number. Used when **adding/changing** the phone number on
+an existing account (follow up with `POST /auth/verify-phone`) and to pre-verify a
+doctor's phone before accepting an invite. Una‌uthenticated — the OTP is keyed by phone.
+
+**Request body**
+
+```json
+{ "phone": "+919876543210", "email": "aisha@example.com" }
+```
+
+**Response `200`**
+
+```json
+{
+  "ok": true,
+  "message": "If an account exists for this phone number, an OTP has been sent."
+}
+```
+
+### POST /auth/verify-phone
+
+Auth required (any role). Lets an authenticated user add or change their registered phone
+number. The new phone must be verified with an OTP (purpose `phone_verification`) that the
+user triggers first via `POST /auth/verify-phone/send` (or any OTP-send endpoint). On
+success the user's `phone` is updated and `phone_verified` is set.
+
+**Request body**
+
+```json
+{ "phone": "+919876543210", "otp": "482913" }
+```
+
+**Response `200`**
+
+```json
+{
+  "message": "Your phone number has been verified and updated."
+}
+```
+
+**Errors:** `401 UNAUTHORIZED`, `401 INVALID_OTP`, `410 OTP_EXPIRED`, `409 PHONE_ALREADY_REGISTERED`.
+
+### POST /auth/super-admin/login
+
+Public endpoint, but only succeeds for an account with `role = sys_admin` **and** an active grant in `super_admins` — see [Super Admin platform](#super-admin-platform). Uses **phone + password** credentials — unlike other roles, Super Admin does **not** use OTP verification. The default platform Super Admin password is `Admin@123` (change it after first login via `POST /auth/set-password`). Rate limited `10/min` per IP.
+
+**Request body**
+
+```json
+{ "phone": "+919876543219", "password": "Admin@123" }
 ```
 
 **Response `200`**
@@ -509,7 +842,7 @@ Public endpoint, but only succeeds for an account with `role = sys_admin` **and*
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Platform Admin",
     "email": "admin@medinexa.io",
-    "phone": null,
+    "phone": "+919876543219",
     "role": "sys_admin"
   },
   "access_token": "<jwt>",
@@ -1353,18 +1686,19 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch only).
 
 ### POST /branches/:id/staff
 
-Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Creates the staff user and sends a login instruction email.
+Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Creates the staff user and
+sends a phone/SMS login instruction (staff sign in via phone + OTP).
 
 **Request body**
 
 ```json
-{ "name": "Rohit Sharma", "email": "staff@clinic.com" }
+{ "name": "Rohit Sharma", "phone": "+919876543212" }
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | required |
-| `email` | string | required |
+| `phone` | string | required, normalized to `+91XXXXXXXXXX`; the staff member's login identifier |
 | `permissions` | string[]? | optional, any subset of the keys above; defaults to the four appointment permissions |
 
 **Response `201`**
@@ -1374,7 +1708,7 @@ Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Creates the staf
   "id": "1a2b3c4d-5e6f-7890-abcd-ef1234567890",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "name": "Rohit Sharma",
-  "email": "staff@clinic.com",
+  "phone": "+919876543212",
   "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"],
   "created_at": "2026-08-09T10:00:00.000Z"
@@ -1425,7 +1759,7 @@ Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Hard-deletes the
 
 ### POST /branches/:id/doctor-invites
 
-Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:manage`. Emails a single-use invite code (the code is **never** returned in the response).
+Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:manage`. Creates a single-use invite sent via **email and/or SMS** (the code is **never** returned in the response). The invite is keyed by the doctor's **phone** (primary) or email.
 
 **Request body**
 
@@ -1433,8 +1767,8 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 {
   "name": "Dr. Smith",
   "specialization_ids": ["a1b2c3d4-..."],
-  "email": "dr.smith@example.com",
   "phone": "+919900000001",
+  "email": "dr.smith@example.com",
   "reg_no": "MC-123456",
   "smc_name": "Medical Council of India",
   "doctor_degree": "MBBS, MD",
@@ -1465,11 +1799,11 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 
 | Field | Type | Notes |
 |---|---|---|
-| `doctor_id` | string? | a `doctors.id` from `GET /clinics/:clinicId/doctors` — picks an existing clinic doctor and skips straight to the direct-assignment fast-track below, looking up their name/email server-side. Either `doctor_id`, or both `name` and `email`, are required. |
+| `doctor_id` | string? | a `doctors.id` from `GET /clinics/:clinicId/doctors` — picks an existing clinic doctor and skips straight to the direct-assignment fast-track below, looking up their name/email server-side. Either `doctor_id`, or `name` plus an email or phone, are required. |
 | `name` | string? | required unless `doctor_id` is given |
 | `specialization_ids` | string[] | required, 1–10 `doctor_specializations.id` values (see `GET /doctors/specializations`; use `POST /doctors/specializations` first if the one you need doesn't exist yet) — for the `doctor_id` fast-track this is the set of specializations to assign at *this* branch, independent of the doctor's specializations at other branches |
-| `email` | string? | required unless `doctor_id` is given |
-| `phone` | string? | max 32, ignored when `doctor_id` is given |
+| `email` | string? | optional, max — required unless `doctor_id` or `phone` is given |
+| `phone` | string? | optional, normalized to `+91XXXXXXXXXX` — required unless `doctor_id` or `email` is given; the primary invite identifier |
 | `reg_no` | string? | max 64, optional — pre-fill the doctor's registration number; if omitted, the doctor supplies it on accept |
 | `smc_name` | string? | max 255, optional — State Medical Council name |
 | `doctor_degree` | string? | max 100, optional — e.g. `MBBS, MD` |
@@ -1492,7 +1826,7 @@ A doctor's booking behavior for a branch is controlled by `slot_type` on the ass
 - **`fixed`** (default) — the patient picks one specific `HH:MM` slot from `GET /doctors/:id/availability`, and `POST /appointments` requires a `time` that aligns to the doctor's slot template.
 - **`sequential`** ("as per bookings") — the doctor only defines a time range and slot duration (e.g. 7 PM–9 PM, 15 min slots); patients do **not** choose a time. `POST /appointments` omits `time`, and the server assigns the next free slot in order: 1st booking gets 7:00–7:15, 2nd gets 7:15–7:30, 3rd gets 7:30–7:45, and so on. If the range is full for that date, `POST /appointments` returns `409 DOCTOR_FULLY_BOOKED`.
 
-**Response `201`** — normal case: an invite is created and emailed to the doctor.
+**Response `201`** — normal case: an invite is created then sent to the doctor via email and/or SMS.
 
 ```json
 {
@@ -1500,6 +1834,7 @@ A doctor's booking behavior for a branch is controlled by `slot_type` on the ass
   "id": "7c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "email": "dr.smith@example.com",
+  "phone": "+919900000001",
   "reg_no": "MC-123456",
   "smc_name": "Medical Council of India",
   "doctor_degree": "MBBS, MD",
@@ -1511,14 +1846,14 @@ A doctor's booking behavior for a branch is controlled by `slot_type` on the ass
 
 #### Same-clinic, different-branch fast-track
 
-If the doctor already has an **active** assignment at another branch of the **same clinic** — identified either directly by `doctor_id` (pick from `GET /clinics/:clinicId/doctors`) or by `email` match (the doctor already accepted an invite and is an approved/associated doctor of this clinic, just at a different branch) — the invitation process is skipped entirely:
+If the doctor already has an **active** assignment at another branch of the **same clinic** — identified either directly by `doctor_id` (pick from `GET /clinics/:clinicId/doctors`) or by `email`/`phone` match (the doctor already accepted an invite and is an approved/associated doctor of this clinic, just at a different branch) — the invitation process is skipped entirely:
 
 - No `doctor_invites` row, invite code, or accept link is created.
 - No new `users`/`doctors` row is created — the doctor keeps using their existing account.
 - A new `doctor_branch_assignments` row (plus its slot template) is created directly for the target branch, using the request body's `fee_amount`, `currency`, `slot_type`, and `slot_template`.
-- No invite email is sent. Instead the doctor receives an **acknowledgement-only** email ("You have been added to \{branch\} under \{clinic\}...") with no invite code or accept link.
+- No invite email/SMS is sent. Instead the doctor receives an **acknowledgement-only** email and SMS ("You have been added to \{branch\} under \{clinic\}...") with no invite code or accept link.
 
-The `doctor_id` path is stricter than the `email` path: it 404s (`DOCTOR_NOT_IN_CLINIC`) if that doctor has no active assignment anywhere in this clinic, rather than silently falling back to sending a normal invite — since a `doctor_id` picked from `GET /clinics/:clinicId/doctors` is only ever meant to add an already-known clinic doctor to a new branch.
+The `doctor_id` path is stricter than the email/phone path: it 404s (`DOCTOR_NOT_IN_CLINIC`) if that doctor has no active assignment anywhere in this clinic, rather than silently falling back to sending a normal invite — since a `doctor_id` picked from `GET /clinics/:clinicId/doctors` is only ever meant to add an already-known clinic doctor to a new branch.
 
 **Response `201`** — direct-assignment case:
 
@@ -1528,6 +1863,7 @@ The `doctor_id` path is stricter than the `email` path: it 404s (`DOCTOR_NOT_IN_
   "id": "9b2e1a3c-...",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "email": "dr.smith@example.com",
+  "phone": "+919900000001",
   "doctor_id": "1f4a6b8c-...",
   "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
   "status": "active"
@@ -1535,6 +1871,64 @@ The `doctor_id` path is stricter than the `email` path: it 404s (`DOCTOR_NOT_IN_
 ```
 
 **Errors:** `409 INVITE_ALREADY_PENDING`, `409 DOCTOR_ALREADY_ASSIGNED` (doctor already assigned to *this* branch — applies to both the normal and fast-track cases), `404 DOCTOR_NOT_IN_CLINIC` (`doctor_id` given but has no active assignment anywhere in this clinic), `422 SPECIALIZATION_NOT_FOUND`.
+
+### NMC registration lookup
+
+`GET /doctors/verify-registration` looks a `reg_no` up against the National Medical Commission's public Indian Medical Register, so clinic staff can confirm a doctor's registration number (and pre-fill `smc_name`/`doctor_degree`) before passing it to `POST /branches/:id/doctor-invites` above. Like trade license validation, it's a stateless proxy — it never touches a `doctors` row, and the caller is responsible for using the returned fields when filling in the invite.
+
+### GET /doctors/verify-registration
+
+Auth: `clinic_owner` or `branch_staff`. Rate limited 200/min. Proxies a lookup against the NMC's public registry server-side. The upstream service matches `reg_no` as a substring, not exact, so this endpoint filters the upstream results down to a single exact match itself.
+
+**Query:** `?reg_no=12345` (required, max 64 chars)
+
+**Response `200`** (always `200` — a not-found registration number and an upstream failure both come back as a normal response, not an HTTP error)
+
+Found:
+```json
+{
+  "success": true,
+  "registration_no": "12345",
+  "found": true,
+  "doctor": {
+    "doctorId": 12589894,
+    "registrationNo": "12345",
+    "name": "Nirmal Kumar Basu",
+    "fatherOrHusbandName": null,
+    "smcName": "West Bengal Medical Council",
+    "registrationDate": "13/02/1939",
+    "yearOfRegistration": 1939,
+    "doctorDegree": "M.B. (CAL U) 1938",
+    "university": "CAL U",
+    "yearOfPassing": "1938",
+    "address": "79/B, Chittaranjan Avenue, Calcutta  ; West Bengal",
+    "removed": false
+  }
+}
+```
+
+Not found:
+```json
+{
+  "success": true,
+  "registration_no": "not-a-real-reg-no",
+  "found": false,
+  "doctor": null
+}
+```
+
+NMC registry unreachable or returned something unparseable:
+```json
+{
+  "success": false,
+  "registration_no": "12345",
+  "found": false,
+  "doctor": null,
+  "message": "Unable to verify NMC registration number at this time. Please try again."
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR` (missing or too-long `reg_no`), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `429 RATE_LIMITED`.
 
 ### GET /clinics/:clinicId/doctors
 
@@ -1587,6 +1981,7 @@ Auth: `clinic_owner` **or** `branch_staff` with `doctors:manage`.
       "id": "7c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
       "name": "Dr. Smith",
       "email": "dr.smith@example.com",
+      "phone": "+919900000001",
       "reg_no": "MC-123456",
       "specializations": [{ "id": "a1b2c3d4-...", "name": "Cardiology" }],
       "smc_name": "Medical Council of India",
@@ -2268,8 +2663,12 @@ Auth: `patient`. Returns the caller's own profile, including their preferred cli
   "last_name": "Verma",
   "email": "aisha@example.com",
   "phone": "+919876543210",
+  "phone_verified": true,
   "date_of_birth": "1994-03-12",
   "gender": "female",
+  "height_cm": 165.5,
+  "weight_kg": 58.2,
+  "bmi": 21.2,
   "address": "123 Link Road, Andheri West",
   "nearby_location": "Near Andheri Station",
   "city": "Mumbai",
@@ -2304,9 +2703,11 @@ Auth: `patient`. Partial update of the caller's own profile — see [Partial upd
 | `name` | string? | 1–255 chars |
 | `first_name` | string? | 1–150 chars. If `name` is omitted, `name` is recomputed as `"{first_name} {last_name}"` |
 | `last_name` | string? | 1–150 chars. See above |
-| `phone` | string?\|null | max 32 |
+| `phone` | string?\|null | normalized to `+91XXXXXXXXXX`. Changing it here does **not** mark it verified — use the `POST /auth/verify-phone` flow to add/change a phone with OTP verification and set `phone_verified` |
 | `date_of_birth` | string?\|null | `YYYY-MM-DD`, cannot be in the future |
 | `gender` | string?\|null | one of `male`, `female`, `other`, `prefer_not_to_say` |
+| `height_cm` | number?\|null | 0 < value ≤ 300. Recomputes `bmi` from the resulting height/weight |
+| `weight_kg` | number?\|null | 0 < value ≤ 500. Recomputes `bmi` from the resulting height/weight |
 | `address` | string? | 1–500 chars |
 | `nearby_location` | string?\|null | max 500 |
 | `city` | string?\|null | max 255 |
@@ -2316,6 +2717,8 @@ Auth: `patient`. Partial update of the caller's own profile — see [Partial upd
 | `post_office` | string?\|null | max 255 |
 | `preferred_clinic_id` | string (UUID)?\|null | must be an existing, non-deleted clinic. Setting to `null` also clears `preferred_branch_id` |
 | `preferred_branch_id` | string (UUID)?\|null | must be an existing, non-deleted branch. Also sets `preferred_clinic_id` to that branch's clinic (overriding any `preferred_clinic_id` in the same request). Setting to `null` clears only the branch |
+
+`bmi` is not a request field — it's derived server-side from `height_cm` and `weight_kg` (using the new value if sent, otherwise the value already on file) and stored whenever either changes. It's `null` until both are known.
 
 **Response `200`**: same shape as `GET /patients/me`.
 
@@ -3632,6 +4035,139 @@ Auth: `doctor` **only**, and only with a non-cancelled appointment relationship 
 
 ---
 
+## Medications
+
+Patient-managed medication list with a daily or monthly dosing schedule, used to drive the in-app medication tracker (today's schedule, adherence, refill reminders) and on-device local-notification reminders. Distinct from `current_medications` on the [medical profile](#patients) (a free-text note field) and from [Prescriptions](#prescriptions) (clinician-issued, tied to an appointment) — this is the patient's own self-reported list of what they take and when.
+
+`Medication` object:
+
+```json
+{
+  "id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e",
+  "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "name": "Lisinopril",
+  "dosage": "10mg",
+  "frequency_label": "Once daily",
+  "schedule_type": "daily",
+  "day_of_month": null,
+  "times": ["08:00"],
+  "prescriber": "Dr. Sarah Chen",
+  "refill_date": "2026-09-15",
+  "is_active": true,
+  "created_at": "2026-08-01T09:30:00Z",
+  "updated_at": "2026-08-01T09:30:00Z"
+}
+```
+
+`times` is a list of `HH:MM` (24h) dosing times, 1–10 entries — each one is a schedule slot a dose can be logged against. `schedule_type` is `daily` (default — a dose is due every calendar day at each entry in `times`) or `monthly` (a dose is due only on `day_of_month` of each month, at each entry in `times`); `day_of_month` (1–31) is required when `schedule_type` is `monthly` and must be `null` otherwise — the server clears it automatically when `schedule_type` is set back to `daily`. A month with fewer days than `day_of_month` (e.g. `31` in February) simply has no due date that month. `frequency_label`, `prescriber`, and `refill_date` are free-form/optional and exist for display only (nothing server-side depends on them).
+
+### GET /patients/me/medications
+
+Auth: `patient`.
+
+**Query:** `?active=true|false` (optional — filter by `is_active`; omit to return all)
+
+**Response `200`**
+
+```json
+{ "items": [ /* Medication objects, active first then by created_at desc */ ] }
+```
+
+### POST /patients/me/medications
+
+Auth: `patient`.
+
+**Request body**
+
+```json
+{ "name": "Lisinopril", "dosage": "10mg", "times": ["08:00"], "frequency_label": "Once daily" }
+```
+
+```json
+{ "name": "B12 Injection", "dosage": "1000mcg", "schedule_type": "monthly", "day_of_month": 1, "times": ["09:00"] }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | 1–255 chars |
+| `dosage` | string | 1–100 chars |
+| `times` | string[] | 1–10 items, each `HH:MM` 24h |
+| `frequency_label` | string?\|null | max 100 |
+| `schedule_type` | string? | `daily` (default) or `monthly` |
+| `day_of_month` | number?\|null | 1–31. Required if `schedule_type` is `monthly`; rejected (`400`) if sent while `schedule_type` is `daily` |
+| `prescriber` | string?\|null | max 255 |
+| `refill_date` | string?\|null | `YYYY-MM-DD` |
+
+**Response `201`** — Medication object (`is_active: true`).
+
+**Errors:** `400 VALIDATION_ERROR`.
+
+### PATCH /patients/me/medications/:id
+
+Auth: `patient` (owner only). Partial update — see [Partial updates](#partial-updates). Also used to pause/resume a medication via `is_active`.
+
+**Request body** (any subset of the `POST` fields, plus)
+
+```json
+{ "is_active": false }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `is_active` | boolean? | pause (`false`) / resume (`true`) — doesn't affect existing dose logs |
+
+Setting `schedule_type` to `daily` clears `day_of_month` automatically (no need to send it as `null`). If `day_of_month` is sent without `schedule_type`, it's validated against the medication's *current* `schedule_type`.
+
+**Response `200`** — Medication object.
+
+**Errors:** `400 VALIDATION_ERROR`, `404 MEDICATION_NOT_FOUND`.
+
+### DELETE /patients/me/medications/:id
+
+Auth: `patient` (owner only). Also deletes all of its dose logs (`ON DELETE CASCADE`).
+
+**Response `204 No Content`**
+
+**Errors:** `404 MEDICATION_NOT_FOUND`.
+
+### GET /patients/me/medications/doses
+
+Auth: `patient`. Returns logged doses in a date range — used to render "today's schedule" (taken vs. pending/missed, by comparing against `times` client-side) and to compute weekly adherence.
+
+**Query:** `?from=YYYY-MM-DD&to=YYYY-MM-DD` (both required)
+
+**Response `200`**
+
+```json
+{ "items": [ { "id": "...", "medication_id": "...", "patient_id": "...", "dose_date": "2026-08-27", "scheduled_time": "08:00", "taken_at": "2026-08-27T08:05:00Z" } ] }
+```
+
+**Errors:** `400 VALIDATION_ERROR` (missing/bad `from`/`to`).
+
+### POST /patients/me/medications/doses
+
+Auth: `patient`. Logs a dose as taken ("Take" button). Idempotent — logging the same `medication_id` + `dose_date` + `scheduled_time` twice returns the original log, not a duplicate (unique per slot per day).
+
+**Request body**
+
+```json
+{ "medication_id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e", "dose_date": "2026-08-27", "scheduled_time": "08:00" }
+```
+
+**Response `201`** — dose log object (same shape as the `GET` items above).
+
+**Errors:** `400 VALIDATION_ERROR`, `404 MEDICATION_NOT_FOUND`.
+
+### DELETE /patients/me/medications/doses/:id
+
+Auth: `patient` (owner only). Un-marks a dose as taken.
+
+**Response `204 No Content`**
+
+**Errors:** `404 DOSE_NOT_FOUND`.
+
+---
+
 ## Notifications
 
 `Notification` object:
@@ -4240,6 +4776,18 @@ The sweep: expires any `TRIAL` past `trial_ends_at` or `ACTIVE` past `period_end
 
 **Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
 
+### POST /super-admin/system/process-overdue-appointments
+
+Rate limited `30/min`. Manually triggers the same sweep that otherwise runs automatically **every 15 minutes in the background** (started at server boot — see below) — useful to force an immediate pass rather than as a required trigger.
+
+Auth: **either** header `x-cron-secret` exactly matching the server's `CRON_SECRET` env var (for an external scheduler, no bearer token needed), **or** a Super Admin bearer token. If `CRON_SECRET` isn't configured, only the Super Admin path works.
+
+**Response `200`** — `{ "message": "Overdue appointment sweep complete.", "result": { "cancelledDoctorAppointments": 2, "cancelledLabTestAppointments": 1 } }`
+
+The sweep: cancels any doctor appointment still `pending`/`confirmed`, or lab test appointment still `PENDING`/`APPROVED`, once its scheduled date+time has passed (checked in the branch's own timezone, same `hasSlotPassedInTz` logic the `.../complete` endpoints use to gate early completion). `paid` doctor appointments are deliberately excluded — same guard as the branch-closure auto-cancel cascade, since cancelling a paid-but-missed visit has refund implications a human should decide. Each cancelled appointment gets an `appointment_status_log`/`lab_test_appointment_status_log` row with `changed_by: null` (the existing "NULL = system/cron" convention), and the patient is notified in-app and by email (same as any other auto-cancel — it's a surprise to them, so it's never silent). A Super-Admin-triggered sweep is itself audit-logged (`appointments.overdue_sweep_triggered`); a cron-secret-triggered one is not.
+
+**Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
+
 ---
 
 ## Webhooks
@@ -4270,7 +4818,7 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 
 **Side effects (on "applied" only, one transaction, row locked):** `subscription_payments` → `PAID`, `verification_method: "webhook"`, `verified_by: <gateway payment id>`; `clinic_subscriptions` → `ACTIVE` (period extended, same "never lose unused time" stacking as manual verify); `subscription_history` row (`source: "webhook"`); in-app `subscription_activated` notification to the owner. No email/push is sent from this path either. Replays and unknown/malformed payloads write nothing.
 
-**Background job note:** subscription expiry/warning processing is **not** something you need to hit an endpoint for — `src/instrumentation.ts` starts an in-process hourly sweep at server boot (first run 30s after boot) that calls the exact same logic as `POST /super-admin/system/process-subscriptions` above.
+**Background job note:** subscription expiry/warning processing is **not** something you need to hit an endpoint for — `src/instrumentation.ts` starts an in-process hourly sweep at server boot (first run 30s after boot) that calls the exact same logic as `POST /super-admin/system/process-subscriptions` above. The same file also starts a 15-minute overdue-appointment sweep (first run 30s after boot) calling the exact same logic as `POST /super-admin/system/process-overdue-appointments` above.
 
 ---
 
@@ -4288,9 +4836,11 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `INVALID_MONTHS` | 400 | Subscription payment `months` outside the platform's configured `max_months_per_payment` |
 | `PAYMENT_SIGNATURE_INVALID` | 400 | Subscription payment gateway signature didn't verify (marks the payment `FAILED`) |
 | `UNAUTHORIZED` | 401 | No/invalid token |
-| `INVALID_CREDENTIALS` | 401 | Wrong email/password |
+| `INVALID_CREDENTIALS` | 401 | Wrong phone/password |
+| `ACCOUNT_NOT_FOUND` | 401 | No active account found for the given phone (OTP/login steps) |
 | `ACCOUNT_DISABLED` | 401/403 | Account not `active` |
-| `INVALID_OTP` / `OTP_MAX_ATTEMPTS` | 401 | OTP failure |
+| `INVALID_OTP` / `OTP_MAX_ATTEMPTS` | 401 | OTP failure (incorrect code / max 5 attempts reached) |
+| `NOT_BRANCH_STAFF` | 403 | Phone is not registered as an active `branch_staff` account |
 | `RESET_TOKEN_INVALID` | 400 | Reset token missing, already used, or unknown |
 | `REFRESH_TOKEN_INVALID` | 401 | Refresh token invalid/expired/revoked |
 | `INVALID_WEBHOOK_SIGNATURE` | 401 | Subscription payment webhook's `x-webhook-signature` header didn't match |
@@ -4303,13 +4853,14 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `FEE_OWNER_CONTROLLED` | 403 | Doctor tried to change the fee |
 | `INVALID_SIGNED_URL` | 403 | Bad/expired file URL signature |
 | `NOT_SUPER_ADMIN` | 403 | `sys_admin` role present but no active `super_admins` grant |
-| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` / `EXCEPTION_NOT_FOUND` / `CLOSURE_NOT_FOUND` / `TEST_NOT_FOUND` / `SCHEDULE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
+| `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `MEDICATION_NOT_FOUND` / `DOSE_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` / `EXCEPTION_NOT_FOUND` / `CLOSURE_NOT_FOUND` / `TEST_NOT_FOUND` / `SCHEDULE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
 | `USER_NOT_FOUND` / `SUPER_ADMIN_NOT_FOUND` / `PAYMENT_NOT_FOUND` / `SUBSCRIPTION_NOT_FOUND` | 404 | Super Admin / subscription resource missing |
 | `INVITE_EXPIRED` / `OTP_EXPIRED` / `RESET_TOKEN_EXPIRED` | 410 | Expired one-time code |
 | `FILE_TOO_LARGE` | 413 | Upload exceeds size limit |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Upload has a disallowed MIME type |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `EMAIL_ALREADY_REGISTERED` | 409 | Email already in use |
+| `PHONE_ALREADY_REGISTERED` | 409 | Phone already in use |
 | `REG_NO_ALREADY_REGISTERED` | 409 | Doctor registration number already in use |
 | `INVITE_ALREADY_PENDING` | 409 | Duplicate pending invite |
 | `INVITE_ALREADY_ACCEPTED` | 409 | Invite already accepted |
@@ -4352,6 +4903,7 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `confirmed` | `cancelled` | `PATCH /appointments/:id/cancel` | patient, branch_staff, clinic_owner |
 | `paid` | `completed` | `PATCH /appointments/:id/complete` | branch_staff, clinic_owner |
 | `paid` | `cancelled` | `PATCH /appointments/:id/cancel` | branch_staff, clinic_owner |
+| `pending`/`confirmed` | `cancelled` | overdue sweep — see `POST /super-admin/system/process-overdue-appointments` | system (automatic, once `scheduled_date`/`scheduled_time` has passed) |
 
 Any other transition returns `409 INVALID_STATUS_TRANSITION`. The `paid → completed` transition additionally requires `scheduled_date`/`scheduled_time` to have passed (branch timezone), else `409 APPOINTMENT_NOT_YET_DUE`.
 
@@ -4365,6 +4917,7 @@ Any other transition returns `409 INVALID_STATUS_TRANSITION`. The `paid → comp
 | `PENDING` | `CANCELLED` | `POST /lab-test-appointments/:id/cancel` | patient, clinic_owner, branch_staff |
 | `APPROVED` | `COMPLETED` | `POST /clinic/lab-test-appointments/:id/complete` | clinic_owner, branch_staff |
 | `APPROVED` | `CANCELLED` | `POST /lab-test-appointments/:id/cancel` | patient, clinic_owner, branch_staff |
+| `PENDING`/`APPROVED` | `CANCELLED` | overdue sweep — see `POST /super-admin/system/process-overdue-appointments` | system (automatic, once `appointment_date`/`start_time` has passed) |
 
 Any other transition returns `409 INVALID_STATUS_TRANSITION`. The `APPROVED → COMPLETED` transition additionally requires `appointment_date`/`start_time` to have passed (branch timezone), else `409 APPOINTMENT_NOT_YET_DUE`.
 
@@ -4390,13 +4943,16 @@ Any other transition returns `409 INVALID_STATUS_TRANSITION`. The `APPROVED → 
 ### Doctor onboarding
 
 ```
-POST /auth/clinic-owner/register
-POST /clinics                       {name, trade_license_number}
-POST /clinics/:clinicId/branches    {name, address, phone, timezone, trade_license_number}
-POST /branches/:id/doctor-invites   {name, specialization_ids, email, fee_amount, currency, slot_type, slot_template}
-  → invite code emailed to the doctor
-POST /auth/doctor/accept-invite     {email, invite_code, password, reg_no}
-GET  /branches/:id/doctors          → doctor now listed
+POST /auth/clinic-owner/send-otp           {name, clinicName, phone}
+POST /auth/clinic-owner/register           {name, clinicName, phone, otp}
+POST /clinics                             {name, trade_license_number}
+POST /clinics/:clinicId/branches          {name, address, phone, timezone, trade_license_number}
+GET  /doctors/verify-registration          ?reg_no=MC-123456   → confirms reg_no against the NMC registry, pre-fills smc_name/doctor_degree
+POST /branches/:id/doctor-invites          {name, specialization_ids, phone, fee_amount, currency, slot_type, slot_template, reg_no, smc_name, doctor_degree}
+  → invite code sent via SMS + email to the doctor
+POST /auth/verify-phone/send               {phone}        → doctor verifies their phone with OTP
+POST /auth/doctor/accept-invite            {phone, invite_code, otp, reg_no}
+GET  /branches/:id/doctors                 → doctor now listed
 ```
 
 ### Booking → payment → completion
@@ -4418,7 +4974,8 @@ GET   /appointments/:id/prescription/pdf
 ### Lab test booking → approval → completion
 
 ```
-POST /auth/patient/login                     {email, password}
+POST /auth/patient/login                     {phone}        → sends OTP
+POST /auth/patient/verify-otp                {phone, otp}   → access_token
 GET  /branches/:branchId/lab-tests           ?category=blood_test
 GET  /branches/:branchId/lab-tests/:testId   (detail + price, duration)
 GET  /branches/:branchId/lab-tests/:testId/availability?date=2026-08-25

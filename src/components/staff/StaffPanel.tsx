@@ -22,6 +22,7 @@ import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permi
 import { formatDate } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 export default function StaffPanel() {
   const { t } = useTranslation();
@@ -36,7 +37,7 @@ export default function StaffPanel() {
   const [busy, setBusy] = useState(false);
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
     resetKey: branch?.id,
@@ -67,7 +68,7 @@ export default function StaffPanel() {
 
   const openCreate = () => {
     setName("");
-    setEmail("");
+    setPhone("");
     setError(null);
     openModal();
   };
@@ -78,10 +79,16 @@ export default function StaffPanel() {
       toast.error(t("appointments.noPermission"));
       return;
     }
+    if (!isValidPhone(phone)) {
+      const message = PHONE_VALIDATION_MESSAGE;
+      setError(message);
+      toast.error(message);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await staffApi.create(branch.id, { name, email });
+      await staffApi.create(branch.id, { name, phone });
       closeModal();
       await load(branch);
       toast.success(t("staff.addedSuccess"));
@@ -185,7 +192,7 @@ export default function StaffPanel() {
                     {t("staff.name")}
                   </TableCell>
                   <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    {t("staff.email")}
+                    {t("staff.phone")}
                   </TableCell>
                   <TableCell isHeader className="py-3 max-w-[280px] font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     {t("staff.permissions")}
@@ -209,7 +216,7 @@ export default function StaffPanel() {
                       </p>
                     </TableCell>
                     <TableCell className="py-3 align-top text-gray-500 text-theme-sm dark:text-gray-400">
-                      {member.email}
+                      {member.phone ?? "—"}
                     </TableCell>
                     <TableCell className="py-3 align-top max-w-[280px] text-gray-500 text-theme-sm dark:text-gray-400">
                       {labels.length === 0 ? (
@@ -285,14 +292,21 @@ export default function StaffPanel() {
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              {t("staff.emailRequired")}
+              {t("staff.phoneRequired")}
             </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            />
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                +91
+              </span>
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                value={phone}
+                onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 pl-12 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              />
+            </div>
           </div>
         </div>
         <div className="mt-6 flex items-center justify-end gap-3">
@@ -304,7 +318,7 @@ export default function StaffPanel() {
           </button>
           <button
             onClick={create}
-            disabled={busy || !name || !email}
+            disabled={busy || !name || !phone}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
           >
             {busy ? t("staff.adding") : t("common.add")}

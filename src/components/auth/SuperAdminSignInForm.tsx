@@ -8,13 +8,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
-type RequiredField = "email" | "password";
+type RequiredField = "phone" | "password";
 
 export default function SuperAdminSignInForm() {
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -36,13 +37,13 @@ export default function SuperAdminSignInForm() {
     e.preventDefault();
     setError(null);
     setSubmitted(true);
-    if (!email.trim() || !password.trim()) {
+    if (!isValidPhone(phone) || !password.trim()) {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
     setSubmitting(true);
     try {
-      await superAdminLogin(email, password);
+      await superAdminLogin(phone, password);
       router.push("/super-admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
@@ -73,18 +74,30 @@ export default function SuperAdminSignInForm() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label>
-                {t("auth.email")} <span className="text-error-500">*</span>{" "}
+                {t("auth.phone")} <span className="text-error-500">*</span>{" "}
               </Label>
-              <Input
-                placeholder="admin@jidohealth.com"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => touch("email")}
-                error={showError("email", !email.trim())}
-                hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
-                required
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                  +91
+                </span>
+                <Input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className="pl-12"
+                  placeholder={t("auth.phonePlaceholder")}
+                  value={phone}
+                  onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                  onBlur={() => touch("phone")}
+                  error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                  hint={
+                    showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                      ? PHONE_VALIDATION_MESSAGE
+                      : undefined
+                  }
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label>

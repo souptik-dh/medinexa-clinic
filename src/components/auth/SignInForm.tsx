@@ -1,97 +1,63 @@
 "use client";
-import Checkbox from "@/components/form/input/Checkbox";
 import Input from "@/components/form/input/InputField";
+import OtpInput from "@/components/form/input/OtpInput";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type Mode = "owner" | "staff" | "doctor";
-type RequiredField =
-  | "email"
-  | "password"
-  | "doctorEmail"
-  | "doctorPassword"
-  | "staffEmail"
-  | "otp";
+type LoginMethod = "otp" | "password";
+type RequiredField = "phone" | "otp" | "password";
 
 export default function SignInForm() {
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>("owner");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isChecked, setIsChecked] = useState(false);
-  const [email, setEmail] = useState("");
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("otp");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [doctorEmail, setDoctorEmail] = useState("");
-  const [doctorPassword, setDoctorPassword] = useState("");
-  const [staffEmail, setStaffEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const { login, doctorLogin, staffLogin, verifyStaffOtp } = useAuth();
+  const {
+    sendOwnerLoginOtp,
+    verifyOwnerOtp,
+    loginOwnerWithPassword,
+    sendDoctorLoginOtp,
+    verifyDoctorOtp,
+    staffLogin,
+    verifyStaffOtp,
+  } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get("reason") === "session_expired";
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const requestOtp = async (phoneValue: string) => {
     setSubmitted(true);
-    if (!email.trim() || !password.trim()) {
-      setError(t("auth.pleaseFillRequired"));
+    if (!isValidPhone(phoneValue)) {
+      setError(PHONE_VALIDATION_MESSAGE);
       return;
     }
     setSubmitting(true);
     try {
-      await login(email, password);
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleDoctorSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitted(true);
-    if (!doctorEmail.trim() || !doctorPassword.trim()) {
-      setError(t("auth.pleaseFillRequired"));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await doctorLogin(doctorEmail, doctorPassword);
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleOtpRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setMessage(null);
-    setSubmitted(true);
-    if (!staffEmail.trim()) {
-      setError(t("auth.pleaseFillRequired"));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await staffLogin(staffEmail);
-      setMessage(t("auth.otpSentMessage"));
+      if (mode === "owner") {
+        const msg = await sendOwnerLoginOtp(phoneValue);
+        setMessage(msg);
+      } else if (mode === "doctor") {
+        const msg = await sendDoctorLoginOtp(phoneValue);
+        setMessage(msg);
+      } else {
+        await staffLogin(phoneValue);
+        setMessage(t("auth.otpSentPhoneMessage"));
+      }
       setStage("verify");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
@@ -100,9 +66,7 @@ export default function SignInForm() {
     }
   };
 
-  const handleOtpVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const verifyOtp = async () => {
     setSubmitted(true);
     if (!otp.trim()) {
       setError(t("auth.pleaseFillRequired"));
@@ -110,7 +74,13 @@ export default function SignInForm() {
     }
     setSubmitting(true);
     try {
-      await verifyStaffOtp(staffEmail, otp);
+      if (mode === "owner") {
+        await verifyOwnerOtp(phone, otp);
+      } else if (mode === "doctor") {
+        await verifyDoctorOtp(phone, otp);
+      } else {
+        await verifyStaffOtp(phone, otp);
+      }
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
@@ -119,11 +89,55 @@ export default function SignInForm() {
     }
   };
 
+  const handleRequestSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    requestOtp(phone);
+  };
+
+  const handleVerifySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    verifyOtp();
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitted(true);
+    if (!isValidPhone(phone) || !password.trim()) {
+      setError(t("auth.pleaseFillRequired"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await loginOwnerWithPassword(phone, password);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const switchMode = (m: Mode) => {
     setMode(m);
+    setLoginMethod("otp");
     setStage("request");
     setError(null);
     setMessage(null);
+    setPhone("");
+    setPassword("");
+    setOtp("");
+    setSubmitted(false);
+  };
+
+  const switchLoginMethod = (method: LoginMethod) => {
+    setLoginMethod(method);
+    setStage("request");
+    setError(null);
+    setMessage(null);
+    setPassword("");
     setOtp("");
     setSubmitted(false);
   };
@@ -175,137 +189,60 @@ export default function SignInForm() {
             >
               {t("auth.staff")}
             </button>
-            {/* <button
+            {/* Doctor login - disabled for now, will open later.
+            <button
               type="button"
               onClick={() => switchMode("doctor")}
               className={tabClass("doctor")}
             >
-              Doctor
-            </button> */}
+              {t("auth.doctor")}
+            </button>
+            */}
           </div>
 
-          {mode === "owner" ? (
-            <div>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <Label>
-                    {t("auth.email")} <span className="text-error-500">*</span>{" "}
-                  </Label>
+          {mode === "owner" && loginMethod === "password" ? (
+            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+              <div>
+                <Label>
+                  {t("auth.phone")} <span className="text-error-500">*</span>
+                </Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                    +91
+                  </span>
                   <Input
-                    placeholder="owner@example.com"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    onBlur={() => touch("email")}
-                    error={showError("email", !email.trim())}
-                    hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className="pl-12"
+                    placeholder={t("auth.phonePlaceholder")}
+                    value={phone}
+                    onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                    onBlur={() => touch("phone")}
+                    error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                    hint={
+                      showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                        ? PHONE_VALIDATION_MESSAGE
+                        : undefined
+                    }
                     required
                   />
                 </div>
-                <div>
-                  <Label>
-                    {t("auth.password")} <span className="text-error-500">*</span>{" "}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      placeholder={t("auth.enterPasswordPlaceholder")}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onBlur={() => touch("password")}
-                      error={showError("password", !password.trim())}
-                      required
-                    />
-                    <span
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
-                    >
-                      {showPassword ? (
-                        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-                      ) : (
-                        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-                      )}
-                    </span>
-                  </div>
-                  {showError("password", !password.trim()) && (
-                    <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Checkbox checked={isChecked} onChange={setIsChecked} />
-                    <span className="block font-normal text-gray-700 text-theme-sm dark:text-gray-400">
-                      {t("auth.keepMeLoggedIn")}
-                    </span>
-                  </div>
-                  <Link
-                    href="/reset-password"
-                    className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
-                  >
-                    {t("auth.forgotPassword")}
-                  </Link>
-                </div>
-                {error && (
-                  <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-                    {error}
-                  </div>
-                )}
-                <div>
-                  <Button className="w-full" size="sm" disabled={submitting}>
-                    {submitting ? t("auth.signingIn") : t("auth.signIn")}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          ) : mode === "doctor" ? (
-            <form onSubmit={handleDoctorSubmit} className="space-y-6">
-              <div>
-                <Label>
-                  {t("auth.email")} <span className="text-error-500">*</span>{" "}
-                </Label>
-                <Input
-                  placeholder="doctor@example.com"
-                  type="email"
-                  value={doctorEmail}
-                  onChange={(e) => setDoctorEmail(e.target.value)}
-                  onBlur={() => touch("doctorEmail")}
-                  error={showError("doctorEmail", !doctorEmail.trim())}
-                  hint={
-                    showError("doctorEmail", !doctorEmail.trim())
-                      ? REQUIRED_FIELD_MESSAGE
-                      : undefined
-                  }
-                  required
-                />
               </div>
               <div>
                 <Label>
-                  {t("auth.password")} <span className="text-error-500">*</span>{" "}
+                  {t("auth.password")} <span className="text-error-500">*</span>
                 </Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder={t("auth.enterPasswordPlaceholder")}
-                    value={doctorPassword}
-                    onChange={(e) => setDoctorPassword(e.target.value)}
-                    onBlur={() => touch("doctorPassword")}
-                    error={showError("doctorPassword", !doctorPassword.trim())}
-                    required
-                  />
-                  <span
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
-                  >
-                    {showPassword ? (
-                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-                    ) : (
-                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-                    )}
-                  </span>
-                </div>
-                {showError("doctorPassword", !doctorPassword.trim()) && (
-                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
-                )}
+                <Input
+                  type="password"
+                  placeholder={t("auth.enterPasswordPlaceholder")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => touch("password")}
+                  error={showError("password", !password.trim())}
+                  hint={showError("password", !password.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
+                  required
+                />
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -317,27 +254,50 @@ export default function SignInForm() {
                   {submitting ? t("auth.signingIn") : t("auth.signIn")}
                 </Button>
               </div>
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => switchLoginMethod("otp")}
+                  className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                >
+                  {t("auth.signInWithOtpInstead")}
+                </button>
+                <Link
+                  href="/reset-password"
+                  className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                >
+                  {t("auth.forgotPassword")}
+                </Link>
+              </div>
             </form>
           ) : stage === "request" ? (
-            <form onSubmit={handleOtpRequest} className="space-y-6">
+            <form onSubmit={handleRequestSubmit} className="space-y-6">
               <div>
                 <Label>
-                  {t("auth.email")} <span className="text-error-500">*</span>{" "}
+                  {t("auth.phone")} <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  placeholder="staff@clinic.com"
-                  type="email"
-                  value={staffEmail}
-                  onChange={(e) => setStaffEmail(e.target.value)}
-                  onBlur={() => touch("staffEmail")}
-                  error={showError("staffEmail", !staffEmail.trim())}
-                  hint={
-                    showError("staffEmail", !staffEmail.trim())
-                      ? REQUIRED_FIELD_MESSAGE
-                      : undefined
-                  }
-                  required
-                />
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                    +91
+                  </span>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className="pl-12"
+                    placeholder={t("auth.phonePlaceholder")}
+                    value={phone}
+                    onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                    onBlur={() => touch("phone")}
+                    error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                    hint={
+                      showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                        ? PHONE_VALIDATION_MESSAGE
+                        : undefined
+                    }
+                    required
+                  />
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -349,25 +309,40 @@ export default function SignInForm() {
                   {submitting ? t("auth.sendingOtp") : t("auth.sendOtp")}
                 </Button>
               </div>
+              {mode === "owner" && (
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => switchLoginMethod("password")}
+                    className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                  >
+                    {t("auth.signInWithPasswordInstead")}
+                  </button>
+                  <Link
+                    href="/reset-password"
+                    className="text-sm text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                  >
+                    {t("auth.forgotPassword")}
+                  </Link>
+                </div>
+              )}
             </form>
           ) : (
-            <form onSubmit={handleOtpVerify} className="space-y-6">
+            <form onSubmit={handleVerifySubmit} className="space-y-6">
               <div>
                 <Label>{t("auth.otp")} <span className="text-error-500">*</span> </Label>
-                <Input
-                  placeholder={t("auth.sixDigitCode")}
-                  type="text"
+                <OtpInput
                   value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
+                  onChange={setOtp}
                   onBlur={() => touch("otp")}
                   error={showError("otp", !otp.trim())}
-                  required
+                  autoFocus
                 />
                 {showError("otp", !otp.trim()) ? (
                   <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
                 ) : (
                   <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                    {t("auth.enterOtpSentTo", { email: staffEmail })}
+                    {t("auth.enterOtpSentToPhone", { phone })}
                   </p>
                 )}
               </div>

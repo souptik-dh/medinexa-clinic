@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
 import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
+import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
   Appointment,
   AppointmentDetail,
@@ -97,6 +98,7 @@ export default function AllAppointmentsPanel() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [showBookModal, setShowBookModal] = useState(false);
+  const [receiptsFor, setReceiptsFor] = useState<Appointment | null>(null);
   const { isOpen, openModal, closeModal } = useModal();
   const {
     page: docPage,
@@ -256,6 +258,8 @@ export default function AllAppointmentsPanel() {
   const canComplete = (a: Appointment) => a.status === "paid" && a.scheduled_date <= today();
   const canCancel = (a: Appointment) =>
     a.status === "pending" || a.status === "confirmed" || a.status === "paid";
+  const canViewReceipts = (a: Appointment) =>
+    a.status === "confirmed" || a.status === "paid" || a.status === "completed";
 
   // ---- Lab Appointments ----
   const loadLab = useCallback(async () => {
@@ -488,6 +492,14 @@ export default function AllAppointmentsPanel() {
                             )}
                             {canCancel(appt) && can("appointments:cancel") && (
                               <DocActionBtn label={t("appointments.cancel")} color="error" onClick={() => openDocAction(appt, "cancel")} />
+                            )}
+                            {canViewReceipts(appt) && (
+                              <button
+                                onClick={() => setReceiptsFor(appt)}
+                                className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                              >
+                                {t("receipts.viewReceipts")}
+                              </button>
                             )}
                             <button
                               onClick={() => showDocHistory(appt)}
@@ -892,6 +904,13 @@ export default function AllAppointmentsPanel() {
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId}
         onBooked={loadLab}
+      />
+
+      <ReceiptsModal
+        isOpen={!!receiptsFor}
+        onClose={() => setReceiptsFor(null)}
+        kind="appointment"
+        appointmentId={receiptsFor?.id ?? null}
       />
     </div>
   );

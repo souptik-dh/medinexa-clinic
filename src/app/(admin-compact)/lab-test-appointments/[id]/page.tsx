@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -30,6 +31,7 @@ export default function LabTestAppointmentDetailPage() {
   const [detail, setDetail] = useState<LabTestAppointmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showReceipts, setShowReceipts] = useState(false);
 
   useEffect(() => {
     labTestAppointmentsApi
@@ -50,6 +52,8 @@ export default function LabTestAppointmentDetailPage() {
     (detail.payment_status === "UNPAID" || detail.payment_status === "PENDING") &&
     (detail.status === "APPROVED" || detail.status === "COMPLETED") &&
     can("lab_payments:collect");
+  const canViewReceipts =
+    detail?.status === "APPROVED" || detail?.status === "COMPLETED";
 
   return (
     <div>
@@ -224,10 +228,25 @@ export default function LabTestAppointmentDetailPage() {
                   Cancel
                 </Link>
               )}
+              {canViewReceipts && (
+                <button
+                  onClick={() => setShowReceipts(true)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                >
+                  View Receipts
+                </button>
+              )}
             </div>
           </div>
         ) : null}
       </div>
+
+      <ReceiptsModal
+        isOpen={showReceipts}
+        onClose={() => setShowReceipts(false)}
+        kind="lab-test"
+        appointmentId={id ?? detail?.id ?? null}
+      />
     </div>
   );
 }

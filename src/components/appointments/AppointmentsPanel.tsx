@@ -16,6 +16,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
 import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
+import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
   Appointment,
   AppointmentDetail,
@@ -74,6 +75,7 @@ export default function AppointmentsPanel() {
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const [showBookModal, setShowBookModal] = useState(false);
+  const [receiptsFor, setReceiptsFor] = useState<Appointment | null>(null);
 
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
@@ -207,6 +209,8 @@ export default function AppointmentsPanel() {
   const canComplete = (a: Appointment) => a.status === "paid" && a.scheduled_date <= today();
   const canCancel = (a: Appointment) =>
     a.status === "pending" || a.status === "confirmed" || a.status === "paid";
+  const canViewReceipts = (a: Appointment) =>
+    a.status === "confirmed" || a.status === "paid" || a.status === "completed";
 
   return (
     <div>
@@ -366,6 +370,14 @@ export default function AppointmentsPanel() {
                         )}
                         {canCancel(appt) && can("appointments:cancel") && (
                           <ActionButton label={t("appointments.cancel")} color="error" onClick={() => openAction(appt, "cancel")} />
+                        )}
+                        {canViewReceipts(appt) && (
+                          <button
+                            onClick={() => setReceiptsFor(appt)}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                          >
+                            {t("receipts.viewReceipts")}
+                          </button>
                         )}
                         <button
                           onClick={() => showHistory(appt)}
@@ -615,6 +627,13 @@ export default function AppointmentsPanel() {
         isOpen={showBookModal}
         onClose={() => setShowBookModal(false)}
         onBooked={load}
+      />
+
+      <ReceiptsModal
+        isOpen={!!receiptsFor}
+        onClose={() => setReceiptsFor(null)}
+        kind="appointment"
+        appointmentId={receiptsFor?.id ?? null}
       />
     </div>
   );

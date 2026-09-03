@@ -3,20 +3,24 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import Input from "@/components/form/input/InputField";
+import OtpInput from "@/components/form/input/OtpInput";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
-type RequiredField = "newPassword" | "confirmPassword";
+type RequiredField = "phone" | "otp" | "newPassword" | "confirmPassword";
 
 export default function NewPasswordForm() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token");
+  const phoneFromLink = searchParams.get("phone");
 
+  const [phone, setPhone] = useState(phoneFromLink ?? "");
+  const [otp, setOtp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,11 +33,7 @@ export default function NewPasswordForm() {
     e.preventDefault();
     setError(null);
     setSubmitted(true);
-    if (!token) {
-      setError(t("auth.missingToken"));
-      return;
-    }
-    if (!newPassword.trim() || !confirmPassword.trim()) {
+    if (!isValidPhone(phone) || !otp.trim() || !newPassword.trim() || !confirmPassword.trim()) {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
@@ -44,7 +44,8 @@ export default function NewPasswordForm() {
     setSubmitting(true);
     try {
       const res = await authApi.resetPassword({
-        token,
+        phone,
+        otp,
         new_password: newPassword,
         confirm_password: confirmPassword,
       });
@@ -81,20 +82,49 @@ export default function NewPasswordForm() {
                 {t("auth.goToSignIn")}
               </Link>
             </div>
-          ) : !token ? (
-            <div className="space-y-5">
-              <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-                {t("auth.missingToken")}
-              </div>
-              <Link
-                href="/reset-password"
-                className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-              >
-                {t("auth.requestNewLink")}
-              </Link>
-            </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <Label>
+                  {t("auth.phone")} <span className="text-error-500">*</span>
+                </Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                    +91
+                  </span>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className="pl-12"
+                    placeholder={t("auth.phonePlaceholder")}
+                    value={phone}
+                    onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                    onBlur={() => touch("phone")}
+                    error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                    hint={
+                      showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                        ? PHONE_VALIDATION_MESSAGE
+                        : undefined
+                    }
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>
+                  {t("auth.otp")} <span className="text-error-500">*</span>
+                </Label>
+                <OtpInput
+                  value={otp}
+                  onChange={setOtp}
+                  onBlur={() => touch("otp")}
+                  error={showError("otp", !otp.trim())}
+                />
+                {showError("otp", !otp.trim()) && (
+                  <p className="mt-1.5 text-xs text-error-500">{REQUIRED_FIELD_MESSAGE}</p>
+                )}
+              </div>
               <div>
                 <Label>
                   {t("auth.newPassword")} <span className="text-error-500">*</span>
@@ -135,11 +165,6 @@ export default function NewPasswordForm() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   onBlur={() => touch("confirmPassword")}
                   error={showError("confirmPassword", !confirmPassword.trim())}
-                  hint={
-                    showError("confirmPassword", !confirmPassword.trim())
-                      ? REQUIRED_FIELD_MESSAGE
-                      : undefined
-                  }
                   required
                 />
               </div>

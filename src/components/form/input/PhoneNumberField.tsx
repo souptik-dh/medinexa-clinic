@@ -27,19 +27,24 @@ export default function PhoneNumberField({
 }: PhoneNumberFieldProps) {
   return (
     <div>
-      <input
-        type="tel"
-        inputMode="numeric"
-        maxLength={10}
-        id={id}
-        name={name}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(sanitizePhoneDigits(e.target.value))}
-        onBlur={onBlur}
-        disabled={disabled}
-        className={getInputClass(error)}
-      />
+      <div className="relative">
+        <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+          +91
+        </span>
+        <input
+          type="tel"
+          inputMode="numeric"
+          maxLength={10}
+          id={id}
+          name={name}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(sanitizePhoneDigits(e.target.value))}
+          onBlur={onBlur}
+          disabled={disabled}
+          className={`${getInputClass(error)} pl-12`}
+        />
+      </div>
       {error && <FieldError message={PHONE_VALIDATION_MESSAGE} />}
     </div>
   );

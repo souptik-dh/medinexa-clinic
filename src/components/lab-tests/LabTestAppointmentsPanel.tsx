@@ -14,6 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useClinicId } from "@/hooks/useClinicId";
 import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
+import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
   Branch,
   LabTestAppointment,
@@ -55,6 +56,7 @@ export default function LabTestAppointmentsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [showBookModal, setShowBookModal] = useState(false);
+  const [receiptsFor, setReceiptsFor] = useState<LabTestAppointment | null>(null);
 
   useEffect(() => {
     if (clinicId) {
@@ -107,6 +109,8 @@ export default function LabTestAppointmentsPanel() {
     a.payment_method === "PAY_AT_CLINIC" &&
     (a.payment_status === "UNPAID" || a.payment_status === "PENDING") &&
     (a.status === "APPROVED" || a.status === "COMPLETED");
+  const canViewReceipts = (a: LabTestAppointment) =>
+    a.status === "APPROVED" || a.status === "COMPLETED";
 
   return (
     <div>
@@ -304,6 +308,14 @@ export default function LabTestAppointmentsPanel() {
                         {canCancel(appt) && can("lab_appointments:cancel") && (
                           <ActionLink href={`/lab-test-appointments/${appt.id}/cancel`} label={t("appointments.cancel")} color="error" />
                         )}
+                        {canViewReceipts(appt) && (
+                          <button
+                            onClick={() => setReceiptsFor(appt)}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                          >
+                            {t("receipts.viewReceipts")}
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -320,6 +332,13 @@ export default function LabTestAppointmentsPanel() {
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId ?? undefined}
         onBooked={load}
+      />
+
+      <ReceiptsModal
+        isOpen={!!receiptsFor}
+        onClose={() => setReceiptsFor(null)}
+        kind="lab-test"
+        appointmentId={receiptsFor?.id ?? null}
       />
     </div>
   );
