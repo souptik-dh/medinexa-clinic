@@ -207,7 +207,7 @@ export default function SignInForm() {
                   {t("auth.phone")} <span className="text-error-500">*</span>
                 </Label>
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                  <span className="pointer-events-none absolute left-4 top-[22px] z-10 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
                     +91
                   </span>
                   <Input
@@ -277,7 +277,7 @@ export default function SignInForm() {
                   {t("auth.phone")} <span className="text-error-500">*</span>
                 </Label>
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-4 top-[22px] -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                  <span className="pointer-events-none absolute left-4 top-[22px] z-10 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
                     +91
                   </span>
                   <Input
