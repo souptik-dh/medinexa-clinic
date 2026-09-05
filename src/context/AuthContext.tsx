@@ -5,6 +5,7 @@ import React, {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -29,35 +30,18 @@ import {
   BranchStaffPermission,
   hasPermission,
 } from "@/lib/permissions";
+import { getSecureItem, setSecureItem } from "@/lib/secureStorage";
 
-function readStoredClinic(): Clinic | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.clinic");
-    return raw ? (JSON.parse(raw) as Clinic) : null;
-  } catch {
-    return null;
-  }
+function readStoredClinic(): Promise<Clinic | null> {
+  return getSecureItem<Clinic>("medinexa.clinic");
 }
 
-function readStoredStaffBranch(): BranchStaffMe["branch"] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.staffBranch");
-    return raw ? (JSON.parse(raw) as BranchStaffMe["branch"]) : null;
-  } catch {
-    return null;
-  }
+function readStoredStaffBranch(): Promise<BranchStaffMe["branch"] | null> {
+  return getSecureItem<BranchStaffMe["branch"]>("medinexa.staffBranch");
 }
 
-function readStoredStaffClinic(): BranchStaffMe["clinic"] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.staffClinic");
-    return raw ? (JSON.parse(raw) as BranchStaffMe["clinic"]) : null;
-  } catch {
-    return null;
-  }
+function readStoredStaffClinic(): Promise<BranchStaffMe["clinic"] | null> {
+  return getSecureItem<BranchStaffMe["clinic"]>("medinexa.staffClinic");
 }
 
 interface AuthContextValue {
@@ -119,21 +103,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // and trigger a hydration mismatch. useLayoutEffect (rather than useEffect)
   // runs this before the browser paints, so protected layouts that gate on
   // `user` skip a blank frame instead of flashing it after paint.
-  /* eslint-disable react-hooks/set-state-in-effect */
   useLayoutEffect(() => {
-    setUser(getStoredUser());
-    setClinic(readStoredClinic());
-    setStaffClinic(readStoredStaffClinic());
-    setStaffBranch(readStoredStaffBranch());
-    setIsAuthReady(true);
+    let cancelled = false;
+    Promise.all([
+      getStoredUser(),
+      readStoredClinic(),
+      readStoredStaffClinic(),
+      readStoredStaffBranch(),
+    ]).then(([storedUser, storedClinic, storedStaffClinic, storedStaffBranch]) => {
+      if (cancelled) return;
+      setUser(storedUser);
+      setClinic(storedClinic);
+      setStaffClinic(storedStaffClinic);
+      setStaffBranch(storedStaffBranch);
+      setIsAuthReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Mirrors `user`'s role so the session-expired handler below (registered
+  // once, not re-registered per render) can read the latest role
+  // synchronously instead of re-reading (now-async) storage.
+  const userRoleRef = useRef<User["role"] | null>(null);
+  useEffect(() => {
+    userRoleRef.current = user?.role ?? null;
+  }, [user]);
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
       // Super admins sign in through their own portal, so send them back
       // there rather than to the clinic/staff login.
-      const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
+      const wasSuperAdmin = userRoleRef.current === "sys_admin";
       setUser(null);
       setClinic(null);
       setStaffClinic(null);
@@ -191,12 +193,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setStaffClinic(me.clinic);
         setStaffBranch(me.branch);
-        window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(me.clinic));
-        window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(me.branch));
+        void setSecureItem("medinexa.staffClinic", me.clinic);
+        void setSecureItem("medinexa.staffBranch", me.branch);
         setUser((prev) => {
           if (!prev) return prev;
           const updated = { ...prev, branch_id: me.branch.id, permissions: me.permissions };
-          setStoredUser(updated);
+          void setStoredUser(updated);
           return updated;
         });
       })
@@ -210,12 +212,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, staffBranch]);
 
   const persist = useCallback(
-    (nextUser: User, nextClinic?: Clinic) => {
+    async (nextUser: User, nextClinic?: Clinic) => {
       setUser(nextUser);
-      setStoredUser(nextUser);
+      await setStoredUser(nextUser);
       if (nextClinic) {
         setClinic(nextClinic);
-        window.localStorage.setItem("medinexa.clinic", JSON.stringify(nextClinic));
+        await setSecureItem("medinexa.clinic", nextClinic);
       }
     },
     []
@@ -262,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await authApi.verifyClinicOwnerOtp({ phone, otp });
       setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-      persist(res.user, res.clinic);
+      await persist(res.user, res.clinic);
       toast.success("Signed in successfully.");
       promptSetPasswordIfNeeded(res.requires_password_setup);
     } catch (err) {
@@ -275,7 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await authApi.loginClinicOwnerWithPassword({ phone, password });
       setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-      persist(res.user, res.clinic);
+      await persist(res.user, res.clinic);
       toast.success("Signed in successfully.");
     } catch (err) {
       if (err instanceof ApiError) throw new Error(err.message);
@@ -323,7 +325,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem("medinexa.clinic");
       window.localStorage.removeItem("medinexa.staffClinic");
       window.localStorage.removeItem("medinexa.staffBranch");
-      persist(nextUser);
+      await persist(nextUser);
       toast.success("Signed in successfully.");
     } catch (err) {
       if (err instanceof ApiError) throw new Error(err.message);
@@ -356,7 +358,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await authApi.registerClinicOwner(input);
       setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-      persist(res.user, res.clinic);
+      await persist(res.user, res.clinic);
       return { clinicId: res.clinic?.id };
     } catch (err) {
       if (err instanceof ApiError) throw new Error(err.message);
@@ -379,7 +381,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setClinic(null);
         setStaffClinic(null);
         setStaffBranch(null);
-        persist(res.user);
+        await persist(res.user);
         toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
@@ -416,18 +418,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(userToStore);
-    setStoredUser(userToStore);
+    await setStoredUser(userToStore);
     window.localStorage.removeItem("medinexa.clinic");
     setClinic(null);
     setStaffClinic(nextStaffClinic);
     setStaffBranch(nextStaffBranch);
     if (nextStaffClinic) {
-      window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(nextStaffClinic));
+      await setSecureItem("medinexa.staffClinic", nextStaffClinic);
     } else {
       window.localStorage.removeItem("medinexa.staffClinic");
     }
     if (nextStaffBranch) {
-      window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(nextStaffBranch));
+      await setSecureItem("medinexa.staffBranch", nextStaffBranch);
     } else {
       window.localStorage.removeItem("medinexa.staffBranch");
     }
@@ -455,7 +457,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // best-effort revocation
       }
     }
-    const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
+    const wasSuperAdmin = userRoleRef.current === "sys_admin";
     clearTokens();
     setStoredUser(null);
     window.localStorage.removeItem("medinexa.clinic");

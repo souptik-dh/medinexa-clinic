@@ -2,6 +2,7 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 import { BranchStaffPermission } from "@/lib/permissions";
+import { getSecureItem, removeSecureItem, setSecureItem } from "@/lib/secureStorage";
 
 const ACCESS_TOKEN_KEY = "medinexa.access_token";
 const REFRESH_TOKEN_KEY = "medinexa.refresh_token";
@@ -138,23 +139,19 @@ export function clearTokens(): void {
   window.localStorage.removeItem(USER_KEY);
 }
 
-export function getStoredUser(): User | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
+export function getStoredUser(): Promise<User | null> {
+  return getSecureItem<User>(USER_KEY);
 }
 
-export function setStoredUser(user: User | null): void {
-  if (typeof window === "undefined") return;
-  if (user) {
-    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    window.localStorage.removeItem(USER_KEY);
+// The null branch removes synchronously (before any await), so callers that
+// are just clearing the session (e.g. notifySessionExpired) can call this
+// without awaiting it.
+export function setStoredUser(user: User | null): Promise<void> {
+  if (user === null) {
+    removeSecureItem(USER_KEY);
+    return Promise.resolve();
   }
+  return setSecureItem(USER_KEY, user);
 }
 
 interface ApiFetchOptions extends RequestInit {
