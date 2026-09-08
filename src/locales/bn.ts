@@ -509,7 +509,11 @@ const bn = {
     "paymentVerified": "অর্থপ্রদান যাচাই করা হয়েছে।",
     "paymentCancelled": "অর্থপ্রদান বাতিল করা হয়েছে।",
     "paymentVerificationFailed": "অর্থপ্রদান যাচাই ব্যর্থ হয়েছে",
-    "failedToInitiatePayment": "অর্থপ্রদান শুরু করতে ব্যর্থ"
+    "failedToInitiatePayment": "অর্থপ্রদান শুরু করতে ব্যর্থ",
+    "offerBadge": "বিশেষ অফার",
+    "offerRegularPrice": "নিয়মিত মূল্য {amount}",
+    "offerValidUntil": "{date} পর্যন্ত বৈধ",
+    "offerMonthsRemaining": "{months} মাস ছাড় বাকি আছে"
   },
   "ledger": {
     "title": "অর্থপ্রদান লেজার",
@@ -608,7 +612,8 @@ const bn = {
     "subscriptionExpiring": "সদস্যতার মেয়াদ শীঘ্রই শেষ হচ্ছে",
     "subscriptionExpired": "সদস্যতার মেয়াদ শেষ হয়েছে",
     "subscriptionActivated": "সদস্যতা সক্রিয় হয়েছে",
-    "subscriptionDeactivated": "সদস্যতা নিষ্ক্রিয় হয়েছে"
+    "subscriptionDeactivated": "সদস্যতা নিষ্ক্রিয় হয়েছে",
+    "subscriptionOffer": "বিশেষ অফার"
   },
   "settings": {
     "title": "সেটিংস",
