@@ -163,6 +163,18 @@ export default function BillingPanel() {
 
   const subscription = detail?.subscription;
   const plan = detail?.current_plan;
+  const activeOffer = detail?.active_offer;
+
+  const priceForMonths = useCallback(
+    (m: number) => {
+      if (!plan) return 0;
+      if (!activeOffer) return plan.monthly_amount * m;
+      const discountedMonths = Math.min(m, activeOffer.months_remaining);
+      const regularMonths = m - discountedMonths;
+      return activeOffer.discounted_amount * discountedMonths + plan.monthly_amount * regularMonths;
+    },
+    [plan, activeOffer]
+  );
   const canRenew = useMemo(() => {
     if (!subscription) return false;
     return ["TRIAL", "ACTIVE", "EXPIRING", "EXPIRED"].includes(subscription.status);
@@ -631,7 +643,7 @@ export default function BillingPanel() {
                 {Array.from({ length: detail?.settings.max_months_per_payment || 12 }, (_, i) => i + 1).map((m) => (
                   <option key={m} value={m}>
                     {m} {m > 1 ? t("billing.monthsUnit") : t("billing.monthUnit")} —{" "}
-                    {plan ? formatCurrency(plan.monthly_amount * m, plan.currency) : ""}
+                    {plan ? formatCurrency(priceForMonths(m), plan.currency) : ""}
                   </option>
                 ))}
               </select>
