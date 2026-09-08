@@ -22,6 +22,7 @@ import {
   PageIcon,
   PieChartIcon,
   PlugInIcon,
+  ShootingStarIcon,
   TableIcon,
   UserCircleIcon,
   UserIcon,
@@ -147,6 +148,11 @@ const superAdminItems: NavItem[] = [
     path: "/super-admin/plans",
   },
   {
+    icon: <ShootingStarIcon />,
+    name: "Subscription Offers",
+    path: "/super-admin/offers",
+  },
+  {
     icon: <ListIcon />,
     name: "Audit Logs",
     path: "/super-admin/audit-logs",
@@ -191,6 +197,7 @@ const NAV_LABEL_KEYS: Record<string, string> = {
   Statistics: "sidebar.statistics",
   Payments: "sidebar.payments",
   Plans: "sidebar.plans",
+  "Subscription Offers": "sidebar.offers",
   "Audit Logs": "sidebar.auditLogs",
   Admins: "sidebar.admins",
 };

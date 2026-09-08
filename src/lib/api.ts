@@ -1470,6 +1470,109 @@ export interface SuperAdminPlanVersion {
   created_at: string;
 }
 
+export interface SuperAdminOfferChannels {
+  sms: boolean;
+  whatsapp: boolean;
+  email: boolean;
+  portal: boolean;
+}
+
+export type OfferChannelPlan = "will_send" | "skipped_no_phone" | "skipped_no_email" | "disabled";
+export type OfferDeliveryStatus = "SENT" | "SKIPPED" | "FAILED";
+
+export interface SuperAdminOffer {
+  id: string;
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency: string;
+  duration_months: number;
+  valid_until: string;
+  channels: SuperAdminOfferChannels;
+  status: "ACTIVE" | "CANCELLED";
+  created_by: string;
+  created_at: string;
+  cancelled_at: string | null;
+  recipient_count?: number;
+  redeemed_count?: number;
+}
+
+export interface SuperAdminOfferRecipient {
+  id: string;
+  clinic_id: string;
+  clinic_name: string;
+  status: "PENDING" | "REDEEMED";
+  months_remaining: number;
+  notify_sms_status: OfferDeliveryStatus | null;
+  notify_whatsapp_status: OfferDeliveryStatus | null;
+  notify_email_status: OfferDeliveryStatus | null;
+  notified_at: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+}
+
+export interface SuperAdminOfferInput {
+  clinic_ids: string[];
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency?: string;
+  duration_months: number;
+  valid_until: string;
+  channels?: Partial<SuperAdminOfferChannels>;
+}
+
+export interface SuperAdminOfferPreviewRecipient {
+  clinic_id: string;
+  clinic_name: string;
+  owner_email: string | null;
+  owner_phone: string | null;
+  rendered_message: string;
+  channels: {
+    sms: OfferChannelPlan;
+    whatsapp: OfferChannelPlan;
+    email: OfferChannelPlan;
+    portal: OfferChannelPlan;
+  };
+}
+
+export interface SuperAdminOfferPreviewResponse {
+  plan_amount: number;
+  currency: string;
+  discounted_amount: number;
+  savings_per_month: number;
+  recipients: SuperAdminOfferPreviewRecipient[];
+}
+
+export interface SuperAdminOfferSendRecipient {
+  clinic_id: string;
+  clinic_name: string;
+  rendered_message?: string;
+  delivery?: {
+    sms: OfferDeliveryStatus;
+    whatsapp: OfferDeliveryStatus;
+    email: OfferDeliveryStatus;
+    portal: OfferDeliveryStatus;
+  };
+  error?: string;
+}
+
+export interface SuperAdminOfferSendResponse {
+  message: string;
+  offer_id: string;
+  recipients: SuperAdminOfferSendRecipient[];
+}
+
+export interface SuperAdminOfferDetailResponse {
+  offer: SuperAdminOffer;
+  recipients: SuperAdminOfferRecipient[];
+}
+
+export interface SuperAdminOfferListParams {
+  limit?: number;
+  cursor?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
@@ -2854,6 +2957,34 @@ export const superAdminApi = {
     result: { expiredTrials: number; expiredSubscriptions: number; expiringNotified: number };
   }> {
     return apiFetch("/super-admin/system/process-subscriptions", { method: "POST" });
+  },
+
+  async offers(params: SuperAdminOfferListParams = {}): Promise<Paginated<SuperAdminOffer>> {
+    return apiFetch<Paginated<SuperAdminOffer>>(
+      `/super-admin/offers${query({ limit: params.limit, cursor: params.cursor })}`
+    );
+  },
+
+  async offer(offerId: string): Promise<SuperAdminOfferDetailResponse> {
+    return apiFetch<SuperAdminOfferDetailResponse>(`/super-admin/offers/${offerId}`);
+  },
+
+  async previewOffer(input: SuperAdminOfferInput): Promise<SuperAdminOfferPreviewResponse> {
+    return apiFetch<SuperAdminOfferPreviewResponse>("/super-admin/offers/preview", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async createOffer(input: SuperAdminOfferInput): Promise<SuperAdminOfferSendResponse> {
+    return apiFetch<SuperAdminOfferSendResponse>("/super-admin/offers", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async cancelOffer(offerId: string): Promise<{ message: string; offer: SuperAdminOffer }> {
+    return apiFetch(`/super-admin/offers/${offerId}/cancel`, { method: "POST" });
   },
 };
 
