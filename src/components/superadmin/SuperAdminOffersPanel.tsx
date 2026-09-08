@@ -81,7 +81,7 @@ export default function SuperAdminOffersPanel() {
 
   // ── offer form ──────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(() => t("superAdminOffers.messagePlaceholder"));
   const [discountedAmount, setDiscountedAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [durationMonths, setDurationMonths] = useState("3");
@@ -140,7 +140,7 @@ export default function SuperAdminOffersPanel() {
       toast.success(res.message || t("superAdminOffers.offerSent"));
       setSelected(new Map());
       setTitle("");
-      setMessage("");
+      setMessage(t("superAdminOffers.messagePlaceholder"));
       setDiscountedAmount("");
       setDurationMonths("3");
       setValidUntil(defaultValidUntil());

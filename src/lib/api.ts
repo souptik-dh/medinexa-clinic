@@ -883,7 +883,8 @@ export type NotificationType =
   | "subscription_expiring"
   | "subscription_expired"
   | "subscription_activated"
-  | "subscription_deactivated";
+  | "subscription_deactivated"
+  | "subscription_offer";
 
 // ---------------------------------------------------------------------------
 // Lab Tests
@@ -1241,6 +1242,17 @@ export interface SubscriptionPlanInfo {
   trial_months: number;
 }
 
+export interface SubscriptionActiveOffer {
+  offer_id: string;
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency: string;
+  duration_months: number;
+  valid_until: string;
+  months_remaining: number;
+}
+
 export interface SubscriptionDetailResponse {
   subscription: Subscription;
   current_plan: SubscriptionPlanInfo;
@@ -1248,6 +1260,7 @@ export interface SubscriptionDetailResponse {
     expiring_warning_days: number;
     max_months_per_payment: number;
   };
+  active_offer: SubscriptionActiveOffer | null;
 }
 
 export interface SubscriptionHistoryEntry {

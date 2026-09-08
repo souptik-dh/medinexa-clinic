@@ -550,6 +550,10 @@ const en = {
     paymentCancelled: "Payment cancelled.",
     paymentVerificationFailed: "Payment verification failed",
     failedToInitiatePayment: "Failed to initiate payment",
+    offerBadge: "Special offer",
+    offerRegularPrice: "Regular price {amount}",
+    offerValidUntil: "Valid until {date}",
+    offerMonthsRemaining: "{months} discounted month(s) left",
   },
 
   // ─── Ledger ─────────────────────────────────────────────────────────
@@ -659,6 +663,7 @@ const en = {
     subscriptionExpired: "Subscription Expired",
     subscriptionActivated: "Subscription Activated",
     subscriptionDeactivated: "Subscription Deactivated",
+    subscriptionOffer: "Special Offer",
   },
 
   // ─── Settings ───────────────────────────────────────────────────────

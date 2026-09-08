@@ -125,6 +125,7 @@ const NOTIFICATION_TYPE_KEYS: Record<string, string> = {
   subscription_expired: "notificationTypes.subscriptionExpired",
   subscription_activated: "notificationTypes.subscriptionActivated",
   subscription_deactivated: "notificationTypes.subscriptionDeactivated",
+  subscription_offer: "notificationTypes.subscriptionOffer",
 };
 
 export const notificationTypeLabel = (type: string, t?: Translator): string => {
@@ -157,6 +158,8 @@ export const notificationLink = (type: NotificationType): string => {
     case "lab_test_cancelled":
     case "lab_test_completed":
       return "/lab-test-appointments";
+    case "subscription_offer":
+      return "/billing";
     default:
       return "/dashboard";
   }

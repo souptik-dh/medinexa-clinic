@@ -313,6 +313,43 @@ export default function BillingPanel() {
         </div>
       </div>
 
+      {/* Active offer */}
+      {!loading && detail?.active_offer && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-success-200 bg-success-50 p-4 text-sm text-success-800 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300">
+          <div>
+            <div className="flex items-center gap-2">
+              <Badge color="success">{t("billing.offerBadge")}</Badge>
+              <span className="font-semibold">{detail.active_offer.title}</span>
+            </div>
+            <p className="mt-1.5">{detail.active_offer.message}</p>
+            <p className="mt-1 text-xs opacity-80">
+              {formatCurrency(detail.active_offer.discounted_amount, detail.active_offer.currency)}
+              {" / "}
+              {t("billing.monthUnit")}
+              {" · "}
+              {t("billing.offerRegularPrice", {
+                amount: formatCurrency(plan?.monthly_amount ?? 0, detail.active_offer.currency),
+              })}
+              {" · "}
+              {t("billing.offerValidUntil", { date: formatDate(detail.active_offer.valid_until) })}
+              {" · "}
+              {t("billing.offerMonthsRemaining", { months: detail.active_offer.months_remaining })}
+            </p>
+          </div>
+          {canRenew && (
+            <button
+              onClick={() => {
+                setPendingPayment(null);
+                setPayOpen(true);
+              }}
+              className="inline-flex h-10 shrink-0 items-center rounded-lg bg-success-500 px-4 text-sm font-medium text-white transition-colors hover:bg-success-600"
+            >
+              {t("billing.payRenew")}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Status card */}
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
