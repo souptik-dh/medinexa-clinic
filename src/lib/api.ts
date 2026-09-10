@@ -951,16 +951,16 @@ export interface BranchLabTest {
   updated_at: string;
 }
 
-// Walk-in/on-behalf booking details for a lab test appointment - mirrors
-// AppointmentPatientDetailsInput. This is a PROPOSED field: the documented
-// POST /lab-test-appointments is patient-only and has no such field today: see
-// LabTestAppointmentCreateInput below for the backend contract this needs.
+// Who the lab test is actually for - required on every POST
+// /lab-test-appointments call, including a patient booking for themself
+// (there is no "book for myself" default/omission). Unlike
+// AppointmentPatientDetailsInput, phone/age/gender are all required here too.
 export interface LabTestAppointmentPatientDetailsInput {
   relationship?: PatientRelationship;
   name: string;
-  phone?: string | null;
-  age?: number | null;
-  gender?: string | null;
+  phone: string;
+  age: number;
+  gender: string;
 }
 
 export interface LabTestAvailabilitySlot {
@@ -1029,6 +1029,8 @@ export interface LabTestAppointment {
   branch?: { id: string; name: string | null };
   clinic?: { id: string; name: string | null };
   patient?: { id: string; name: string | null; email?: string | null; phone?: string | null };
+  // Who the test is actually for - always present, required on every booking.
+  patient_details?: AppointmentPatientDetails;
 }
 
 export interface LabTestAppointmentDetail extends LabTestAppointment {
@@ -3207,11 +3209,9 @@ export interface LabTestAppointmentListParams {
   cursor?: string;
 }
 
-// PROPOSED contract for a staff-facing creation endpoint - does not exist on
-// the backend yet. The only documented POST /lab-test-appointments is
-// patient-only and has no patient_details-style field. This mirrors
-// AppointmentCreateInput so the backend can add a matching
-// POST /clinic/lab-test-appointments once ready.
+// POST /lab-test-appointments accepts patient, branch_staff, and clinic_owner
+// alike - staff/owner may book on behalf of a walk-in patient (only at a
+// branch they're scoped to), a patient account may book at any branch.
 export interface LabTestAppointmentCreateInput {
   branch_id: string;
   branch_lab_test_id: string;
@@ -3224,13 +3224,11 @@ export interface LabTestAppointmentCreateInput {
 }
 
 export const labTestAppointmentsApi = {
-  // PROPOSED — see LabTestAppointmentCreateInput above; POST /clinic/lab-test-appointments
-  // does not exist on the backend yet.
   async create(
     input: LabTestAppointmentCreateInput,
     idempotencyKey: string
   ): Promise<LabTestAppointment> {
-    return apiFetch<LabTestAppointment>("/clinic/lab-test-appointments", {
+    return apiFetch<LabTestAppointment>("/lab-test-appointments", {
       method: "POST",
       body: JSON.stringify(input),
       idempotencyKey,
@@ -3467,20 +3465,14 @@ export const patientLabTestsApi = {
     });
   },
 
-  // Patient books a lab test appointment.
-  async book(input: {
-    branch_id: string;
-    test_id: string;
-    service_mode: LabTestAppointmentServiceMode;
-    preferred_date: string;
-    preferred_slot: string | null;
-    patient_name: string;
-    patient_phone: string;
-    patient_email?: string;
-    address?: string | null;
-    prescription_url?: string | null;
-    notes?: string | null;
-  }, idempotencyKey: string): Promise<LabTestAppointment> {
+  // Patient books a lab test appointment - same contract and endpoint as
+  // labTestAppointmentsApi.create (POST /lab-test-appointments accepts
+  // patient, branch_staff, and clinic_owner alike). patient_details is
+  // required even when booking for oneself (relationship: "self").
+  async book(
+    input: LabTestAppointmentCreateInput,
+    idempotencyKey: string
+  ): Promise<LabTestAppointment> {
     return apiFetch<LabTestAppointment>("/lab-test-appointments", {
       method: "POST",
       body: JSON.stringify(input),

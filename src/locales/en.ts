@@ -1589,6 +1589,10 @@ const en = {
   bookLabTestModal: {
     noLabTestsConfigured: "No lab tests are configured for this branch yet.",
     prescriptionRequiredNotSupported: "This test requires a prescription on file, which isn't supported by this booking form yet.",
+    pleaseEnterPatientPhone: "Please enter the patient's phone number.",
+    pleaseEnterPatientAge: "Please enter the patient's age.",
+    pleaseSelectPatientGender: "Please select the patient's gender.",
+    selectGender: "Select gender",
     labTestBookedFor: "Lab test booked for {name} at {time}",
     unableToBook: "Unable to book the lab test appointment.",
     title: "Book a lab test for a patient",

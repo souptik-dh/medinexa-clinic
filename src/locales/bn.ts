@@ -1424,6 +1424,10 @@ const bn = {
   "bookLabTestModal": {
     "noLabTestsConfigured": "এই শাখার জন্য এখনো কোনো ল্যাব পরীক্ষা সেটআপ করা হয়নি।",
     "prescriptionRequiredNotSupported": "এই পরীক্ষাের জন্য একটি চিকিৎসার পরামর্শপত্র প্রয়োজন, যা এই বুকিং ফর্মে এখনো সমর্থিত নয়।",
+    "pleaseEnterPatientPhone": "রোগীর ফোন নম্বর লিখুন।",
+    "pleaseEnterPatientAge": "রোগীর বয়স লিখুন।",
+    "pleaseSelectPatientGender": "রোগীর লিঙ্গ নির্বাচন করুন।",
+    "selectGender": "লিঙ্গ নির্বাচন করুন",
     "labTestBookedFor": "{name}-এর জন্য {time}-এ ল্যাব পরীক্ষা বুকিং সম্পন্ন হয়েছে",
     "unableToBook": "ল্যাব পরীক্ষার অ্যাপয়েন্টমেন্ট বুক করা যায়নি।",
     "title": "একজন রোগীর জন্য ল্যাব পরীক্ষা বুকিং করুন",
