@@ -129,14 +129,29 @@ export default function LabTestAppointmentDetailPage() {
               </div>
             )}
 
+            {/* `patient` is the person the test is for; `booked_by` is the account
+                that created the booking — the API reports them separately. */}
             <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
               <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Patient</h6>
               <dl className="mt-2 space-y-2">
-                <DetailRow label="Name" value={detail.patient.name ?? "—"} />
-                <DetailRow label="Email" value={detail.patient.email ?? "—"} />
-                <DetailRow label="Phone" value={detail.patient.phone ?? "—"} />
+                <DetailRow label="Name" value={detail.patient?.name ?? detail.patient_details?.name ?? "—"} />
+                <DetailRow
+                  label="Mobile"
+                  value={detail.patient?.mobile ?? detail.patient_details?.phone ?? "—"}
+                />
               </dl>
             </div>
+
+            {detail.booked_by && (
+              <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Booked by</h6>
+                <dl className="mt-2 space-y-2">
+                  <DetailRow label="Name" value={detail.booked_by.name ?? "—"} />
+                  <DetailRow label="Email" value={detail.booked_by.email ?? "—"} />
+                  <DetailRow label="Phone" value={detail.booked_by.phone ?? "—"} />
+                </dl>
+              </div>
+            )}
 
             {detail.prescriptions && detail.prescriptions.length > 0 && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">

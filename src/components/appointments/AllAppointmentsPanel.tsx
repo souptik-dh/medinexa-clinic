@@ -861,25 +861,40 @@ export default function AllAppointmentsPanel() {
               <DetailRow label={t("dashboard.doctor")} value={detail.doctor_name ?? activeDoc?.doctor_name ?? "—"} />
               <DetailRow label={t("appointments.branch")} value={detail.branch_name ?? activeDoc?.branch_name ?? "—"} />
             </dl>
-            {detail.patient_details && detail.patient_details.relationship !== "self" && (
+            {/* `patient` is the person the visit is for; `booked_by` is the account
+                that created the booking — the API reports them separately. */}
+            <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">{t("appointments.patient")}</h6>
+                {detail.patient_details && detail.patient_details.relationship !== "self" && (
+                  <Badge size="sm" color="light">
+                    {relationshipLabel(detail.patient_details.relationship, t)}
+                  </Badge>
+                )}
+              </div>
+              <dl className="mt-2 space-y-2">
+                <DetailRow
+                  label={t("appointments.name")}
+                  value={detail.patient?.name ?? detail.patient_details?.name ?? "—"}
+                />
+                <DetailRow
+                  label={t("appointments.phone")}
+                  value={detail.patient?.mobile ?? detail.patient_details?.phone ?? "—"}
+                />
+              </dl>
+            </div>
+            {detail.booked_by && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
-                <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">{t("appointments.visitingPatient")}</h6>
+                <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                  {t("appointments.bookedBy")}
+                </h6>
                 <dl className="mt-2 space-y-2">
-                  <DetailRow label={t("appointments.name")} value={detail.patient_details.name} />
-                  <DetailRow label={t("appointments.phone")} value={detail.patient_details.phone ?? "—"} />
+                  <DetailRow label={t("appointments.name")} value={detail.booked_by.name ?? "—"} />
+                  <DetailRow label={t("appointments.email")} value={detail.booked_by.email ?? "—"} />
+                  <DetailRow label={t("appointments.phone")} value={detail.booked_by.phone ?? "—"} />
                 </dl>
               </div>
             )}
-            <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
-              <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
-                {detail.patient_details && detail.patient_details.relationship !== "self" ? t("appointments.bookedBy") : t("appointments.patient")}
-              </h6>
-              <dl className="mt-2 space-y-2">
-                <DetailRow label={t("appointments.name")} value={detail.patient.name} />
-                <DetailRow label={t("appointments.email")} value={detail.patient.email} />
-                <DetailRow label={t("appointments.phone")} value={detail.patient.phone ?? "—"} />
-              </dl>
-            </div>
           </div>
         ) : null}
         <div className="mt-6 flex justify-end">
