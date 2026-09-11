@@ -30,6 +30,11 @@ export const BRANCH_STAFF_PERMISSIONS = [
   "lab_payments:view",
   "lab_payments:collect",
   "lab_prescriptions:view",
+  "patient_documents:upload",
+  "patient_documents:view",
+  "patient_documents:delete",
+  "patient_documents:email",
+  "patient_documents:print",
 ] as const;
 
 export type BranchStaffPermission = (typeof BRANCH_STAFF_PERMISSIONS)[number];
@@ -234,6 +239,36 @@ export const BRANCH_STAFF_PERMISSION_META: {
     label: "View lab prescriptions",
     description: "View prescriptions uploaded for lab test appointments",
   },
+  {
+    permission: "patient_documents:upload",
+    module: "patients",
+    label: "Upload patient documents",
+    description: "Upload lab reports, prescriptions, and other documents on behalf of a patient",
+  },
+  {
+    permission: "patient_documents:view",
+    module: "patients",
+    label: "View patient documents",
+    description: "View clinic-issued lab reports and prescriptions for patients",
+  },
+  {
+    permission: "patient_documents:delete",
+    module: "patients",
+    label: "Delete patient documents",
+    description: "Delete clinic-issued patient documents",
+  },
+  {
+    permission: "patient_documents:email",
+    module: "patients",
+    label: "Email patient documents",
+    description: "Send patient documents to a patient by email",
+  },
+  {
+    permission: "patient_documents:print",
+    module: "patients",
+    label: "Print patient documents",
+    description: "Print patient documents from the clinic app",
+  },
 ];
 
 export const BRANCH_STAFF_PERMISSION_MODULES = [
@@ -418,4 +453,34 @@ export function canViewLabPrescriptions(
   permissions: readonly BranchStaffPermission[] | undefined
 ): boolean {
   return hasPermission(permissions, "lab_prescriptions:view");
+}
+
+export function canUploadPatientDocuments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patient_documents:upload");
+}
+
+export function canViewPatientDocuments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patient_documents:view");
+}
+
+export function canDeletePatientDocuments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patient_documents:delete");
+}
+
+export function canEmailPatientDocuments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patient_documents:email");
+}
+
+export function canPrintPatientDocuments(
+  permissions: readonly BranchStaffPermission[] | undefined
+): boolean {
+  return hasPermission(permissions, "patient_documents:print");
 }

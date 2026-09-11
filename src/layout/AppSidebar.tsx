@@ -67,7 +67,11 @@ const navItems: NavItem[] = [
   {
     icon: <PageIcon />,
     name: "Patients",
-    path: "/patients",
+    subItems: [
+      { name: "All Patients", path: "/patients" },
+      { name: "Doctor", path: "/patients/doctor" },
+      { name: "Lab", path: "/patients/lab" },
+    ],
   },
   {
     icon: <UserIcon />,
@@ -180,6 +184,9 @@ const NAV_LABEL_KEYS: Record<string, string> = {
   "Doctor Appointment": "sidebar.doctorAppointment",
   "Lab Test Appointments": "sidebar.labTestAppointments",
   Patients: "sidebar.patients",
+  "All Patients": "sidebar.allPatients",
+  Doctor: "sidebar.patientsDoctor",
+  Lab: "sidebar.patientsLab",
   Doctors: "sidebar.doctors",
   Staff: "sidebar.staff",
   Reports: "sidebar.reports",
