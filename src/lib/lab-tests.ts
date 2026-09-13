@@ -99,6 +99,7 @@ export function serializeLabTestAppointment(r: Row) {
     payment_status: r.payment_status,
     prescription_required: Boolean(r.prescription_required),
     prescription_id: r.prescription_id ?? null,
+    referring_doctor_name: r.referring_doctor_name ?? null,
     patient_notes: r.patient_notes ?? null,
     clinic_notes: r.clinic_notes ?? null,
     precautions: r.precautions ? (typeof r.precautions === "string" ? JSON.parse(r.precautions) : r.precautions) : null,
