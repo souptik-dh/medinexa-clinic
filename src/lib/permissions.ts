@@ -51,6 +51,7 @@ export const DEFAULT_BRANCH_STAFF_PERMISSIONS: readonly BranchStaffPermission[] 
   "appointments:payment",
   "appointments:complete",
   "appointments:cancel",
+  "patients:view",
 ];
 
 export function isBranchStaffPermission(v: unknown): v is BranchStaffPermission {

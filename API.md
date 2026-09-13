@@ -697,7 +697,7 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
     "email": "staff@clinic.com",
     "role": "branch_staff",
     "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
-    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"]
   }
 }
 ```
@@ -731,7 +731,7 @@ with phone + password, no OTP round-trip. Returns the same `user` shape as
     "email": "staff@clinic.com",
     "role": "branch_staff",
     "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
-    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"]
   }
 }
 ```
@@ -1673,7 +1673,7 @@ Permission keys:
 | `reviews:view` | `GET /branches/:id/reviews` |
 | `branch:settings` | `PATCH /branches/:id/schedule`, `POST`/`DELETE` on `/branches/:id/schedule/closures` |
 
-New staff default to `["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]`. The `clinic_owner` is always allowed and is unaffected. A `branch_staff` calling a gated action without the required permission gets `403 PERMISSION_DENIED`.
+New staff default to `["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"]`. The `clinic_owner` is always allowed and is unaffected. A `branch_staff` calling a gated action without the required permission gets `403 PERMISSION_DENIED`.
 
 ### GET /branch-staff/me
 
@@ -1694,7 +1694,7 @@ Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member i
     "phone": "+919812345678",
     "timezone": "Asia/Kolkata"
   },
-  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"]
 }
 ```
 
@@ -1716,7 +1716,7 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch only).
       "email": "staff@clinic.com",
       "phone": "+919876543212",
       "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-      "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"],
+      "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"],
       "created_at": "2026-08-03T10:00:00Z"
     }
   ]
@@ -1742,7 +1742,7 @@ log in with this phone number using OTP." (staff sign in via phone + OTP).
 |---|---|---|
 | `name` | string | required |
 | `phone` | string | required, normalized to `+91XXXXXXXXXX`; the staff member's login identifier |
-| `permissions` | string[]? | optional, any subset of the keys above; defaults to the four appointment permissions |
+| `permissions` | string[]? | optional, any subset of the keys above; defaults to the four appointment permissions plus `patients:view` |
 
 **Response `201`**
 
@@ -1753,7 +1753,7 @@ log in with this phone number using OTP." (staff sign in via phone + OTP).
   "name": "Rohit Sharma",
   "phone": "+919876543212",
   "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
-  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"],
+  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"],
   "created_at": "2026-08-09T10:00:00.000Z"
 }
 ```
@@ -1770,7 +1770,7 @@ Auth: `clinic_owner` (owns branch) or the `branch_staff` viewing their own row.
 {
   "staff_id": "1a2b3c4d-5e6f-7890-abcd-ef1234567890",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
-  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+  "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"]
 }
 ```
 
