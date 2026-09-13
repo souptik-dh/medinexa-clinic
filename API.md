@@ -3387,6 +3387,7 @@ Clinics can additionally pre-register named categories with a display **badge co
   "payment_status": "UNPAID",
   "prescription_required": false,
   "prescription_id": null,
+  "referring_doctor_name": null,
   "patient_notes": "Fasting since last night",
   "clinic_notes": null,
   "precautions": ["Remove metallic jewelry"],
@@ -3515,6 +3516,7 @@ On success, an in-app `lab_test_booked` notification is created for every branch
   "appointment_date": "2026-08-25",
   "start_time": "09:00",
   "prescription_id": null,
+  "referring_doctor_name": "Dr. Sharma",
   "patient_notes": "Fasting since last night",
   "payment_method": "PAY_AT_CLINIC",
   "patient_details": {
@@ -3535,6 +3537,7 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `appointment_date` | string | required, `YYYY-MM-DD`, not in the past |
 | `start_time` | string | required, `HH:MM`, must be an available slot |
 | `prescription_id` | string (UUID)? | required when `prescription_required` is `true` on the branch lab test |
+| `referring_doctor_name` | string? | optional, 1–255 chars — free-text name of the doctor who referred the test, independent of any doctor account in the system |
 | `patient_notes` | string? | max 1000 |
 | `payment_method` | string | `PAY_AT_CLINIC` or `ONLINE`, defaults to `PAY_AT_CLINIC` |
 | `home_address` | string? | required when `service_mode` is `HOME` |

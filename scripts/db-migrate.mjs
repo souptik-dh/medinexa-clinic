@@ -1434,6 +1434,18 @@ try {
     console.log('Applied migration: lab_test_appointment_patients.patient_id/booking_source/booked_by');
   }
 
+  const [ltaReferringDoctorCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointments' AND COLUMN_NAME = 'referring_doctor_name'`,
+  );
+  if (Number(ltaReferringDoctorCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE lab_test_appointments
+         ADD COLUMN referring_doctor_name VARCHAR(255) NULL AFTER prescription_id`,
+    );
+    console.log('Applied migration: lab_test_appointments.referring_doctor_name');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

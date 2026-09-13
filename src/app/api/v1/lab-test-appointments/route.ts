@@ -48,6 +48,7 @@ const createSchema = z.object({
   appointment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start_time: z.string().regex(/^\d{2}:\d{2}$/),
   prescription_id: z.string().uuid().optional(),
+  referring_doctor_name: z.string().trim().min(1).max(255).optional(),
   patient_notes: z.string().max(1000).optional(),
   payment_method: z.enum(["PAY_AT_CLINIC", "ONLINE"]).default("PAY_AT_CLINIC"),
   home_address: z.string().max(1000).optional(),
@@ -172,10 +173,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           id, appointment_number, patient_id, clinic_id, branch_id, branch_lab_test_id, test_id,
           service_mode, appointment_date, start_time, end_time, duration_minutes,
           price, currency, payment_method, payment_status,
-          prescription_required, prescription_id,
+          prescription_required, prescription_id, referring_doctor_name,
           patient_notes, home_address, home_lat, home_lng, home_contact_phone, home_notes,
           status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')`,
         [
           appointmentId,
           appointmentNumber,
@@ -195,6 +196,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           body.payment_method === "ONLINE" ? "PENDING" : "UNPAID",
           blt.prescription_required ? 1 : 0,
           body.prescription_id ?? null,
+          body.referring_doctor_name ?? null,
           body.patient_notes ?? null,
           body.home_address ?? null,
           body.home_lat ?? null,

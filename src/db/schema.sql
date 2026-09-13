@@ -790,6 +790,7 @@ CREATE TABLE IF NOT EXISTS lab_test_appointments (
   payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID',
   prescription_required TINYINT(1) NOT NULL DEFAULT 0,
   prescription_id CHAR(36) NULL,
+  referring_doctor_name VARCHAR(255) NULL,
   home_address TEXT NULL,
   home_lat DECIMAL(10,7) NULL,
   home_lng DECIMAL(10,7) NULL,
