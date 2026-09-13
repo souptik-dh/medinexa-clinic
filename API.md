@@ -704,12 +704,48 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
 
 **Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `403 ACCOUNT_DISABLED`.
 
+### POST /auth/branch-staff/login-password
+
+Public. Rate limited 20/min per IP. **Alternative to the OTP flow above** — for a
+staff member who has already set a password via [`POST /auth/set-password`](#post-authset-password)
+(requires an authenticated session first, e.g. from an OTP login). Logs in directly
+with phone + password, no OTP round-trip. Returns the same `user` shape as
+`verify-otp` (including `branch_id` and `permissions`).
+
+**Request body**
+
+```json
+{ "phone": "+919876543212", "password": "password123" }
+```
+
+**Response `200`**
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "user": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Rohit Sharma",
+    "phone": "+919876543212",
+    "email": "staff@clinic.com",
+    "role": "branch_staff",
+    "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+  }
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS` (wrong phone/password, including a staff account with no password set yet — use the OTP flow instead), `401 ACCOUNT_DISABLED`.
+
 ### POST /auth/forgot-password
 
 Public. Rate limited 20/min per IP. **Password reset, step 1.** Takes a registered **phone
 number**. If an **active** account with a password exists for it, a one-time code is sent
 (purpose `phone_verification`, SMS + email). Always returns the same message (does not
-reveal whether the phone exists). Branch-staff accounts have no password and are skipped.
+reveal whether the phone exists). Works for any role, including `branch_staff` — but only
+once that account has a password set via `POST /auth/set-password`; accounts with no
+password yet are silently skipped (same generic response either way).
 
 **Request body**
 
@@ -1678,6 +1714,7 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch only).
       "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
       "name": "Rohit Sharma",
       "email": "staff@clinic.com",
+      "phone": "+919876543212",
       "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
       "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"],
       "created_at": "2026-08-03T10:00:00Z"

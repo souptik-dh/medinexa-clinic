@@ -20,6 +20,7 @@ function serializeStaff(r: Row) {
     branch_id: r.branch_id,
     name: r.name,
     email: r.email,
+    phone: r.phone,
     added_by: r.added_by,
     permissions: parsePermissions(r.permissions_json),
     created_at: r.created_at,
@@ -42,7 +43,7 @@ export const GET = api(undefined, async (ctx) => {
   }
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT bs.id, bs.branch_id, u.name, u.email, bs.added_by, bs.permissions_json, bs.created_at
+    `SELECT bs.id, bs.branch_id, u.name, u.email, u.phone, bs.added_by, bs.permissions_json, bs.created_at
        FROM branch_staff bs
        JOIN users u ON u.id = bs.user_id
       WHERE bs.branch_id = ? ORDER BY bs.created_at ASC`,
