@@ -9,21 +9,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ApiError, Patient, patientsApi } from "@/lib/api";
 import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Patient, patientsApi } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
-import { useAuth } from "@/context/AuthContext";
-import { canViewPatientDocuments } from "@/lib/permissions";
 import PatientDocumentsModal from "@/components/patients/PatientDocumentsModal";
 
 const PAGE_SIZE = 20;
 
-export default function PatientsPanel() {
+// Patients seen through doctor appointments. The backend dedupes by the actual
+// patient's identity (GET /branches/{id}/patients) — this panel used to derive its
+// rows from the raw appointments list, which showed one row per appointment and had
+// no access to the real patient record (so no Registered/Walk-in indicator, no visit
+// count, and reception-made bookings were attributed to the staff account that
+// created them).
+export default function DoctorPatientsPanel() {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
-  const canViewDocuments = isOwner || canViewPatientDocuments(user?.permissions);
   const [branch, setBranch] = useState<BranchSelectValue | null>(null);
   const [items, setItems] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
@@ -46,7 +48,7 @@ export default function PatientsPanel() {
       else setLoading(true);
       setError(null);
       try {
-        const res = await patientsApi.listAllByBranch(b.id, {
+        const res = await patientsApi.listByBranch(b.id, {
           search: search || undefined,
           type: type || undefined,
           limit: PAGE_SIZE,
@@ -57,7 +59,7 @@ export default function PatientsPanel() {
         setOffset(nextOffset);
       } catch (err) {
         if (!append) setItems([]);
-        setError(err instanceof ApiError ? err.message : t("patients.failedToLoad"));
+        setError(getErrorMessage(err, t("patients.failedToLoad")));
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -71,10 +73,6 @@ export default function PatientsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch, search, type]);
 
-  const onBranchChange = (b: BranchSelectValue | null) => {
-    setBranch(b);
-  };
-
   const loadMore = () => {
     if (!branch) return;
     load(branch, offset + PAGE_SIZE, true);
@@ -84,9 +82,9 @@ export default function PatientsPanel() {
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          {t("patients.title")}
+          {t("patients.doctorPatientsTitle")}
         </h3>
-        <BranchSelect value={branch?.id ?? ""} onChange={onBranchChange} />
+        <BranchSelect value={branch?.id ?? ""} onChange={setBranch} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-64">
@@ -129,7 +127,7 @@ export default function PatientsPanel() {
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            {t("patients.title")}
+            {t("patients.doctorPatientsTitle")}
             {branch && (
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                 — {branch.name}
@@ -143,10 +141,10 @@ export default function PatientsPanel() {
             {t("patients.selectBranchHint")}
           </p>
         ) : loading ? (
-          <TableSkeleton rows={6} cols={7} />
+          <TableSkeleton rows={6} cols={8} />
         ) : items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            {t("patients.noPatientsForBranch")}
+            {t("patients.noDoctorPatientsMatch")}
           </p>
         ) : (
           <>
@@ -175,11 +173,9 @@ export default function PatientsPanel() {
                     <TableCell isHeader className="py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                       {t("patients.lastVisit")}
                     </TableCell>
-                    {canViewDocuments && (
-                      <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
-                        {t("patientDocuments.title")}
-                      </TableCell>
-                    )}
+                    <TableCell isHeader className="py-3 font-medium text-gray-500 text-end text-theme-xs dark:text-gray-400">
+                      {t("patientDocuments.title")}
+                    </TableCell>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -226,16 +222,14 @@ export default function PatientsPanel() {
                       <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
                         {formatDate(patient.last_visit_date)}
                       </TableCell>
-                      {canViewDocuments && (
-                        <TableCell className="py-3 text-end">
-                          <button
-                            onClick={() => setDocsPatient(patient)}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
-                          >
-                            {t("patientDocuments.viewDocuments")}
-                          </button>
-                        </TableCell>
-                      )}
+                      <TableCell className="py-3 text-end">
+                        <button
+                          onClick={() => setDocsPatient(patient)}
+                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                        >
+                          {t("patientDocuments.viewDocuments")}
+                        </button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

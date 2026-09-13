@@ -291,6 +291,18 @@ export default function BookLabTestModal({
       setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
       return;
     }
+    if (!phone.trim()) {
+      setFormError(t("bookLabTestModal.pleaseEnterPatientPhone"));
+      return;
+    }
+    if (age.trim() === "" || Number.isNaN(Number(age))) {
+      setFormError(t("bookLabTestModal.pleaseEnterPatientAge"));
+      return;
+    }
+    if (!gender) {
+      setFormError(t("bookLabTestModal.pleaseSelectPatientGender"));
+      return;
+    }
     if (busy) return;
     setBusy(true);
     setFormError(null);
@@ -307,9 +319,9 @@ export default function BookLabTestModal({
           patient_details: {
             relationship,
             name: patientName.trim(),
-            phone: phone.trim() || null,
-            age: age.trim() === "" ? null : Number(age),
-            gender: gender || null,
+            phone: phone.trim(),
+            age: Number(age),
+            gender,
           },
         },
         crypto.randomUUID()
@@ -526,19 +538,18 @@ export default function BookLabTestModal({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.phone")}
+                {t("appointments.phone")} <span className="text-error-500">*</span>
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.age")}
+                {t("appointments.age")} <span className="text-error-500">*</span>
               </label>
               <input
                 type="number"
@@ -546,23 +557,24 @@ export default function BookLabTestModal({
                 max={150}
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                placeholder={t("common.optional")}
                 className={inputClass}
               />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.genderLabel")}
+                {t("appointments.genderLabel")} <span className="text-error-500">*</span>
               </label>
               <select
                 value={gender}
                 onChange={(e) => setGender(e.target.value)}
                 className={inputClass}
               >
-                <option value="">{t("bookAppointmentModal.preferNotToSay")}</option>
-                {GENDERS.filter((g) => g !== "prefer_not_to_say").map((g) => (
+                <option value="">{t("bookLabTestModal.selectGender")}</option>
+                {GENDERS.map((g) => (
                   <option key={g} value={g}>
-                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                    {g === "prefer_not_to_say"
+                      ? t("bookAppointmentModal.preferNotToSay")
+                      : g.charAt(0).toUpperCase() + g.slice(1)}
                   </option>
                 ))}
               </select>

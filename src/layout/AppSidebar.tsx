@@ -22,6 +22,7 @@ import {
   PageIcon,
   PieChartIcon,
   PlugInIcon,
+  ShootingStarIcon,
   TableIcon,
   UserCircleIcon,
   UserIcon,
@@ -66,7 +67,11 @@ const navItems: NavItem[] = [
   {
     icon: <PageIcon />,
     name: "Patients",
-    path: "/patients",
+    subItems: [
+      { name: "All Patients", path: "/patients" },
+      { name: "Doctor", path: "/patients/doctor" },
+      { name: "Lab", path: "/patients/lab" },
+    ],
   },
   {
     icon: <UserIcon />,
@@ -147,6 +152,11 @@ const superAdminItems: NavItem[] = [
     path: "/super-admin/plans",
   },
   {
+    icon: <ShootingStarIcon />,
+    name: "Subscription Offers",
+    path: "/super-admin/offers",
+  },
+  {
     icon: <ListIcon />,
     name: "Audit Logs",
     path: "/super-admin/audit-logs",
@@ -174,6 +184,9 @@ const NAV_LABEL_KEYS: Record<string, string> = {
   "Doctor Appointment": "sidebar.doctorAppointment",
   "Lab Test Appointments": "sidebar.labTestAppointments",
   Patients: "sidebar.patients",
+  "All Patients": "sidebar.allPatients",
+  Doctor: "sidebar.patientsDoctor",
+  Lab: "sidebar.patientsLab",
   Doctors: "sidebar.doctors",
   Staff: "sidebar.staff",
   Reports: "sidebar.reports",
@@ -191,6 +204,7 @@ const NAV_LABEL_KEYS: Record<string, string> = {
   Statistics: "sidebar.statistics",
   Payments: "sidebar.payments",
   Plans: "sidebar.plans",
+  "Subscription Offers": "sidebar.offers",
   "Audit Logs": "sidebar.auditLogs",
   Admins: "sidebar.admins",
 };
@@ -551,10 +565,10 @@ const AppSidebar: React.FC = () => {
             </>
           ) : (
             <Image
-              src="/icon.png"
+              src="/images/app_icon.png"
               alt="Logo"
-              width={32}
-              height={32}
+              width={40}
+              height={40}
             />
           )}
         </Link>

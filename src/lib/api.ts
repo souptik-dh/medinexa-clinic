@@ -2,6 +2,7 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 import { BranchStaffPermission } from "@/lib/permissions";
+import { getSecureItem, removeSecureItem, setSecureItem } from "@/lib/secureStorage";
 
 const ACCESS_TOKEN_KEY = "medinexa.access_token";
 const REFRESH_TOKEN_KEY = "medinexa.refresh_token";
@@ -34,9 +35,13 @@ export interface AuthTokens {
 export interface ClinicOwnerAuthResponse extends AuthTokens {
   user: User;
   clinic?: Clinic;
+  // True when this account has never set a password - OTP remains the only
+  // login method until the owner sets one via authApi.setPassword.
+  requires_password_setup?: boolean;
 }
 
 export interface DoctorInviteAcceptResponse extends AuthTokens {
+  user?: User;
   doctor: {
     id: string;
     name: string;
@@ -64,15 +69,10 @@ export interface DoctorAssignmentSummary {
   end_date: string | null;
 }
 
-// POST /auth/clinic-owner/register leaves the account `pending` until the
-// emailed verification link is followed, so unlike login it returns null
-// tokens and a message instead of a usable session.
-export interface ClinicOwnerRegisterResponse {
+// POST /auth/clinic-owner/register now returns tokens immediately (phone-verified).
+export interface ClinicOwnerRegisterResponse extends AuthTokens {
   user: User;
-  access_token: string | null;
-  refresh_token: string | null;
   clinic?: Clinic;
-  message?: string;
 }
 
 // POST /auth/patient/register returns tokens immediately (no email
@@ -139,23 +139,19 @@ export function clearTokens(): void {
   window.localStorage.removeItem(USER_KEY);
 }
 
-export function getStoredUser(): User | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
+export function getStoredUser(): Promise<User | null> {
+  return getSecureItem<User>(USER_KEY);
 }
 
-export function setStoredUser(user: User | null): void {
-  if (typeof window === "undefined") return;
-  if (user) {
-    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    window.localStorage.removeItem(USER_KEY);
+// The null branch removes synchronously (before any await), so callers that
+// are just clearing the session (e.g. notifySessionExpired) can call this
+// without awaiting it.
+export function setStoredUser(user: User | null): Promise<void> {
+  if (user === null) {
+    removeSecureItem(USER_KEY);
+    return Promise.resolve();
   }
+  return setSecureItem(USER_KEY, user);
 }
 
 interface ApiFetchOptions extends RequestInit {
@@ -545,7 +541,7 @@ export interface StaffMember {
   id: string;
   branch_id: string;
   name: string;
-  email: string;
+  phone: string;
   added_by: string;
   permissions?: string[];
   created_at: string;
@@ -788,17 +784,35 @@ export type AppointmentStatus =
 
 export type PatientRelationship = "self" | "spouse" | "child" | "parent" | "sibling" | "friend" | "other";
 
+// How the booking was created: from the patient app, or by clinic reception staff
+// booking on someone's behalf. `null` on legacy rows that predate the field.
+export type BookingSource = "PATIENT_APP" | "RECEPTION";
+
+// The account that created the booking — the patient themselves (PATIENT_APP) or the
+// reception/staff account that booked on their behalf (RECEPTION). This is what the
+// `patient` field used to mean before the API separated the two concepts.
+// `name`/`email`/`phone` are only joined in on responses that need them (detail views
+// and the lab list); list rows may carry just `id`.
+export interface BookingAccount {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
 // Who the visit is actually for — a patient account can book on behalf of a family
-// member/friend, so this can differ from the booking account (Appointment.patient_id /
-// AppointmentDetail.patient, which is always the account holder). Present on every
-// appointment, list and detail alike; defaults to relationship "self" when the patient
-// app didn't specify one.
+// member/friend, and reception books on behalf of walk-ins, so this can differ from
+// the account that created the booking (`booked_by`). Present on every appointment,
+// list and detail alike; defaults to relationship "self" when the patient app didn't
+// specify one. `patient_id` is the resolved patient record for that person — null for
+// legacy/unresolved rows — and is response-only (never sent when creating a booking).
 export interface AppointmentPatientDetails {
   relationship: PatientRelationship;
   name: string;
   phone: string | null;
   age: number | null;
   gender: string | null;
+  patient_id?: string | null;
 }
 
 export interface Appointment {
@@ -819,20 +833,27 @@ export interface Appointment {
   doctor_name?: string;
   branch_name?: string;
   patient_details?: AppointmentPatientDetails;
+  // The four fields below are emitted together with patient_details (they are all
+  // derived from the same joined appointment_patients row), so they're absent only on
+  // rows that have no such row at all.
+  relationship?: PatientRelationship;
+  booking_source?: BookingSource | null;
+  // The actual person the visit is for — NOT the account that booked it (see booked_by).
+  patient?: AppointmentPatientSummary;
+  booked_by?: BookingAccount;
 }
 
+// The actual patient a booking is for. `id` resolves to a real patient record once
+// known, and is null for legacy/unresolved rows.
 export interface AppointmentPatientSummary {
-  id: string;
+  id: string | null;
   name: string;
-  email: string;
-  phone: string | null;
-  address: string | null;
-  photo_url: string | null;
+  mobile: string | null;
 }
 
-export interface AppointmentDetail extends Appointment {
-  patient: AppointmentPatientSummary;
-}
+// GET /appointments/{id} returns the same serialized shape as a list row — it used to
+// add a fuller `patient` account summary, but the account now lives on `booked_by`.
+export type AppointmentDetail = Appointment;
 
 // Walk-in/on-behalf booking details — mirrors POST /appointments'
 // patient_details. `name` is required by the API whenever patient_details is
@@ -887,7 +908,8 @@ export type NotificationType =
   | "subscription_expiring"
   | "subscription_expired"
   | "subscription_activated"
-  | "subscription_deactivated";
+  | "subscription_deactivated"
+  | "subscription_offer";
 
 // ---------------------------------------------------------------------------
 // Lab Tests
@@ -954,16 +976,16 @@ export interface BranchLabTest {
   updated_at: string;
 }
 
-// Walk-in/on-behalf booking details for a lab test appointment - mirrors
-// AppointmentPatientDetailsInput. This is a PROPOSED field: the documented
-// POST /lab-test-appointments is patient-only and has no such field today: see
-// LabTestAppointmentCreateInput below for the backend contract this needs.
+// Who the lab test is actually for - required on every POST
+// /lab-test-appointments call, including a patient booking for themself
+// (there is no "book for myself" default/omission). Unlike
+// AppointmentPatientDetailsInput, phone/age/gender are all required here too.
 export interface LabTestAppointmentPatientDetailsInput {
   relationship?: PatientRelationship;
   name: string;
-  phone?: string | null;
-  age?: number | null;
-  gender?: string | null;
+  phone: string;
+  age: number;
+  gender: string;
 }
 
 export interface LabTestAvailabilitySlot {
@@ -1029,20 +1051,20 @@ export interface LabTestAppointment {
   // Present on list/detail responses only - the backend nests these for
   // display so the UI doesn't need a separate lookup per row.
   test?: { id: string; name: string; code: string | null; category: LabTestCategory | null; description?: string | null };
-  branch?: { id: string; name: string | null };
+  branch?: { id: string; name: string | null; phone?: string | null };
   clinic?: { id: string; name: string | null };
-  patient?: { id: string; name: string | null; email?: string | null; phone?: string | null };
+  // The actual person the test is for — NOT the account that booked it (see booked_by).
+  patient?: AppointmentPatientSummary;
+  // Who the test is actually for - always present, required on every booking.
+  patient_details?: AppointmentPatientDetails;
+  relationship?: PatientRelationship;
+  booking_source?: BookingSource | null;
+  // The account that created the booking. Carries name/email/phone only on responses
+  // that join the user row (detail views and the clinic-facing list).
+  booked_by?: BookingAccount;
 }
 
 export interface LabTestAppointmentDetail extends LabTestAppointment {
-  patient: {
-    id: string;
-    name: string | null;
-    email: string | null;
-    phone: string | null;
-    date_of_birth: string | null;
-    gender: string | null;
-  };
   payments: {
     id: string;
     amount: number;
@@ -1108,6 +1130,23 @@ export interface Prescription {
   updated_at: string;
 }
 
+export interface Receipt {
+  id: string;
+  receipt_number: string;
+  source_type: "appointment" | "lab_test_appointment";
+  source_id: string;
+  event_type: "booking_confirmed" | "payment_received" | "completed";
+  patient_id: string;
+  clinic_id: string;
+  branch_id: string;
+  amount: number | null;
+  currency: string;
+  payment_method: string | null;
+  reference_no: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface ScanJobResponse {
   job_id: string;
   status: "processing" | "done" | "failed";
@@ -1140,6 +1179,8 @@ export interface Patient {
   is_new_patient: boolean;
   first_visit_date: string;
   last_visit_date: string;
+  // False for walk-in records the clinic created that never became an app account.
+  is_registered?: boolean;
 }
 
 export interface PatientListResponse {
@@ -1228,6 +1269,17 @@ export interface SubscriptionPlanInfo {
   trial_months: number;
 }
 
+export interface SubscriptionActiveOffer {
+  offer_id: string;
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency: string;
+  duration_months: number;
+  valid_until: string;
+  months_remaining: number;
+}
+
 export interface SubscriptionDetailResponse {
   subscription: Subscription;
   current_plan: SubscriptionPlanInfo;
@@ -1235,6 +1287,7 @@ export interface SubscriptionDetailResponse {
     expiring_warning_days: number;
     max_months_per_payment: number;
   };
+  active_offer: SubscriptionActiveOffer | null;
 }
 
 export interface SubscriptionHistoryEntry {
@@ -1457,43 +1510,253 @@ export interface SuperAdminPlanVersion {
   created_at: string;
 }
 
+export interface SuperAdminOfferChannels {
+  sms: boolean;
+  whatsapp: boolean;
+  email: boolean;
+  portal: boolean;
+}
+
+export type OfferChannelPlan = "will_send" | "skipped_no_phone" | "skipped_no_email" | "disabled";
+export type OfferDeliveryStatus = "SENT" | "SKIPPED" | "FAILED";
+
+export interface SuperAdminOffer {
+  id: string;
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency: string;
+  duration_months: number;
+  valid_until: string;
+  channels: SuperAdminOfferChannels;
+  status: "ACTIVE" | "CANCELLED";
+  created_by: string;
+  created_at: string;
+  cancelled_at: string | null;
+  recipient_count?: number;
+  redeemed_count?: number;
+}
+
+export interface SuperAdminOfferRecipient {
+  id: string;
+  clinic_id: string;
+  clinic_name: string;
+  status: "PENDING" | "REDEEMED";
+  months_remaining: number;
+  notify_sms_status: OfferDeliveryStatus | null;
+  notify_whatsapp_status: OfferDeliveryStatus | null;
+  notify_email_status: OfferDeliveryStatus | null;
+  notified_at: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+}
+
+export interface SuperAdminOfferInput {
+  clinic_ids: string[];
+  title: string;
+  message: string;
+  discounted_amount: number;
+  currency?: string;
+  duration_months: number;
+  valid_until: string;
+  channels?: Partial<SuperAdminOfferChannels>;
+}
+
+export interface SuperAdminOfferPreviewRecipient {
+  clinic_id: string;
+  clinic_name: string;
+  owner_email: string | null;
+  owner_phone: string | null;
+  rendered_message: string;
+  channels: {
+    sms: OfferChannelPlan;
+    whatsapp: OfferChannelPlan;
+    email: OfferChannelPlan;
+    portal: OfferChannelPlan;
+  };
+}
+
+export interface SuperAdminOfferPreviewResponse {
+  plan_amount: number;
+  currency: string;
+  discounted_amount: number;
+  savings_per_month: number;
+  recipients: SuperAdminOfferPreviewRecipient[];
+}
+
+export interface SuperAdminOfferSendRecipient {
+  clinic_id: string;
+  clinic_name: string;
+  rendered_message?: string;
+  delivery?: {
+    sms: OfferDeliveryStatus;
+    whatsapp: OfferDeliveryStatus;
+    email: OfferDeliveryStatus;
+    portal: OfferDeliveryStatus;
+  };
+  error?: string;
+}
+
+export interface SuperAdminOfferSendResponse {
+  message: string;
+  offer_id: string;
+  recipients: SuperAdminOfferSendRecipient[];
+}
+
+export interface SuperAdminOfferDetailResponse {
+  offer: SuperAdminOffer;
+  recipients: SuperAdminOfferRecipient[];
+}
+
+export interface SuperAdminOfferListParams {
+  limit?: number;
+  cursor?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  async registerClinicOwner(input: {
+  // ── Clinic owner: registration (2-step OTP) ──────────────────────────
+  async sendClinicOwnerOtp(input: {
     name: string;
-    email: string;
-    phone?: string;
-    password: string;
-    clinicName?: string;
-  }): Promise<ClinicOwnerRegisterResponse> {
-    return apiFetch<ClinicOwnerRegisterResponse>("/auth/clinic-owner/register", {
+    clinicName: string;
+    phone: string;
+    email?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    return apiFetch<{ ok: boolean; message: string }>("/auth/clinic-owner/send-otp", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
     });
   },
 
-  async verifyEmail(token: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>("/auth/verify-email", {
+  async registerClinicOwner(input: {
+    name: string;
+    clinicName: string;
+    phone: string;
+    email?: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse & { clinic?: Clinic }> {
+    return apiFetch<ClinicOwnerAuthResponse & { clinic?: Clinic }>("/auth/clinic-owner/register", {
       method: "POST",
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(input),
       skipAuth: true,
     });
   },
 
-  async forgotPassword(email: string): Promise<{ message: string }> {
+  // ── Clinic owner: login (2-step OTP) ─────────────────────────────────
+  async sendClinicOwnerLoginOtp(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/clinic-owner/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyClinicOwnerOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  async loginClinicOwnerWithPassword(input: {
+    phone: string;
+    password: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/login-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Doctor: login (2-step OTP) ───────────────────────────────────────
+  async sendDoctorLoginOtp(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/doctor/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyDoctorOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<DoctorAuthResponse> {
+    return apiFetch<DoctorAuthResponse>("/auth/doctor/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Branch staff: login (2-step OTP by phone) ────────────────────────
+  async branchStaffLogin(phone: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/branch-staff/login", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+      skipAuth: true,
+    });
+  },
+
+  async verifyStaffOtp(input: {
+    phone: string;
+    otp: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/branch-staff/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Doctor: accept invite (phone + OTP) ──────────────────────────────
+  async acceptDoctorInvite(input: {
+    phone: string;
+    invite_code: string;
+    otp: string;
+    email?: string;
+    password?: string;
+    reg_no?: string;
+  }): Promise<DoctorInviteAcceptResponse> {
+    return apiFetch<DoctorInviteAcceptResponse>("/auth/doctor/accept-invite", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Verify phone (for invite pre-verification) ───────────────────────
+  async sendVerifyPhoneOtp(input: {
+    phone: string;
+    email?: string;
+  }): Promise<{ ok: boolean; message: string }> {
+    return apiFetch<{ ok: boolean; message: string }>("/auth/verify-phone/send", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
+  // ── Password reset (2-step OTP by phone) ─────────────────────────────
+  async forgotPassword(phone: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/forgot-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ phone }),
       skipAuth: true,
     });
   },
 
   async resetPassword(input: {
-    token: string;
+    phone: string;
+    otp: string;
     new_password: string;
     confirm_password: string;
   }): Promise<{ message: string }> {
@@ -1504,49 +1767,28 @@ export const authApi = {
     });
   },
 
-  async acceptDoctorInvite(input: {
-    email: string;
-    invite_code: string;
-    password: string;
-    reg_no?: string;
-  }): Promise<DoctorInviteAcceptResponse> {
-    return apiFetch<DoctorInviteAcceptResponse>("/auth/doctor/accept-invite", {
+  // Auth required. Lets an already-logged-in user (who signed in via OTP
+  // with no password on file) set one without re-verifying by OTP again.
+  async setPassword(input: {
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/set-password", {
       method: "POST",
       body: JSON.stringify(input),
-      skipAuth: true,
     });
   },
 
-  async loginClinicOwner(input: {
-    email: string;
-    password: string;
-  }): Promise<ClinicOwnerAuthResponse> {
-    return apiFetch<ClinicOwnerAuthResponse>("/auth/clinic-owner/login", {
+  // ── Email verification (unchanged) ───────────────────────────────────
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/verify-email", {
       method: "POST",
-      body: JSON.stringify(input),
+      body: JSON.stringify({ token }),
       skipAuth: true,
     });
   },
 
-  async loginDoctor(input: {
-    email: string;
-    password: string;
-  }): Promise<DoctorAuthResponse> {
-    return apiFetch<DoctorAuthResponse>("/auth/doctor/login", {
-      method: "POST",
-      body: JSON.stringify(input),
-      skipAuth: true,
-    });
-  },
-
-  async branchStaffLogin(email: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>("/auth/branch-staff/login", {
-      method: "POST",
-      body: JSON.stringify({ email }),
-      skipAuth: true,
-    });
-  },
-
+  // ── Patient (unchanged for now — phone-based changes are backend-only) ─
   async registerPatient(input: {
     name: string;
     email: string;
@@ -1570,22 +1812,12 @@ export const authApi = {
     });
   },
 
+  // ── Super admin: phone + password ────────────────────────────────────
   async loginSuperAdmin(input: {
-    email: string;
+    phone: string;
     password: string;
   }): Promise<SuperAdminAuthResponse> {
     return apiFetch<SuperAdminAuthResponse>("/auth/super-admin/login", {
-      method: "POST",
-      body: JSON.stringify(input),
-      skipAuth: true,
-    });
-  },
-
-  async verifyStaffOtp(input: {
-    email: string;
-    otp: string;
-  }): Promise<ClinicOwnerAuthResponse> {
-    return apiFetch<ClinicOwnerAuthResponse>("/auth/branch-staff/verify-otp", {
       method: "POST",
       body: JSON.stringify(input),
       skipAuth: true,
@@ -1887,7 +2119,7 @@ export const staffApi = {
 
   async create(
     branchId: string,
-    input: { name: string; email: string; permissions?: BranchStaffPermission[] }
+    input: { name: string; phone: string; permissions?: BranchStaffPermission[] }
   ): Promise<StaffMember> {
     return apiFetch<StaffMember>(`/branches/${branchId}/staff`, {
       method: "POST",
@@ -2407,6 +2639,52 @@ export const prescriptionsApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Receipts
+// ---------------------------------------------------------------------------
+
+async function fetchPdfBlob(path: string): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    let envelope: ErrorEnvelope | null = null;
+    try {
+      envelope = (await res.json()) as ErrorEnvelope;
+    } catch {
+      // non-JSON body
+    }
+    const err = envelope?.error;
+    throw new ApiError(
+      err?.message || `Request failed with status ${res.status}`,
+      err?.code || "INTERNAL_ERROR",
+      res.status,
+      err?.field ?? null,
+      err?.request_id ?? null
+    );
+  }
+  return res.blob();
+}
+
+export const receiptsApi = {
+  async list(appointmentId: string): Promise<{ data: Receipt[] }> {
+    return apiFetch<{ data: Receipt[] }>(`/appointments/${appointmentId}/receipts`);
+  },
+
+  async listLabTest(appointmentId: string): Promise<{ data: Receipt[] }> {
+    return apiFetch<{ data: Receipt[] }>(`/lab-test-appointments/${appointmentId}/receipts`);
+  },
+
+  async pdf(appointmentId: string, receiptId: string): Promise<Blob> {
+    return fetchPdfBlob(`/appointments/${appointmentId}/receipts/${receiptId}/pdf`);
+  },
+
+  async pdfLabTest(appointmentId: string, receiptId: string): Promise<Blob> {
+    return fetchPdfBlob(`/lab-test-appointments/${appointmentId}/receipts/${receiptId}/pdf`);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Medical documents
 // ---------------------------------------------------------------------------
 
@@ -2452,6 +2730,192 @@ export const patientsApi = {
         limit: params.limit,
         offset: params.offset,
       })}`
+    );
+  },
+
+  // Same response shape as listByBranch, but scoped to lab test bookings instead of
+  // doctor appointments — and deduped by the actual patient's identity rather than by
+  // whichever account created the booking.
+  async listLabByBranch(
+    branchId: string,
+    params: PatientListParams = {}
+  ): Promise<PatientListResponse> {
+    return apiFetch<PatientListResponse>(
+      `/branches/${branchId}/lab-patients${query({
+        search: params.search,
+        type: params.type,
+        limit: params.limit,
+        offset: params.offset,
+      })}`
+    );
+  },
+
+  // Same response shape again, but the union of both sources: patients with a doctor
+  // appointment OR a lab booking at the branch, deduped by identity across the two,
+  // with visit counts / first & last visit dates aggregated across both.
+  async listAllByBranch(
+    branchId: string,
+    params: PatientListParams = {}
+  ): Promise<PatientListResponse> {
+    return apiFetch<PatientListResponse>(
+      `/branches/${branchId}/all-patients${query({
+        search: params.search,
+        type: params.type,
+        limit: params.limit,
+        offset: params.offset,
+      })}`
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Patient documents (lab reports & prescriptions) — clinic-issued documents
+// uploaded by clinic staff/owner on behalf of a patient. Distinct from
+// medicalDocumentsApi (patient's own self-uploaded scans) and prescriptionsApi
+// (the in-app digitized prescription tied to one appointment) — see
+// API.md §Patient documents (lab reports & prescriptions).
+// ---------------------------------------------------------------------------
+
+export type PatientDocumentType = "LAB_REPORT" | "PRESCRIPTION" | "OTHER";
+
+export type PatientDocumentGenerationStatus = "PENDING" | "GENERATED";
+
+export type PatientDocumentDeliveryMethod = "APP" | "EMAIL" | "PRINT";
+
+export type PatientDocumentDeliveryStatus =
+  | "PENDING"
+  | "DELIVERED"
+  | "NOT_DELIVERED";
+
+export interface PatientDocumentDelivery {
+  id: string;
+  document_id: string;
+  delivery_method: PatientDocumentDeliveryMethod;
+  status: PatientDocumentDeliveryStatus;
+  recipient_email: string | null;
+  delivered_at: string | null;
+  attempted_by: string | null;
+  attempted_by_name: string | null;
+  attempted_at: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PatientDocumentDeliverySummary {
+  APP: PatientDocumentDelivery | null;
+  EMAIL: PatientDocumentDelivery | null;
+  PRINT: PatientDocumentDelivery | null;
+}
+
+export interface PatientDocument {
+  id: string;
+  patient_id: string;
+  clinic_id: string;
+  branch_id: string;
+  clinic_name: string;
+  branch_name: string;
+  patient_name: string;
+  uploaded_by_name: string;
+  document_type: PatientDocumentType;
+  title: string;
+  description: string | null;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  // Freshly-signed, 15-minute link minted on every read — never persist or
+  // reuse this beyond the response it came from.
+  file_url: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  status: PatientDocumentGenerationStatus;
+  created_at: string;
+  updated_at: string;
+  delivery_summary: PatientDocumentDeliverySummary;
+}
+
+export interface PatientDocumentDetail extends PatientDocument {
+  deliveries: PatientDocumentDelivery[];
+}
+
+export interface PatientDocumentUploadInput {
+  patient_id: string;
+  document_type: PatientDocumentType;
+  title: string;
+  description?: string;
+  // clinic_owner only — which of their branches issued this; ignored (and
+  // unnecessary) for branch_staff, who are always pinned to their own branch.
+  branch_id?: string;
+  file: File;
+}
+
+export interface PatientDocumentListParams {
+  document_type?: PatientDocumentType;
+  status?: PatientDocumentGenerationStatus;
+  date?: string;
+  limit?: number;
+}
+
+export const patientDocumentsApi = {
+  async upload(input: PatientDocumentUploadInput): Promise<PatientDocument> {
+    const form = new FormData();
+    form.append("patient_id", input.patient_id);
+    form.append("document_type", input.document_type);
+    form.append("title", input.title);
+    if (input.description) form.append("description", input.description);
+    if (input.branch_id) form.append("branch_id", input.branch_id);
+    form.append("file", input.file);
+    return apiFetch<PatientDocument>("/patient-documents/upload", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  async listByPatient(
+    patientId: string,
+    params: PatientDocumentListParams = {}
+  ): Promise<{ items: PatientDocument[] }> {
+    return apiFetch<{ items: PatientDocument[] }>(
+      `/patient-documents/patient/${patientId}${query({
+        document_type: params.document_type,
+        status: params.status,
+        date: params.date,
+        limit: params.limit,
+      })}`
+    );
+  },
+
+  async get(documentId: string): Promise<PatientDocumentDetail> {
+    return apiFetch<PatientDocumentDetail>(`/patient-documents/${documentId}`);
+  },
+
+  async download(documentId: string): Promise<Blob> {
+    return fetchPdfBlob(`/patient-documents/${documentId}/download`);
+  },
+
+  async remove(documentId: string): Promise<void> {
+    return apiFetch<void>(`/patient-documents/${documentId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async sendEmail(
+    documentId: string,
+    email: string
+  ): Promise<PatientDocumentDelivery> {
+    return apiFetch<PatientDocumentDelivery>(
+      `/patient-documents/${documentId}/send-email`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }
+    );
+  },
+
+  async print(documentId: string): Promise<PatientDocumentDelivery> {
+    return apiFetch<PatientDocumentDelivery>(
+      `/patient-documents/${documentId}/print`,
+      { method: "POST" }
     );
   },
 };
@@ -2720,6 +3184,34 @@ export const superAdminApi = {
   }> {
     return apiFetch("/super-admin/system/process-subscriptions", { method: "POST" });
   },
+
+  async offers(params: SuperAdminOfferListParams = {}): Promise<Paginated<SuperAdminOffer>> {
+    return apiFetch<Paginated<SuperAdminOffer>>(
+      `/super-admin/offers${query({ limit: params.limit, cursor: params.cursor })}`
+    );
+  },
+
+  async offer(offerId: string): Promise<SuperAdminOfferDetailResponse> {
+    return apiFetch<SuperAdminOfferDetailResponse>(`/super-admin/offers/${offerId}`);
+  },
+
+  async previewOffer(input: SuperAdminOfferInput): Promise<SuperAdminOfferPreviewResponse> {
+    return apiFetch<SuperAdminOfferPreviewResponse>("/super-admin/offers/preview", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async createOffer(input: SuperAdminOfferInput): Promise<SuperAdminOfferSendResponse> {
+    return apiFetch<SuperAdminOfferSendResponse>("/super-admin/offers", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  async cancelOffer(offerId: string): Promise<{ message: string; offer: SuperAdminOffer }> {
+    return apiFetch(`/super-admin/offers/${offerId}/cancel`, { method: "POST" });
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -2928,11 +3420,9 @@ export interface LabTestAppointmentListParams {
   cursor?: string;
 }
 
-// PROPOSED contract for a staff-facing creation endpoint - does not exist on
-// the backend yet. The only documented POST /lab-test-appointments is
-// patient-only and has no patient_details-style field. This mirrors
-// AppointmentCreateInput so the backend can add a matching
-// POST /clinic/lab-test-appointments once ready.
+// POST /lab-test-appointments accepts patient, branch_staff, and clinic_owner
+// alike - staff/owner may book on behalf of a walk-in patient (only at a
+// branch they're scoped to), a patient account may book at any branch.
 export interface LabTestAppointmentCreateInput {
   branch_id: string;
   branch_lab_test_id: string;
@@ -2945,13 +3435,11 @@ export interface LabTestAppointmentCreateInput {
 }
 
 export const labTestAppointmentsApi = {
-  // PROPOSED — see LabTestAppointmentCreateInput above; POST /clinic/lab-test-appointments
-  // does not exist on the backend yet.
   async create(
     input: LabTestAppointmentCreateInput,
     idempotencyKey: string
   ): Promise<LabTestAppointment> {
-    return apiFetch<LabTestAppointment>("/clinic/lab-test-appointments", {
+    return apiFetch<LabTestAppointment>("/lab-test-appointments", {
       method: "POST",
       body: JSON.stringify(input),
       idempotencyKey,
@@ -3188,20 +3676,14 @@ export const patientLabTestsApi = {
     });
   },
 
-  // Patient books a lab test appointment.
-  async book(input: {
-    branch_id: string;
-    test_id: string;
-    service_mode: LabTestAppointmentServiceMode;
-    preferred_date: string;
-    preferred_slot: string | null;
-    patient_name: string;
-    patient_phone: string;
-    patient_email?: string;
-    address?: string | null;
-    prescription_url?: string | null;
-    notes?: string | null;
-  }, idempotencyKey: string): Promise<LabTestAppointment> {
+  // Patient books a lab test appointment - same contract and endpoint as
+  // labTestAppointmentsApi.create (POST /lab-test-appointments accepts
+  // patient, branch_staff, and clinic_owner alike). patient_details is
+  // required even when booking for oneself (relationship: "self").
+  async book(
+    input: LabTestAppointmentCreateInput,
+    idempotencyKey: string
+  ): Promise<LabTestAppointment> {
     return apiFetch<LabTestAppointment>("/lab-test-appointments", {
       method: "POST",
       body: JSON.stringify(input),

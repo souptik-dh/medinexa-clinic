@@ -1,18 +1,20 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { ApiError, authApi } from "@/lib/api";
-import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
+import { useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
-type RequiredField = "email";
+type RequiredField = "phone";
 
 export default function ForgotPasswordForm() {
   const { t } = useTranslation();
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -22,13 +24,13 @@ export default function ForgotPasswordForm() {
     e.preventDefault();
     setError(null);
     setSubmitted(true);
-    if (!email.trim()) {
-      setError(t("auth.pleaseFillRequired"));
+    if (!isValidPhone(phone)) {
+      setError(PHONE_VALIDATION_MESSAGE);
       return;
     }
     setSubmitting(true);
     try {
-      const res = await authApi.forgotPassword(email);
+      const res = await authApi.forgotPassword(phone);
       setMessage(res.message);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("auth.unableToRequestReset"));
@@ -42,7 +44,10 @@ export default function ForgotPasswordForm() {
       <div className="flex flex-col justify-center flex-1 w-full max-w-md mx-auto">
         <div>
           <div className="mb-5 sm:mb-8">
-            <h1 className="mb-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
+            <h1 className="mb-2 flex items-center gap-2 font-semibold text-gray-800 text-title-sm dark:text-white/90 sm:text-title-md">
+              <Link href="/">
+                <Image src="/images/app_icon.png" alt="Logo" width={28} height={28} />
+              </Link>
               {t("auth.forgotPasswordTitle")}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -56,28 +61,40 @@ export default function ForgotPasswordForm() {
                 {message}
               </div>
               <Link
-                href="/signin"
+                href={`/new_password?phone=${encodeURIComponent(phone)}`}
                 className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
-                {t("auth.backToSignIn")}
+                {t("auth.continueReset")}
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <Label>
-                  {t("auth.email")} <span className="text-error-500">*</span>
+                  {t("auth.phone")} <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  type="email"
-                  placeholder="owner@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => touch("email")}
-                  error={showError("email", !email.trim())}
-                  hint={showError("email", !email.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
-                  required
-                />
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-4 top-[22px] z-10 -translate-y-1/2 text-sm text-gray-500 dark:text-gray-400">
+                    +91
+                  </span>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    className="pl-12"
+                    placeholder={t("auth.phonePlaceholder")}
+                    value={phone}
+                    onChange={(e) => setPhone(sanitizePhoneDigits(e.target.value))}
+                    onBlur={() => touch("phone")}
+                    error={showError("phone", phone.trim() !== "" && !isValidPhone(phone))}
+                    hint={
+                      showError("phone", phone.trim() !== "" && !isValidPhone(phone))
+                        ? PHONE_VALIDATION_MESSAGE
+                        : undefined
+                    }
+                    required
+                  />
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -86,7 +103,7 @@ export default function ForgotPasswordForm() {
               )}
               <div>
                 <Button className="w-full" size="sm" disabled={submitting}>
-                  {submitting ? t("auth.sending") : t("auth.sendResetLink")}
+                  {submitting ? t("auth.sending") : t("auth.sendOtp")}
                 </Button>
               </div>
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400">

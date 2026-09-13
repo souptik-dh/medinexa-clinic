@@ -5,6 +5,7 @@ import React, {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -29,64 +30,60 @@ import {
   BranchStaffPermission,
   hasPermission,
 } from "@/lib/permissions";
+import { getSecureItem, setSecureItem } from "@/lib/secureStorage";
 
-function readStoredClinic(): Clinic | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.clinic");
-    return raw ? (JSON.parse(raw) as Clinic) : null;
-  } catch {
-    return null;
-  }
+function readStoredClinic(): Promise<Clinic | null> {
+  return getSecureItem<Clinic>("medinexa.clinic");
 }
 
-function readStoredStaffBranch(): BranchStaffMe["branch"] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.staffBranch");
-    return raw ? (JSON.parse(raw) as BranchStaffMe["branch"]) : null;
-  } catch {
-    return null;
-  }
+function readStoredStaffBranch(): Promise<BranchStaffMe["branch"] | null> {
+  return getSecureItem<BranchStaffMe["branch"]>("medinexa.staffBranch");
 }
 
-function readStoredStaffClinic(): BranchStaffMe["clinic"] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("medinexa.staffClinic");
-    return raw ? (JSON.parse(raw) as BranchStaffMe["clinic"]) : null;
-  } catch {
-    return null;
-  }
+function readStoredStaffClinic(): Promise<BranchStaffMe["clinic"] | null> {
+  return getSecureItem<BranchStaffMe["clinic"]>("medinexa.staffClinic");
 }
 
 interface AuthContextValue {
   user: User | null;
-  // True until the initial client-side read of localStorage has run. Consumers
-  // that gate rendering/redirects on `user` must wait for this to flip to
-  // false first - `user` starts `null` on both server and client (localStorage
-  // isn't read during the lazy-initial render) specifically to keep SSR output
-  // and the first client render identical and avoid a hydration mismatch.
   isAuthReady: boolean;
   clinic: Clinic | null;
-  // The clinic/branch a branch_staff user is assigned to, sourced from
-  // GET /branch-staff/me rather than any client-supplied id - drives the
-  // "my branch" view so staff can never browse into another branch.
   staffClinic: BranchStaffMe["clinic"] | null;
   staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
-  login: (email: string, password: string) => Promise<void>;
-  doctorLogin: (email: string, password: string) => Promise<void>;
-  superAdminLogin: (email: string, password: string) => Promise<void>;
-  register: (input: {
+  /** Clinic owner login step 1: sends OTP to phone. */
+  sendOwnerLoginOtp: (phone: string) => Promise<string>;
+  /** Clinic owner login step 2: verifies OTP, stores session. */
+  verifyOwnerOtp: (phone: string, otp: string) => Promise<void>;
+  /** Clinic owner login: phone + password (alternative to OTP). */
+  loginOwnerWithPassword: (phone: string, password: string) => Promise<void>;
+  /** Sets a password for the current session (e.g. after an OTP-only login). */
+  setPassword: (newPassword: string, confirmPassword: string) => Promise<string>;
+  /** Doctor login step 1: sends OTP to phone. */
+  sendDoctorLoginOtp: (phone: string) => Promise<string>;
+  /** Doctor login step 2: verifies OTP, stores session. */
+  verifyDoctorOtp: (phone: string, otp: string) => Promise<void>;
+  /** Super admin: phone + password login. */
+  superAdminLogin: (phone: string, password: string) => Promise<void>;
+  /** Clinic owner registration step 1: sends OTP. */
+  sendOwnerRegisterOtp: (input: {
     name: string;
-    email: string;
-    phone?: string;
-    password: string;
-    clinicName?: string;
-  }) => Promise<{ verified: boolean; message: string; clinicId?: string }>;
-  staffLogin: (email: string) => Promise<void>;
-  verifyStaffOtp: (email: string, otp: string) => Promise<void>;
+    clinicName: string;
+    phone: string;
+    email?: string;
+  }) => Promise<string>;
+  /** Clinic owner registration step 2: verifies OTP, creates account + clinic. */
+  verifyOwnerRegisterOtp: (input: {
+    name: string;
+    clinicName: string;
+    phone: string;
+    email?: string;
+    otp: string;
+  }) => Promise<{ clinicId?: string }>;
+  /** Branch staff login step 1: sends OTP to phone. */
+  staffLogin: (phone: string) => Promise<void>;
+  /** Branch staff login step 2: verifies OTP, stores session. */
+  verifyStaffOtp: (phone: string, otp: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -106,21 +103,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // and trigger a hydration mismatch. useLayoutEffect (rather than useEffect)
   // runs this before the browser paints, so protected layouts that gate on
   // `user` skip a blank frame instead of flashing it after paint.
-  /* eslint-disable react-hooks/set-state-in-effect */
   useLayoutEffect(() => {
-    setUser(getStoredUser());
-    setClinic(readStoredClinic());
-    setStaffClinic(readStoredStaffClinic());
-    setStaffBranch(readStoredStaffBranch());
-    setIsAuthReady(true);
+    let cancelled = false;
+    Promise.all([
+      getStoredUser(),
+      readStoredClinic(),
+      readStoredStaffClinic(),
+      readStoredStaffBranch(),
+    ]).then(([storedUser, storedClinic, storedStaffClinic, storedStaffBranch]) => {
+      if (cancelled) return;
+      setUser(storedUser);
+      setClinic(storedClinic);
+      setStaffClinic(storedStaffClinic);
+      setStaffBranch(storedStaffBranch);
+      setIsAuthReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Mirrors `user`'s role so the session-expired handler below (registered
+  // once, not re-registered per render) can read the latest role
+  // synchronously instead of re-reading (now-async) storage.
+  const userRoleRef = useRef<User["role"] | null>(null);
+  useEffect(() => {
+    userRoleRef.current = user?.role ?? null;
+  }, [user]);
 
   useEffect(() => {
     setSessionExpiredHandler(() => {
       // Super admins sign in through their own portal, so send them back
       // there rather than to the clinic/staff login.
-      const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
+      const wasSuperAdmin = userRoleRef.current === "sys_admin";
       setUser(null);
       setClinic(null);
       setStaffClinic(null);
@@ -178,12 +193,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setStaffClinic(me.clinic);
         setStaffBranch(me.branch);
-        window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(me.clinic));
-        window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(me.branch));
+        void setSecureItem("medinexa.staffClinic", me.clinic);
+        void setSecureItem("medinexa.staffBranch", me.branch);
         setUser((prev) => {
           if (!prev) return prev;
           const updated = { ...prev, branch_id: me.branch.id, permissions: me.permissions };
-          setStoredUser(updated);
+          void setStoredUser(updated);
           return updated;
         });
       })
@@ -197,123 +212,176 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, staffBranch]);
 
   const persist = useCallback(
-    (nextUser: User, nextClinic?: Clinic) => {
+    async (nextUser: User, nextClinic?: Clinic) => {
       setUser(nextUser);
-      setStoredUser(nextUser);
+      await setStoredUser(nextUser);
       if (nextClinic) {
         setClinic(nextClinic);
-        window.localStorage.setItem("medinexa.clinic", JSON.stringify(nextClinic));
+        await setSecureItem("medinexa.clinic", nextClinic);
       }
     },
     []
   );
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      try {
-        const res = await authApi.loginClinicOwner({ email, password });
-        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-        persist(res.user, res.clinic);
-        toast.success("Signed in successfully.");
-      } catch (err) {
-        if (err instanceof ApiError) {
-          throw new Error(err.message);
-        }
-        throw err;
-      }
+  const sendOwnerLoginOtp = useCallback(async (phone: string) => {
+    try {
+      const res = await authApi.sendClinicOwnerLoginOtp(phone);
+      return res.message;
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, []);
+
+  // After an OTP login on an account with no password yet, nudge the owner
+  // toward setting one so next time they can skip the OTP round-trip.
+  const promptSetPasswordIfNeeded = useCallback(
+    (requiresPasswordSetup?: boolean) => {
+      if (!requiresPasswordSetup) return;
+      toast(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <span>Add a password for faster sign-in next time?</span>
+            <button
+              type="button"
+              className="shrink-0 rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-600"
+              onClick={() => {
+                toast.dismiss(t.id);
+                router.push("/settings");
+              }}
+            >
+              Set password
+            </button>
+          </div>
+        ),
+        { duration: 8000 }
+      );
     },
-    [persist]
+    [router]
   );
 
-  const register = useCallback(
-    async (input: {
-      name: string;
-      email: string;
-      phone?: string;
-      password: string;
-      clinicName?: string;
-    }) => {
-      try {
-        const { clinicName, ...rest } = input;
-        const res = await authApi.registerClinicOwner({
-          ...rest,
-          clinicName: clinicName || undefined,
-        });
-        // A freshly registered clinic_owner account is `pending` until the
-        // emailed verification link is followed, so no tokens are issued yet
-        // and there's nothing to log the user into.
-        if (res.access_token && res.refresh_token) {
-          setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-          persist(res.user, res.clinic);
-          return { verified: true, message: res.message ?? "Account created.", clinicId: res.clinic?.id };
-        }
-        return {
-          verified: false,
-          message:
-            res.message ??
-            "Registration successful. Check your email to verify your account before logging in.",
-          clinicId: res.clinic?.id,
-        };
-      } catch (err) {
-        if (err instanceof ApiError) {
-          throw new Error(err.message);
-        }
-        throw err;
-      }
-    },
-    [persist]
-  );
+  const verifyOwnerOtp = useCallback(async (phone: string, otp: string) => {
+    try {
+      const res = await authApi.verifyClinicOwnerOtp({ phone, otp });
+      setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+      await persist(res.user, res.clinic);
+      toast.success("Signed in successfully.");
+      promptSetPasswordIfNeeded(res.requires_password_setup);
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, [persist, promptSetPasswordIfNeeded]);
 
-  const doctorLogin = useCallback(
-    async (email: string, password: string) => {
-      try {
-        const res = await authApi.loginDoctor({ email, password });
-        setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-        // POST /auth/doctor/login doesn't echo back the email used to sign in, so it's
-        // filled in from the input here to satisfy User.email (used only for display).
-        const nextUser: User = {
-          id: res.doctor.id,
-          name: res.doctor.name,
-          email,
-          phone: res.doctor.phone,
-          role: "doctor",
-        };
-        setClinic(null);
-        setStaffClinic(null);
-        setStaffBranch(null);
-        window.localStorage.removeItem("medinexa.clinic");
-        window.localStorage.removeItem("medinexa.staffClinic");
-        window.localStorage.removeItem("medinexa.staffBranch");
-        persist(nextUser);
-        toast.success("Signed in successfully.");
-      } catch (err) {
-        if (err instanceof ApiError) {
-          throw new Error(err.message);
-        }
-        throw err;
-      }
-    },
-    [persist]
-  );
+  const loginOwnerWithPassword = useCallback(async (phone: string, password: string) => {
+    try {
+      const res = await authApi.loginClinicOwnerWithPassword({ phone, password });
+      setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+      await persist(res.user, res.clinic);
+      toast.success("Signed in successfully.");
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, [persist]);
 
-  const staffLogin = useCallback(async (email: string) => {
-    await authApi.branchStaffLogin(email);
+  const setPassword = useCallback(async (newPassword: string, confirmPassword: string) => {
+    try {
+      const res = await authApi.setPassword({
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
+      return res.message;
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, []);
+
+  const sendDoctorLoginOtp = useCallback(async (phone: string) => {
+    try {
+      const res = await authApi.sendDoctorLoginOtp(phone);
+      return res.message;
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, []);
+
+  const verifyDoctorOtp = useCallback(async (phone: string, otp: string) => {
+    try {
+      const res = await authApi.verifyDoctorOtp({ phone, otp });
+      setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+      const nextUser: User = {
+        id: res.doctor.id,
+        name: res.doctor.name,
+        email: res.user?.email ?? "",
+        phone: res.doctor.phone,
+        role: "doctor",
+      };
+      setClinic(null);
+      setStaffClinic(null);
+      setStaffBranch(null);
+      window.localStorage.removeItem("medinexa.clinic");
+      window.localStorage.removeItem("medinexa.staffClinic");
+      window.localStorage.removeItem("medinexa.staffBranch");
+      await persist(nextUser);
+      toast.success("Signed in successfully.");
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, [persist]);
+
+  const sendOwnerRegisterOtp = useCallback(async (input: {
+    name: string;
+    clinicName: string;
+    phone: string;
+    email?: string;
+  }) => {
+    try {
+      const res = await authApi.sendClinicOwnerOtp(input);
+      return res.message;
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, []);
+
+  const verifyOwnerRegisterOtp = useCallback(async (input: {
+    name: string;
+    clinicName: string;
+    phone: string;
+    email?: string;
+    otp: string;
+  }) => {
+    try {
+      const res = await authApi.registerClinicOwner(input);
+      setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
+      await persist(res.user, res.clinic);
+      return { clinicId: res.clinic?.id };
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, [persist]);
+
+  const staffLogin = useCallback(async (phone: string) => {
+    await authApi.branchStaffLogin(phone);
   }, []);
 
   const superAdminLogin = useCallback(
-    async (email: string, password: string) => {
+    async (phone: string, password: string) => {
       try {
-        const res = await authApi.loginSuperAdmin({ email, password });
+        const res = await authApi.loginSuperAdmin({ phone, password });
         setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
-        // Super admins own no clinic - make sure stale clinic state from a
-        // previous owner session can't leak into the platform views.
         window.localStorage.removeItem("medinexa.clinic");
         window.localStorage.removeItem("medinexa.staffClinic");
         window.localStorage.removeItem("medinexa.staffBranch");
         setClinic(null);
         setStaffClinic(null);
         setStaffBranch(null);
-        persist(res.user);
+        await persist(res.user);
         toast.success("Signed in successfully.");
       } catch (err) {
         if (err instanceof ApiError) {
@@ -325,8 +393,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
-  const verifyStaffOtp = useCallback(async (email: string, otp: string) => {
-    const res = await authApi.verifyStaffOtp({ email, otp });
+  const verifyStaffOtp = useCallback(async (phone: string, otp: string) => {
+    const res = await authApi.verifyStaffOtp({ phone, otp });
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
 
     let userToStore = res.user;
@@ -350,18 +418,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(userToStore);
-    setStoredUser(userToStore);
+    await setStoredUser(userToStore);
     window.localStorage.removeItem("medinexa.clinic");
     setClinic(null);
     setStaffClinic(nextStaffClinic);
     setStaffBranch(nextStaffBranch);
     if (nextStaffClinic) {
-      window.localStorage.setItem("medinexa.staffClinic", JSON.stringify(nextStaffClinic));
+      await setSecureItem("medinexa.staffClinic", nextStaffClinic);
     } else {
       window.localStorage.removeItem("medinexa.staffClinic");
     }
     if (nextStaffBranch) {
-      window.localStorage.setItem("medinexa.staffBranch", JSON.stringify(nextStaffBranch));
+      await setSecureItem("medinexa.staffBranch", nextStaffBranch);
     } else {
       window.localStorage.removeItem("medinexa.staffBranch");
     }
@@ -389,7 +457,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // best-effort revocation
       }
     }
-    const wasSuperAdmin = getStoredUser()?.role === "sys_admin";
+    const wasSuperAdmin = userRoleRef.current === "sys_admin";
     clearTokens();
     setStoredUser(null);
     window.localStorage.removeItem("medinexa.clinic");
@@ -412,10 +480,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         staffClinic,
         staffBranch,
         can,
-        login,
-        doctorLogin,
+        sendOwnerLoginOtp,
+        verifyOwnerOtp,
+        loginOwnerWithPassword,
+        setPassword,
+        sendDoctorLoginOtp,
+        verifyDoctorOtp,
         superAdminLogin,
-        register,
+        sendOwnerRegisterOtp,
+        verifyOwnerRegisterOtp,
         staffLogin,
         verifyStaffOtp,
         logout,

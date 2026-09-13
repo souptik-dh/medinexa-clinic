@@ -61,13 +61,13 @@ describe("Token management", () => {
     expect(getRefreshToken()).toBe("refresh-456");
   });
 
-  it("clearTokens removes all stored auth data", () => {
+  it("clearTokens removes all stored auth data", async () => {
     setTokens({ access_token: "access-123", refresh_token: "refresh-456" });
-    setStoredUser({ id: "u1", name: "Test", email: "test@test.com", phone: null, role: "clinic_owner" });
+    await setStoredUser({ id: "u1", name: "Test", email: "test@test.com", phone: null, role: "clinic_owner" });
     clearTokens();
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
-    expect(getStoredUser()).toBeNull();
+    expect(await getStoredUser()).toBeNull();
   });
 });
 
@@ -76,26 +76,36 @@ describe("User storage", () => {
     localStorage.clear();
   });
 
-  it("getStoredUser returns null when nothing stored", () => {
-    expect(getStoredUser()).toBeNull();
+  it("getStoredUser returns null when nothing stored", async () => {
+    expect(await getStoredUser()).toBeNull();
   });
 
-  it("setStoredUser stores user and getStoredUser retrieves it", () => {
+  it("setStoredUser stores user and getStoredUser retrieves it", async () => {
     const user = { id: "u1", name: "Dr. Smith", email: "smith@test.com", phone: "123", role: "doctor" as const };
-    setStoredUser(user);
-    expect(getStoredUser()).toEqual(user);
+    await setStoredUser(user);
+    expect(await getStoredUser()).toEqual(user);
   });
 
-  it("setStoredUser(null) removes stored user", () => {
+  it("setStoredUser encrypts the value at rest - the raw localStorage entry contains no PII", async () => {
+    const user = { id: "u1", name: "Dr. Smith", email: "smith@test.com", phone: "555-0100", role: "doctor" as const };
+    await setStoredUser(user);
+    const raw = localStorage.getItem("medinexa.user");
+    expect(raw).not.toBeNull();
+    expect(raw).not.toContain("smith@test.com");
+    expect(raw).not.toContain("555-0100");
+    expect(raw).not.toContain("Dr. Smith");
+  });
+
+  it("setStoredUser(null) removes stored user", async () => {
     const user = { id: "u1", name: "Test", email: "test@test.com", phone: null, role: "clinic_owner" as const };
-    setStoredUser(user);
-    setStoredUser(null);
-    expect(getStoredUser()).toBeNull();
+    await setStoredUser(user);
+    await setStoredUser(null);
+    expect(await getStoredUser()).toBeNull();
   });
 
-  it("getStoredUser returns null for invalid JSON", () => {
+  it("getStoredUser returns null for invalid JSON", async () => {
     localStorage.setItem("medinexa.user", "NOT-JSON");
-    expect(getStoredUser()).toBeNull();
+    expect(await getStoredUser()).toBeNull();
   });
 });
 
@@ -108,15 +118,15 @@ describe("Session expiry", () => {
     setSessionExpiredHandler(null);
   });
 
-  it("notifySessionExpired clears tokens and user", () => {
+  it("notifySessionExpired clears tokens and user", async () => {
     setTokens({ access_token: "access-123", refresh_token: "refresh-456" });
-    setStoredUser({ id: "u1", name: "Test", email: "test@test.com", phone: null, role: "clinic_owner" });
+    await setStoredUser({ id: "u1", name: "Test", email: "test@test.com", phone: null, role: "clinic_owner" });
     const handler = vi.fn();
     setSessionExpiredHandler(handler);
     notifySessionExpired();
     expect(getAccessToken()).toBeNull();
     expect(getRefreshToken()).toBeNull();
-    expect(getStoredUser()).toBeNull();
+    expect(await getStoredUser()).toBeNull();
     setSessionExpiredHandler(null);
   });
 });

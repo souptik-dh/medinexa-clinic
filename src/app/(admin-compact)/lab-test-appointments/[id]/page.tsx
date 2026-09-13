@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -30,6 +31,7 @@ export default function LabTestAppointmentDetailPage() {
   const [detail, setDetail] = useState<LabTestAppointmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showReceipts, setShowReceipts] = useState(false);
 
   useEffect(() => {
     labTestAppointmentsApi
@@ -50,6 +52,8 @@ export default function LabTestAppointmentDetailPage() {
     (detail.payment_status === "UNPAID" || detail.payment_status === "PENDING") &&
     (detail.status === "APPROVED" || detail.status === "COMPLETED") &&
     can("lab_payments:collect");
+  const canViewReceipts =
+    detail?.status === "APPROVED" || detail?.status === "COMPLETED";
 
   return (
     <div>
@@ -125,14 +129,29 @@ export default function LabTestAppointmentDetailPage() {
               </div>
             )}
 
+            {/* `patient` is the person the test is for; `booked_by` is the account
+                that created the booking — the API reports them separately. */}
             <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
               <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Patient</h6>
               <dl className="mt-2 space-y-2">
-                <DetailRow label="Name" value={detail.patient.name ?? "—"} />
-                <DetailRow label="Email" value={detail.patient.email ?? "—"} />
-                <DetailRow label="Phone" value={detail.patient.phone ?? "—"} />
+                <DetailRow label="Name" value={detail.patient?.name ?? detail.patient_details?.name ?? "—"} />
+                <DetailRow
+                  label="Mobile"
+                  value={detail.patient?.mobile ?? detail.patient_details?.phone ?? "—"}
+                />
               </dl>
             </div>
+
+            {detail.booked_by && (
+              <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Booked by</h6>
+                <dl className="mt-2 space-y-2">
+                  <DetailRow label="Name" value={detail.booked_by.name ?? "—"} />
+                  <DetailRow label="Email" value={detail.booked_by.email ?? "—"} />
+                  <DetailRow label="Phone" value={detail.booked_by.phone ?? "—"} />
+                </dl>
+              </div>
+            )}
 
             {detail.prescriptions && detail.prescriptions.length > 0 && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
@@ -224,10 +243,25 @@ export default function LabTestAppointmentDetailPage() {
                   Cancel
                 </Link>
               )}
+              {canViewReceipts && (
+                <button
+                  onClick={() => setShowReceipts(true)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                >
+                  View Receipts
+                </button>
+              )}
             </div>
           </div>
         ) : null}
       </div>
+
+      <ReceiptsModal
+        isOpen={showReceipts}
+        onClose={() => setShowReceipts(false)}
+        kind="lab-test"
+        appointmentId={id ?? detail?.id ?? null}
+      />
     </div>
   );
 }
