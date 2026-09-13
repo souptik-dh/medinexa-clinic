@@ -1678,6 +1678,7 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch only).
       "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
       "name": "Rohit Sharma",
       "email": "staff@clinic.com",
+      "phone": "+919876543212",
       "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
       "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"],
       "created_at": "2026-08-03T10:00:00Z"
