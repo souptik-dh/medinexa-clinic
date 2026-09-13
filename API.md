@@ -704,12 +704,48 @@ Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts p
 
 **Errors:** `401 INVALID_OTP`, `401 OTP_MAX_ATTEMPTS`, `410 OTP_EXPIRED`, `403 ACCOUNT_DISABLED`.
 
+### POST /auth/branch-staff/login-password
+
+Public. Rate limited 20/min per IP. **Alternative to the OTP flow above** — for a
+staff member who has already set a password via [`POST /auth/set-password`](#post-authset-password)
+(requires an authenticated session first, e.g. from an OTP login). Logs in directly
+with phone + password, no OTP round-trip. Returns the same `user` shape as
+`verify-otp` (including `branch_id` and `permissions`).
+
+**Request body**
+
+```json
+{ "phone": "+919876543212", "password": "password123" }
+```
+
+**Response `200`**
+
+```json
+{
+  "access_token": "<jwt>",
+  "refresh_token": "<opaque>",
+  "user": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Rohit Sharma",
+    "phone": "+919876543212",
+    "email": "staff@clinic.com",
+    "role": "branch_staff",
+    "branch_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+    "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel"]
+  }
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR`, `401 INVALID_CREDENTIALS` (wrong phone/password, including a staff account with no password set yet — use the OTP flow instead), `401 ACCOUNT_DISABLED`.
+
 ### POST /auth/forgot-password
 
 Public. Rate limited 20/min per IP. **Password reset, step 1.** Takes a registered **phone
 number**. If an **active** account with a password exists for it, a one-time code is sent
 (purpose `phone_verification`, SMS + email). Always returns the same message (does not
-reveal whether the phone exists). Branch-staff accounts have no password and are skipped.
+reveal whether the phone exists). Works for any role, including `branch_staff` — but only
+once that account has a password set via `POST /auth/set-password`; accounts with no
+password yet are silently skipped (same generic response either way).
 
 **Request body**
 
