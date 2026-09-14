@@ -323,24 +323,17 @@ ${imgTag}
 
 // Hosted on Cloudinary (not APP_URL) so the logo renders in emails even if
 // the app deployment is down or hasn't served /public assets yet.
-const LOGO_URL =
-  process.env.EMAIL_LOGO_URL ??
-  "https://res.cloudinary.com/p274ocjz/image/upload/v1787036452/medinexa/email-logo.png";
 const APP_ICON_URL =
   process.env.EMAIL_APP_ICON_URL ??
   "https://res.cloudinary.com/p274ocjz/image/upload/v1787035848/medinexa/email-app-icon.png";
-
-function logoImg(): string {
-  return `<img src="${LOGO_URL}" alt="Jido Healthcare" style="display:block;margin:0 auto;border:0;max-height:56px;width:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.15));"/>`;
-}
 
 function appIconImg(): string {
   return `<img src="${APP_ICON_URL}" alt="Jido Healthcare" width="64" height="64" style="display:block;margin:0 auto;border:0;border-radius:14px;box-shadow:0 4px 10px rgba(0,0,0,0.15);"/>`;
 }
 
-/** Branded HTML email with the centered logo (non-patient recipients). */
+/** Branded HTML email with the centered app icon as the logo. */
 export function emailHtml(body: string): string {
-  return emailShell(logoImg(), textToHtml(body));
+  return emailShell(appIconImg(), textToHtml(body));
 }
 
 /** Branded HTML email for a login OTP, with the code rendered large and bold in a dashed box. */
@@ -352,7 +345,7 @@ export function otpEmailHtml(otp: string, expiryMinutes: number): string {
 <span style="font-family:'Courier New',Courier,monospace;font-size:36px;font-weight:800;letter-spacing:8px;color:${BRAND_PURPLE};">${escapeHtml(otp)}</span>
 </div>
 <p style="color:#94a3b8;font-size:13px;margin:0;">This code expires in ${expiryMinutes} minutes. Do not share this code with anyone.</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /** Branded HTML email with the centered app icon (patient recipients). */
@@ -388,7 +381,7 @@ ${opts.note ? `<p style="color:#94a3b8;font-size:13px;margin:0 0 20px;">${escape
 <hr style="border:0;border-top:1px solid #e2e8f0;margin:25px 0;"/>
 <p style="color:#94a3b8;font-size:12px;margin:0 0 8px;line-height:1.4;">If the button doesn't work, copy and paste this link into your browser:</p>
 <p style="color:${BRAND_PURPLE};font-size:12px;word-break:break-all;margin:0;">${escapeHtml(opts.ctaUrl)}</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
@@ -423,7 +416,7 @@ ${opts.intro ? `<p style="color:#64748b;font-size:14px;margin:0 0 24px;">${escap
 </td></tr>
 </table>
 ${opts.note ? `<p style="color:#94a3b8;font-size:12px;margin:0;line-height:1.5;">${escapeHtml(opts.note)}</p>` : ""}`;
-  return emailShell(opts.patientFacing ? appIconImg() : logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
@@ -445,7 +438,7 @@ You have been successfully added to <strong>${escapeHtml(opts.branchName)}</stro
 You can now manage your schedule and appointments at this branch using your existing MediBook account. No further action is required.
 </p>
 <p style="color:#94a3b8;font-size:13px;margin:0;">If you have any questions, please contact the clinic administrator.</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
