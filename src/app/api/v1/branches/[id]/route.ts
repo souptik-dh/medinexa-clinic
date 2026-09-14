@@ -4,8 +4,9 @@ import { pool, type Row } from "@/lib/db";
 import { parseBody } from "@/lib/validators";
 import { requireRoles } from "@/lib/auth";
 import { getOwnedBranch } from "@/lib/scope";
-import { conflict } from "@/lib/errors";
+import { conflict, notFound } from "@/lib/errors";
 import { licenseFields, tradeLicenseValidationFields } from "@/lib/licenses";
+import { getBranchRatingMap } from "@/lib/reviews";
 
 function isTimezone(tz: string): boolean {
   try {
@@ -41,6 +42,46 @@ const patchSchema = z.object({
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).nullable().optional(),
   clinical_establishment_reg_number: z.string().trim().max(100).nullable().optional(),
+});
+
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
+  const [rows] = await pool.query<Row[]>(
+    `SELECT * FROM branches WHERE id = ? AND deleted_at IS NULL`,
+    [ctx.params.id],
+  );
+  const b = rows[0];
+  if (!b) throw notFound("BRANCH_NOT_FOUND", "Branch not found.");
+  if (ctx.auth?.role === "clinic_owner") {
+    const [clinics] = await pool.query<Row[]>(
+      `SELECT owner_user_id FROM clinics WHERE id = ? AND deleted_at IS NULL`,
+      [b.clinic_id],
+    );
+    if (clinics[0]?.owner_user_id !== ctx.auth.userId) {
+      throw notFound("BRANCH_NOT_FOUND", "Branch not found.");
+    }
+  }
+  const ratingByBranch = await getBranchRatingMap(pool, [String(b.id)]);
+  return json({
+    id: b.id,
+    clinic_id: b.clinic_id,
+    name: b.name,
+    address: b.address,
+    nearby_location: b.nearby_location ?? null,
+    city: b.city ?? null,
+    district: b.district ?? null,
+    pin_code: b.pin_code ?? null,
+    state: b.state ?? null,
+    post_office: b.post_office ?? null,
+    phone: b.phone,
+    lat: b.lat != null ? Number(b.lat) : null,
+    lng: b.lng != null ? Number(b.lng) : null,
+    timezone: b.timezone,
+    photo_url: b.photo_url,
+    ...licenseFields(b),
+    ...tradeLicenseValidationFields(b),
+    created_at: b.created_at,
+    rating: ratingByBranch.get(String(b.id)) ?? { average: null, count: 0 },
+  });
 });
 
 export const PATCH = api({ rateLimit: 200 }, async (ctx) => {

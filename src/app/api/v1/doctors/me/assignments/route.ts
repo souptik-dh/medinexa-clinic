@@ -7,7 +7,7 @@ import { getAvailabilityPeriods } from "@/lib/availability";
 // assignment_id each one needs for PATCH /doctor-assignments/:id and the
 // exceptions/leave endpoints — there was previously no self-service way for a
 // doctor to find this without a clinic_owner/branch_staff pointing them at a URL.
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["doctor"]);
 
   const [rows] = await pool.query<Row[]>(

@@ -11,7 +11,7 @@ import {
   todayInTz,
 } from "@/lib/availability";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const doctorId = ctx.params.id;
   const sp = ctx.request.nextUrl.searchParams;
 

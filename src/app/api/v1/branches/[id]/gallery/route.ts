@@ -22,7 +22,7 @@ function serializeImage(r: Row) {
   };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { id: branchId } = ctx.params;
   const [branches] = await pool.query<Row[]>(
     `SELECT id FROM branches WHERE id = ? AND deleted_at IS NULL`,

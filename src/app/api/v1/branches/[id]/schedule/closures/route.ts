@@ -45,7 +45,7 @@ async function assertReadAccess(auth: AuthContext, branch: Row) {
   throw forbidden("PERMISSION_DENIED", "You do not have permission to view this branch's schedule.");
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "doctor"]);
   const branchId = ctx.params.id;
   const branch = await loadBranch(branchId);

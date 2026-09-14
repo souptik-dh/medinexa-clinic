@@ -72,7 +72,7 @@ export type OtpPurpose =
   | "phone_verification";
 
 export type OtpResult =
-  | { ok: true; message?: string; otp?: string; expires_at?: string }
+  | { ok: true; message?: string }
   | { ok: false; message: string };
 
 /**
@@ -104,9 +104,6 @@ export async function sendPhoneOtp(opts: {
   return {
     ok: true,
     message: "If an account exists for this phone number, an OTP has been sent.",
-    // TEMP: exposed in the API response for local testing only — remove before production.
-    otp,
-    expires_at: expiresAt,
   };
 }
 

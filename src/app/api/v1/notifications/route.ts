@@ -17,7 +17,7 @@ function notifScope(auth: { role: string; userId: string; branchId: string | nul
   return { where: "n.user_id = ?", params: [auth.userId] };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
   const sp = ctx.request.nextUrl.searchParams;
   const { limit, cursor } = parsePagination(sp);

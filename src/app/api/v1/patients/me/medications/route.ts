@@ -43,7 +43,7 @@ function rowToMedication(r: Row) {
   };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
   const activeParam = ctx.request.nextUrl.searchParams.get("active");
   const where = activeParam !== null ? "patient_id = ? AND is_active = ?" : "patient_id = ?";

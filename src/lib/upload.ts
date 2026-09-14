@@ -5,8 +5,15 @@ import { badRequest, tooLarge, unsupported } from "@/lib/errors";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
-const SIGNING_SECRET =
-  process.env.FILE_SIGNING_SECRET ?? process.env.JWT_SECRET ?? "dev-file-signing-secret";
+function readSigningSecret(): string {
+  const secret = process.env.FILE_SIGNING_SECRET ?? process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("FILE_SIGNING_SECRET (or JWT_SECRET) environment variable is not set.");
+  }
+  return secret;
+}
+
+const SIGNING_SECRET = readSigningSecret();
 
 export const SIGNED_URL_TTL_SECONDS = 15 * 60;
 

@@ -9,7 +9,7 @@ import { getBranchRating } from "@/lib/reviews";
 // appointments/:id/review/route.ts on why a review carries only one branch_id).
 // Unlike GET /doctors/:id/reviews (public, name-masked), this shows the full patient
 // name, matching GET /branches/:id/patients — already visible to clinic staff.
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
   const branchId = ctx.params.id;
   await requireBranchAccess(pool, auth, branchId, "reviews:view");

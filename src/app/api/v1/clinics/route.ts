@@ -12,7 +12,7 @@ function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { limit, cursor } = parsePagination(ctx.request.nextUrl.searchParams);
   const search = ctx.request.nextUrl.searchParams.get("search")?.trim() ?? "";
   const city = ctx.request.nextUrl.searchParams.get("city")?.trim() ?? "";

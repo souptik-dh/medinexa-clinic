@@ -16,7 +16,7 @@ import {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 62;
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const doctorId = ctx.params.id;
   const sp = ctx.request.nextUrl.searchParams;
 

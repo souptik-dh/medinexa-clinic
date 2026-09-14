@@ -4,7 +4,7 @@ import { api } from "@/lib/http";
 import { UPLOAD_DIR, verifyFileUrl, mimeFromFileName } from "@/lib/upload";
 import { forbidden } from "@/lib/errors";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const fileName = path.basename(ctx.params.key);
   const expires = ctx.request.nextUrl.searchParams.get("expires") ?? "";
   const sig = ctx.request.nextUrl.searchParams.get("sig") ?? "";

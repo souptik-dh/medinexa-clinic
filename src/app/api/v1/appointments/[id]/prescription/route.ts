@@ -51,7 +51,7 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
   return json(serializePrescription(rows[0], false));
 });
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
   await getAppointmentInScope(pool, ctx.params.id, auth);
 

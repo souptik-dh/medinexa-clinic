@@ -43,7 +43,7 @@ function rowToDevice(r: Row) {
   };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
   const [rows] = await pool.query<Row[]>(
     `SELECT id, patient_id, name, category, brand, model, serial_number, notes, created_at, updated_at

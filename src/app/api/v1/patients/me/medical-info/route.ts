@@ -27,7 +27,7 @@ function toMedicalInfo(patientId: string, r: Row | undefined) {
   };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
   const [rows] = await pool.query<Row[]>(
     `SELECT ${SELECT_FIELDS} FROM patient_medical_profile WHERE patient_id = ?`,
