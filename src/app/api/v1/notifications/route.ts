@@ -4,16 +4,15 @@ import { parsePagination } from "@/lib/validators";
 import { requireRoles } from "@/lib/auth";
 import { fetchPage } from "@/lib/pagination";
 
+// Every notification row is already targeted at one specific user_id (notifyBranchStaff
+// inserts a personal row per staff member; the owner gets their own separate row). branch_id
+// is only descriptive metadata, so scoping strictly by user_id here is what keeps each
+// recipient's feed to their own copy — matching on branch_id too would also surface every
+// other staff member's (and the owner's) personal copy of the same branch event as a duplicate.
 function notifScope(auth: { role: string; userId: string; branchId: string | null }): {
   where: string;
   params: unknown[];
 } {
-  if (auth.role === "branch_staff") {
-    if (!auth.branchId) {
-      return { where: "n.user_id = ?", params: [auth.userId] };
-    }
-    return { where: "(n.user_id = ? OR n.branch_id = ?)", params: [auth.userId, auth.branchId] };
-  }
   return { where: "n.user_id = ?", params: [auth.userId] };
 }
 

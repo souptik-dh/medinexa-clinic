@@ -8,6 +8,7 @@ import { assertBranchStaffPermission } from "@/lib/permissions";
 import { assertClinicOperational } from "@/lib/subscriptions";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { issueReceipt } from "@/lib/receipts";
+import { newId } from "@/lib/ids";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -60,6 +61,15 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     await conn.query(
       `UPDATE lab_test_appointments SET payment_status = 'PAID' WHERE id = ?`,
       [id],
+    );
+
+    await conn.query(
+      `INSERT INTO clinic_payment_ledger (id, clinic_id, branch_id, period_month, currency, total_amount, payment_count)
+       VALUES (?, ?, ?, DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m'), ?, ?, 1)
+       ON DUPLICATE KEY UPDATE
+         total_amount = total_amount + VALUES(total_amount),
+         payment_count = payment_count + 1`,
+      [newId(), appointment.clinic_id, appointment.branch_id, appointment.currency, Number(appointment.price)],
     );
 
     await auditLabAction(conn, auth.userId, "payment_collected", id, {

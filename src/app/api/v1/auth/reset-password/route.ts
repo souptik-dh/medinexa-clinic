@@ -5,6 +5,8 @@ import { pool, parseDbTimestamp, type Row } from "@/lib/db";
 import { hashPassword, hashToken } from "@/lib/auth";
 import { ApiError, badRequest, unauthorized } from "@/lib/errors";
 
+const MAX_ATTEMPTS = 5;
+
 const schema = z.object({
   phone: phoneSchema,
   otp: otpSchema,
@@ -34,6 +36,9 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   );
   const code = codes[0];
   if (!code) throw unauthorized("INVALID_OTP", "No pending OTP found for this phone number.");
+  if (Number(code.attempts) >= MAX_ATTEMPTS) {
+    throw unauthorized("OTP_MAX_ATTEMPTS", "Too many failed attempts. Request a new OTP.");
+  }
   if (parseDbTimestamp(code.expires_at).getTime() < Date.now()) {
     throw new ApiError(410, "OTP_EXPIRED", "This OTP has expired. Request a new one.");
   }
