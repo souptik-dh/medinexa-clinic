@@ -45,7 +45,7 @@ const createSchema = z.object({
   clinical_establishment_reg_number: z.string().trim().max(100).optional().nullable(),
 });
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { clinicId } = ctx.params;
   const [clinics] = await pool.query<Row[]>(
     `SELECT id, owner_user_id FROM clinics WHERE id = ? AND deleted_at IS NULL`,

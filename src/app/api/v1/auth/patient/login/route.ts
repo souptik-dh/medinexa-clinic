@@ -18,8 +18,8 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
     `SELECT email FROM users WHERE phone = ? AND role = 'patient' AND status = 'active' LIMIT 1`,
     [body.phone],
   );
-  // Always returns the same generic message (plus a TEMP local-testing otp/expires_at
-  // from sendPhoneOtp) regardless of whether an account exists, to avoid user enumeration.
+  // Always returns the same generic message regardless of whether an account
+  // exists, to avoid user enumeration.
   const result = await sendPhoneOtp({
     phone: body.phone,
     email: users[0]?.email ?? null,

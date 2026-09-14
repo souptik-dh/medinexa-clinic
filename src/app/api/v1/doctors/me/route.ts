@@ -6,7 +6,7 @@ import { requireRoles } from "@/lib/auth";
 import { notFound } from "@/lib/errors";
 import { getDoctorSpecializations } from "@/lib/specializations";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["doctor"]);
   const [rows] = await pool.query<Row[]>(
     `SELECT id, name, reg_no, smc_name, doctor_degree, phone, certificate_url, photo_url, bio

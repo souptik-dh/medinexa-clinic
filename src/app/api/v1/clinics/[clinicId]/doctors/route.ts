@@ -8,7 +8,7 @@ import { getDoctorSpecializations, specializationDisplayName } from "@/lib/speci
 // Lists doctors already actively assigned somewhere in this clinic - used by
 // the "add existing doctor to another branch" fast-track picker, so clinic
 // staff can pick a doctor instead of retyping their email from memory.
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff"]);
   const clinicId = ctx.params.clinicId;
 

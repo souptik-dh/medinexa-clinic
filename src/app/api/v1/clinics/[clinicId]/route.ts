@@ -7,7 +7,7 @@ import { getOwnedClinic } from "@/lib/scope";
 import { notFound, conflict } from "@/lib/errors";
 import { licenseFields, tradeLicenseValidationFields } from "@/lib/licenses";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { clinicId } = ctx.params;
   const [rows] = await pool.query<Row[]>(
     `SELECT c.*,

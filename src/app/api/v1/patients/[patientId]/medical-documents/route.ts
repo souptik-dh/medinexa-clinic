@@ -3,7 +3,7 @@ import { pool, type Row } from "@/lib/db";
 import { requireRoles } from "@/lib/auth";
 import { forbidden } from "@/lib/errors";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["doctor"]);
   const patientId = ctx.params.patientId;
 

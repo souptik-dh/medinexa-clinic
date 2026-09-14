@@ -1379,6 +1379,12 @@ Auth: `clinic_owner`, must own the clinic.
 
 **Errors:** `404 CLINIC_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `400 VALIDATION_ERROR` (invalid timezone or missing `trade_license_number`).
 
+### GET /branches/:id
+
+Auth: none required. Rate limited 120/min. Returns a single Branch object (same shape as a `GET /clinics/:clinicId/branches` list item, license fields and `rating` included). A `clinic_owner` caller who does not own the branch's clinic gets `404 BRANCH_NOT_FOUND` instead of the branch (same not-found-not-forbidden pattern as `GET /clinics/:clinicId/branches`).
+
+**Errors:** `404 BRANCH_NOT_FOUND`.
+
 ### PATCH /branches/:id
 
 Auth: `clinic_owner`, must own the parent clinic.

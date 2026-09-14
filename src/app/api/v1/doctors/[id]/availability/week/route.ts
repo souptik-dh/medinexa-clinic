@@ -24,7 +24,7 @@ function displayTime(info: { status: string; is_bookable: boolean; slots: { time
   return first ? formatTime12h(first.time) : "No slots";
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const doctorId = ctx.params.id;
   const sp = ctx.request.nextUrl.searchParams;
 

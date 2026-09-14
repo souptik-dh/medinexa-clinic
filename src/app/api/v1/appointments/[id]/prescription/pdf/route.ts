@@ -5,7 +5,7 @@ import { notFound } from "@/lib/errors";
 import { getAppointmentInScope } from "@/lib/appointments";
 import { buildTextPdf } from "@/lib/pdf";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
   const appointment = await getAppointmentInScope(pool, ctx.params.id, auth);
 

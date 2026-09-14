@@ -4,7 +4,7 @@ import { requireRoles } from "@/lib/auth";
 import { notFound } from "@/lib/errors";
 import { loadStaffPermissions } from "@/lib/permissions";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["branch_staff"]);
   if (!auth.branchId) {
     throw notFound("BRANCH_NOT_FOUND", "No branch is assigned to this account.");

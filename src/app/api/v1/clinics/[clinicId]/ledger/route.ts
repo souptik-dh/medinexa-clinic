@@ -6,7 +6,7 @@ import { badRequest } from "@/lib/errors";
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner"]);
   const clinic = await getOwnedClinic(pool, ctx.params.clinicId, auth.userId);
 

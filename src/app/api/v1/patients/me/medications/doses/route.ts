@@ -26,7 +26,7 @@ function rowToDose(r: Row) {
   };
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
   const sp = ctx.request.nextUrl.searchParams;
   const from = sp.get("from");

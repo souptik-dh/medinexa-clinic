@@ -5,7 +5,7 @@ import { requireRoles } from "@/lib/auth";
 import { fetchPage } from "@/lib/pagination";
 import { getPatientLocation, buildNearbyMatch } from "@/lib/nearby";
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
   const { limit, cursor } = parsePagination(ctx.request.nextUrl.searchParams);
 

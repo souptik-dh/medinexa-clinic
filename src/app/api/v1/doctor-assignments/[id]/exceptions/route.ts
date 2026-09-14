@@ -50,7 +50,7 @@ async function authorize(auth: AuthContext, assignment: Row) {
   }
 }
 
-export const GET = api(undefined, async (ctx) => {
+export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner", "doctor", "branch_staff"]);
   const assignment = await loadAssignment(ctx.params.id);
   await authorize(auth, assignment);
