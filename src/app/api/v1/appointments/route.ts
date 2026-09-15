@@ -8,7 +8,7 @@ import { newId } from "@/lib/ids";
 import { runIdempotent } from "@/lib/idempotency";
 import { scopeWhere, serializeAppointment, APPT_STATUSES } from "@/lib/appointments";
 import { resolveServicePatient } from "@/lib/patient-identity";
-import { notifyBranchStaff, createNotification, branchContactEmails, branchContactPhones, sendEmail, detailsEmailHtml, notifyPhonesSmsWhatsapp, personalizeForPatient } from "@/lib/notifications";
+import { notifyBranchStaff, createClinicUserNotification, branchContactEmails, branchContactPhones, sendEmail, detailsEmailHtml, notifyPhonesSmsWhatsapp, personalizeForPatient } from "@/lib/notifications";
 import {
   todayInTz,
   weekdayInTz,
@@ -326,7 +326,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
             visitor_relationship: patientDetails.relationship,
           };
           await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
-          await createNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
+          await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
         });
         break;
       } catch (err) {

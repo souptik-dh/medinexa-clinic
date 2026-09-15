@@ -1446,6 +1446,17 @@ try {
     console.log('Applied migration: lab_test_appointments.referring_doctor_name');
   }
 
+  const [deviceTokenAppCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = 'app'`,
+  );
+  if (Number(deviceTokenAppCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE device_tokens ADD COLUMN app ENUM('patient','clinic') NOT NULL DEFAULT 'patient' AFTER platform`,
+    );
+    console.log('Applied migration: device_tokens.app');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

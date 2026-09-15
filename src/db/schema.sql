@@ -598,6 +598,7 @@ CREATE TABLE IF NOT EXISTS device_tokens (
   user_id CHAR(36) NOT NULL,
   token VARCHAR(255) NOT NULL,
   platform ENUM('android','ios') NOT NULL,
+  app ENUM('patient','clinic') NOT NULL DEFAULT 'patient',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),

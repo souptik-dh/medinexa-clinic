@@ -57,6 +57,13 @@ export async function notifyBranchStaff(
     `INSERT INTO notifications (id, user_id, branch_id, type, payload_json) VALUES ?`,
     [values],
   );
+
+  const content = pushContentForClinic(type, payload);
+  await Promise.all(
+    rows.map((row) =>
+      sendFcmToUser(row.user_id as string, { title: content.title, body: content.body, data: { type } }, "clinic"),
+    ),
+  );
 }
 
 export interface PushMessage {
@@ -207,6 +214,92 @@ export async function createPatientNotification(
     body: content.body,
     data: { type, ...(typeof payload.appointment_id === "string" ? { appointment_id: payload.appointment_id } : {}) },
   });
+}
+
+/**
+ * Maps an in-app notification type to a push title/body worded for the xclinic
+ * (clinic-side) audience — staff, doctors, and clinic owners — as opposed to
+ * `pushContentFor`, which is worded for the patient app.
+ */
+export function pushContentForClinic(
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): PushMessage {
+  const when = [payload.date, payload.time].filter(Boolean).join(" at ");
+  const visitor = typeof payload.visitor_name === "string" ? payload.visitor_name : null;
+  switch (type) {
+    case "new_booking":
+      return {
+        title: "New booking",
+        body: visitor
+          ? `${visitor} booked an appointment${when ? ` for ${when}` : ""}.`
+          : `A new appointment was booked${when ? ` for ${when}` : ""}.`,
+      };
+    case "appointment_cancelled":
+      return {
+        title: "Appointment cancelled",
+        body: visitor
+          ? `${visitor}'s appointment${when ? ` on ${when}` : ""} has been cancelled.`
+          : `An appointment${when ? ` on ${when}` : ""} has been cancelled.`,
+      };
+    case "lab_test_booked":
+      return {
+        title: "New lab test booking",
+        body: visitor
+          ? `${visitor} booked a lab test${when ? ` for ${when}` : ""}.`
+          : `A new lab test was booked${when ? ` for ${when}` : ""}.`,
+      };
+    case "lab_test_cancelled":
+      return {
+        title: "Lab test cancelled",
+        body: visitor
+          ? `${visitor}'s lab test${when ? ` on ${when}` : ""} has been cancelled.`
+          : `A lab test${when ? ` on ${when}` : ""} has been cancelled.`,
+      };
+    case "doctor_invite_accepted":
+      return {
+        title: "Invitation accepted",
+        body: typeof payload.doctor_name === "string"
+          ? `Dr. ${payload.doctor_name} has accepted your invitation.`
+          : "A doctor has accepted your invitation.",
+      };
+    case "payment_received":
+      return {
+        title: "Payment received",
+        body: typeof payload.amount === "number"
+          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""}.`
+          : "A payment has been received.",
+      };
+    case "subscription_expiring":
+    case "subscription_expired":
+    case "subscription_activated":
+    case "subscription_deactivated":
+    case "subscription_offer":
+      return pushContentFor(type, payload);
+    default:
+      return {
+        title: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        body: typeof payload.message === "string" ? payload.message : "You have a new notification.",
+      };
+  }
+}
+
+/**
+ * Creates the in-app notification AND delivers an FCM push (xclinic app) to every
+ * device the given clinic-side user (staff, doctor, or owner) is registered on.
+ * Push failures never fail the underlying request.
+ */
+export async function createClinicUserNotification(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+  branchId: string | null = null,
+): Promise<string> {
+  const id = await createNotification(db, userId, type, payload, branchId);
+  const content = pushContentForClinic(type, payload);
+  await sendFcmToUser(userId, { title: content.title, body: content.body, data: { type } }, "clinic");
+  return id;
 }
 
 /**

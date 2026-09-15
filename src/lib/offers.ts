@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { pool } from "@/lib/db";
 import { idSchema, currencySchema } from "@/lib/validators";
-import { sendSms, sendWhatsapp, sendEmail, detailsEmailHtml, createNotification } from "@/lib/notifications";
+import { sendSms, sendWhatsapp, sendEmail, detailsEmailHtml, createClinicUserNotification } from "@/lib/notifications";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -273,7 +273,7 @@ export async function sendOfferToClinic(opts: {
   let portalNotificationId: string | null = null;
   if (channels.portal) {
     try {
-      portalNotificationId = await createNotification(pool, contact.ownerUserId, "subscription_offer", {
+      portalNotificationId = await createClinicUserNotification(pool, contact.ownerUserId, "subscription_offer", {
         clinic_id: contact.clinicId,
         message: renderedMessage,
         offer_price: offer.discountedAmount,

@@ -11,7 +11,7 @@ import {
 import { generateLabTestSlots } from "@/lib/lab-test-availability";
 import {
   notifyBranchStaff,
-  createNotification,
+  createClinicUserNotification,
   branchContactEmails,
   branchContactPhones,
   sendEmail,
@@ -251,7 +251,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         visitor_relationship: patientDetails.relationship,
       };
       await notifyBranchStaff(conn, body.branch_id, "lab_test_booked", notifyPayload);
-      await createNotification(conn, branch.owner_user_id, "lab_test_booked", notifyPayload, body.branch_id);
+      await createClinicUserNotification(conn, branch.owner_user_id, "lab_test_booked", notifyPayload, body.branch_id);
 
       await auditLabAction(conn, auth.userId, "appointment_created", appointmentId, {
         branch_id: body.branch_id,

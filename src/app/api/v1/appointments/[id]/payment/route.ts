@@ -6,7 +6,7 @@ import { requireRoles } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/errors";
 import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
 import {
-  createNotification,
+  createClinicUserNotification,
   createPatientNotification,
   clinicOwnerContact,
   sendEmail,
@@ -87,7 +87,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
       });
       const owner = await clinicOwnerContact(conn, appt.clinic_id);
       if (owner) {
-        await createNotification(
+        await createClinicUserNotification(
           conn,
           owner.userId,
           "payment_received",

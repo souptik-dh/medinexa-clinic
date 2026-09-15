@@ -5,7 +5,7 @@ import { pool, withTransaction, parseDbTimestamp, type Row } from "@/lib/db";
 import { hashPassword, hashToken, issueTokens } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { ApiError, conflict, notFound, isUniqueViolation, badRequest } from "@/lib/errors";
-import { createNotification, sendEmail, emailHtml, sendSmsIfPhone } from "@/lib/notifications";
+import { createClinicUserNotification, sendEmail, emailHtml, sendSmsIfPhone } from "@/lib/notifications";
 import { getInviteSpecializations } from "@/lib/specializations";
 import { assertClinicOperational, resolveClinicIdByBranch } from "@/lib/subscriptions";
 import type { ResultSetHeader } from "mysql2/promise";
@@ -147,13 +147,13 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
         ],
       );
     }
-    await createNotification(conn, invite.invited_by, "doctor_invite_accepted", {
+    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", {
       doctor_id: doctorId,
       branch_id: invite.branch_id,
       phone: body.phone,
     });
     if (owner && owner.owner_user_id !== invite.invited_by) {
-      await createNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
+      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
         doctor_id: doctorId,
         branch_id: invite.branch_id,
         phone: body.phone,
