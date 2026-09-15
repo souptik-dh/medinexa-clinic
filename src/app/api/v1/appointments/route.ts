@@ -8,7 +8,7 @@ import { newId } from "@/lib/ids";
 import { runIdempotent } from "@/lib/idempotency";
 import { scopeWhere, serializeAppointment, APPT_STATUSES } from "@/lib/appointments";
 import { resolveServicePatient } from "@/lib/patient-identity";
-import { notifyBranchStaff, createNotification, branchContactEmails, branchContactPhones, sendEmail, detailsEmailHtml, notifyPhonesSmsWhatsapp, personalizeForPatient } from "@/lib/notifications";
+import { notifyBranchStaff, createClinicUserNotification, branchContactEmails, branchContactPhones, sendEmail, detailsEmailHtml, notifyPhonesWhatsapp, personalizeForPatient } from "@/lib/notifications";
 import {
   todayInTz,
   weekdayInTz,
@@ -326,7 +326,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
             visitor_relationship: patientDetails.relationship,
           };
           await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
-          await createNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
+          await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
         });
         break;
       } catch (err) {
@@ -382,7 +382,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     if (info) {
       const isForSelf = patientDetails.relationship === "self";
       const subject = `New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name}`;
-      const smsText = `Jido Healthcare: New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name} on ${body.date} at ${scheduledTime} at ${info.branch_name}.`;
+      const clinicWhatsappText = `Jido Healthcare: New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name} on ${body.date} at ${scheduledTime} at ${info.branch_name}.`;
       const emailBody = [
         `A new appointment has been booked at ${info.branch_name}.`,
         "",
@@ -418,10 +418,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           },
         ],
       });
-      // sendEmail/notifyPhonesSmsWhatsapp already catch their own errors — no reason to
-      // hold the response on the round trips once the booking itself is committed.
+      // sendEmail/notifyPhonesWhatsapp already catch their own errors — no reason to hold
+      // the response on the round trips once the booking itself is committed.
       void Promise.all(recipients.map((email) => sendEmail(email, subject, emailBody, emailHtmlBody)));
-      void notifyPhonesSmsWhatsapp(recipientPhones, smsText);
+      void notifyPhonesWhatsapp(recipientPhones, clinicWhatsappText);
 
       // Send the booking confirmation to the walk-in patient's number when one was
       // provided, otherwise fall back to the account holder's recorded phone.
@@ -432,7 +432,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           patientDetails.name,
           patientDetails.relationship,
         );
-        void notifyPhonesSmsWhatsapp([patientPhone], bookedText);
+        void notifyPhonesWhatsapp([patientPhone], bookedText);
       }
     }
 

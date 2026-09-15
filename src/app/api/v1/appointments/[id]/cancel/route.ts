@@ -6,7 +6,7 @@ import { requireRoles } from "@/lib/auth";
 import { notFound } from "@/lib/errors";
 
 import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
-import { createPatientNotification, notifyBranchStaff, notifyPhonesSmsWhatsapp, branchContactPhones, personalizeForPatient } from "@/lib/notifications";
+import { createPatientNotification, notifyClinicSide, notifyPhonesWhatsapp, branchContactPhones, personalizeForPatient } from "@/lib/notifications";
 import { assertBranchStaffPermission } from "@/lib/permissions";
 
 const schema = z.object({
@@ -32,7 +32,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     await transition(conn, appt, "cancelled", auth.userId, allowedFrom, body.reason ?? null);
 
     if (auth.role === "patient") {
-      await notifyBranchStaff(conn, appt.branch_id, "appointment_cancelled", {
+      await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "appointment_cancelled", {
         appointment_id: appt.id,
         patient_id: appt.patient_id,
         reason: body.reason ?? null,
@@ -67,13 +67,13 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const cancelBody = `The appointment with Dr. ${info?.doctor_name} at ${info?.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been cancelled.${body.reason ? ` Reason: ${body.reason}` : ""}`;
 
   const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-  void notifyPhonesSmsWhatsapp(clinicPhones, `Jido Healthcare: ${cancelBody}`);
+  void notifyPhonesWhatsapp(clinicPhones, `Jido Healthcare: ${cancelBody}`);
   // Prefer the walk-in patient's number when a patient_details.phone was provided,
   // otherwise fall back to the account holder's recorded phone.
   const patientPhone = info?.visitor_phone || info?.patient_phone || null;
   if (patientPhone) {
     const patientCancelText = personalizeForPatient(cancelBody, info?.visitor_name, info?.visitor_relationship);
-    void notifyPhonesSmsWhatsapp([patientPhone], patientCancelText);
+    void notifyPhonesWhatsapp([patientPhone], patientCancelText);
   }
 
   return json(serializeAppointment(appointment));

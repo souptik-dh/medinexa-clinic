@@ -6,13 +6,12 @@ import { requireRoles } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/errors";
 import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
 import {
-  createNotification,
   createPatientNotification,
-  clinicOwnerContact,
+  notifyClinicSide,
   sendEmail,
   detailsEmailHtml,
   sendWhatsappFile,
-  notifyPhonesSmsWhatsapp,
+  notifyPhonesWhatsapp,
   branchContactPhones,
   personalizeForPatient,
 } from "@/lib/notifications";
@@ -85,21 +84,12 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         amount: body.fee_amount,
         method: body.method,
       });
-      const owner = await clinicOwnerContact(conn, appt.clinic_id);
-      if (owner) {
-        await createNotification(
-          conn,
-          owner.userId,
-          "payment_received",
-          {
-            appointment_id: appt.id,
-            patient_id: appt.patient_id,
-            amount: body.fee_amount,
-            method: body.method,
-          },
-          appt.branch_id,
-        );
-      }
+      await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "payment_received", {
+        appointment_id: appt.id,
+        patient_id: appt.patient_id,
+        amount: body.fee_amount,
+        method: body.method,
+      });
     });
 
     const [rows] = await pool.query<Row[]>(`SELECT * FROM appointments WHERE id = ?`, [ctx.params.id]);
@@ -155,17 +145,15 @@ const [details] = await pool.query<Row[]>(
       },
     });
     const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-    void notifyPhonesSmsWhatsapp(
-      clinicPhones,
-      `Jido Healthcare: Payment of ${body.fee_amount} ${appointment.currency} collected via ${body.method} from ${info.patient_name ?? "a patient"} at ${info.branch_name}.`,
-    );
+    const clinicPaymentText = `Jido Healthcare: Payment of ${body.fee_amount} ${appointment.currency} collected via ${body.method} from ${info.patient_name ?? "a patient"} at ${info.branch_name}.`;
+    void notifyPhonesWhatsapp(clinicPhones, clinicPaymentText);
     if (patientPhone) {
       const paymentText = personalizeForPatient(
         `Payment of ${body.fee_amount} ${appointment.currency} received for your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time}.${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`,
         info.visitor_name,
         info.visitor_relationship,
       );
-      void notifyPhonesSmsWhatsapp([patientPhone], paymentText);
+      void notifyPhonesWhatsapp([patientPhone], paymentText);
       if (receipt) {
         const pdf = buildReceiptPdf({
           title: "Payment Receipt",

@@ -1,11 +1,12 @@
 import { pool, type Row } from "@/lib/db";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendSms } from "@/lib/notifications";
+import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp } from "@/lib/notifications";
 
 // Shared by the branch-closure and doctor-leave routes: once a closure/leave has cascaded
 // into cancelling pre-existing appointments (see autoCancelAppointmentsInRange /
 // autoCancelLabTestAppointmentsInRange), these notify each affected patient in-app and by
-// email (and SMS, when a phone is on file) — unlike a manual cancel, an auto-cancel is a
-// surprise to the patient, so it always gets an email/SMS, not just an in-app notification.
+// email (and WhatsApp, when a phone is on file) — unlike a manual cancel, an auto-cancel is
+// a surprise to the patient, so it always gets an email/WhatsApp message, not just an
+// in-app notification.
 
 export async function notifyAutoCancelledDoctorAppointments(
   cancelled: Row[],
@@ -31,7 +32,7 @@ export async function notifyAutoCancelledDoctorAppointments(
       reason,
     });
     if (r.patient_phone) {
-      await sendSms(
+      await sendWhatsapp(
         r.patient_phone,
         `Jido Healthcare: Your appointment with Dr. ${r.doctor_name} on ${r.scheduled_date} at ${r.scheduled_time} has been cancelled. Reason: ${reason}`,
       );
@@ -83,7 +84,7 @@ export async function notifyAutoCancelledLabTestAppointments(
       reason,
     });
     if (r.patient_phone) {
-      await sendSms(
+      await sendWhatsapp(
         r.patient_phone,
         `Jido Healthcare: Your ${r.test_name} appointment on ${r.appointment_date} at ${r.start_time} has been cancelled. Reason: ${reason}`,
       );

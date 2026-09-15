@@ -6,10 +6,9 @@ import {
   createPatientNotification,
   sendEmail,
   detailsEmailHtml,
-  sendSms,
   sendWhatsapp,
   sendWhatsappFile,
-  notifyPhonesSmsWhatsapp,
+  notifyPhonesWhatsapp,
   branchContactPhones,
   personalizeForPatient,
 } from "@/lib/notifications";
@@ -83,7 +82,6 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const confirmBody = `Your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
   const confirmText = personalizeForPatient(confirmBody, info?.visitor_name, info?.visitor_relationship);
   const whatsappConfirmText = `${confirmText}${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`;
-  const smsConfirm = () => sendSms(patientPhone, confirmText);
   const whatsappConfirm = () => sendWhatsapp(patientPhone, whatsappConfirmText);
   if (info?.patient_email) {
     const confirmBody = `Hi ${info.patient_name ?? "there"},\n\nYour appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
@@ -105,7 +103,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     );
   }
   if (patientPhone) {
-    await Promise.allSettled([smsConfirm(), whatsappConfirm()]);
+    await whatsappConfirm();
     if (receipt) {
       const pdf = buildReceiptPdf({
         title: "Booking Confirmation Receipt",
@@ -132,10 +130,8 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-  void notifyPhonesSmsWhatsapp(
-    clinicPhones,
-    `Jido Healthcare: Appointment with Dr. ${info.doctor_name} for ${info.patient_name ?? "a patient"} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`,
-  );
+  const clinicConfirmText = `Jido Healthcare: Appointment with Dr. ${info.doctor_name} for ${info.patient_name ?? "a patient"} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
+  void notifyPhonesWhatsapp(clinicPhones, clinicConfirmText);
 
   return json(serializeAppointment(appointment));
 });

@@ -5,7 +5,7 @@ import { pool, withTransaction, parseDbTimestamp, type Row } from "@/lib/db";
 import { hashPassword, hashToken, issueTokens } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { ApiError, conflict, notFound, isUniqueViolation, badRequest } from "@/lib/errors";
-import { createNotification, sendEmail, emailHtml, sendSmsIfPhone } from "@/lib/notifications";
+import { createClinicUserNotification, sendEmail, emailHtml, sendWhatsapp } from "@/lib/notifications";
 import { getInviteSpecializations } from "@/lib/specializations";
 import { assertClinicOperational, resolveClinicIdByBranch } from "@/lib/subscriptions";
 import type { ResultSetHeader } from "mysql2/promise";
@@ -81,7 +81,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const slotTemplates = invite.slot_template as Array<Record<string, unknown>>;
 
   const [ownerRows] = await pool.query<Row[]>(
-    `SELECT c.owner_user_id, co.email AS owner_email
+    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone
        FROM branches b
        JOIN clinics c ON c.id = b.clinic_id
        JOIN users co ON co.id = c.owner_user_id
@@ -147,13 +147,13 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
         ],
       );
     }
-    await createNotification(conn, invite.invited_by, "doctor_invite_accepted", {
+    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", {
       doctor_id: doctorId,
       branch_id: invite.branch_id,
       phone: body.phone,
     });
     if (owner && owner.owner_user_id !== invite.invited_by) {
-      await createNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
+      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
         doctor_id: doctorId,
         branch_id: invite.branch_id,
         phone: body.phone,
@@ -181,7 +181,9 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       acceptedBody,
       emailHtml(acceptedBody),
     );
-    await sendSmsIfPhone(pool, owner.owner_user_id, acceptedBody);
+    if (owner.owner_phone) {
+      await sendWhatsapp(owner.owner_phone as string, acceptedBody);
+    }
   }
 
   const { access_token, refresh_token } = await issueTokens({

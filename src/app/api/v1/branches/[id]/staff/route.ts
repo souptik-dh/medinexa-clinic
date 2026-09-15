@@ -6,7 +6,7 @@ import { requireRoles } from "@/lib/auth";
 import { getOwnedBranch } from "@/lib/scope";
 import { conflict, isUniqueViolation } from "@/lib/errors";
 import { newId } from "@/lib/ids";
-import { sendSms, sendWhatsapp } from "@/lib/notifications";
+import { sendWhatsapp } from "@/lib/notifications";
 import {
   BRANCH_STAFF_PERMISSIONS,
   DEFAULT_BRANCH_STAFF_PERMISSIONS,
@@ -108,7 +108,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     `Jido Healthcare: Hi ${body.name}, you have been added as a staff member of ` +
     `${branchInfo?.clinic_name ?? "your clinic"}, ${branchInfo?.branch_name ?? "your branch"}. ` +
     `Welcome to Jido Healthcare! You can log in with this phone number using OTP.`;
-  await Promise.allSettled([sendSms(body.phone, welcomeText), sendWhatsapp(body.phone, welcomeText)]);
+  await sendWhatsapp(body.phone, welcomeText);
 
   return json(
     {

@@ -57,6 +57,13 @@ export async function notifyBranchStaff(
     `INSERT INTO notifications (id, user_id, branch_id, type, payload_json) VALUES ?`,
     [values],
   );
+
+  const content = pushContentForClinic(type, payload);
+  await Promise.all(
+    rows.map((row) =>
+      sendFcmToUser(row.user_id as string, { title: content.title, body: content.body, data: { type } }, "clinic"),
+    ),
+  );
 }
 
 export interface PushMessage {
@@ -210,6 +217,121 @@ export async function createPatientNotification(
 }
 
 /**
+ * Maps an in-app notification type to a push title/body worded for the xclinic
+ * (clinic-side) audience — staff, doctors, and clinic owners — as opposed to
+ * `pushContentFor`, which is worded for the patient app.
+ */
+export function pushContentForClinic(
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): PushMessage {
+  const when = [payload.date, payload.time].filter(Boolean).join(" at ");
+  const visitor = typeof payload.visitor_name === "string" ? payload.visitor_name : null;
+  switch (type) {
+    case "new_booking":
+      return {
+        title: "New booking",
+        body: visitor
+          ? `${visitor} booked an appointment${when ? ` for ${when}` : ""}.`
+          : `A new appointment was booked${when ? ` for ${when}` : ""}.`,
+      };
+    case "appointment_cancelled":
+      return {
+        title: "Appointment cancelled",
+        body: visitor
+          ? `${visitor}'s appointment${when ? ` on ${when}` : ""} has been cancelled.`
+          : `An appointment${when ? ` on ${when}` : ""} has been cancelled.`,
+      };
+    case "lab_test_booked":
+      return {
+        title: "New lab test booking",
+        body: visitor
+          ? `${visitor} booked a lab test${when ? ` for ${when}` : ""}.`
+          : `A new lab test was booked${when ? ` for ${when}` : ""}.`,
+      };
+    case "lab_test_cancelled":
+      return {
+        title: "Lab test cancelled",
+        body: visitor
+          ? `${visitor}'s lab test${when ? ` on ${when}` : ""} has been cancelled.`
+          : `A lab test${when ? ` on ${when}` : ""} has been cancelled.`,
+      };
+    case "doctor_invite_accepted":
+      return {
+        title: "Invitation accepted",
+        body: typeof payload.doctor_name === "string"
+          ? `Dr. ${payload.doctor_name} has accepted your invitation.`
+          : "A doctor has accepted your invitation.",
+      };
+    case "payment_received":
+      return {
+        title: "Payment received",
+        body: typeof payload.amount === "number"
+          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""}.`
+          : "A payment has been received.",
+      };
+    case "lab_test_payment_success":
+      return {
+        title: "Lab test payment received",
+        body: typeof payload.amount === "number"
+          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""} for a lab test.`
+          : "A lab test payment has been received.",
+      };
+    case "subscription_expiring":
+    case "subscription_expired":
+    case "subscription_activated":
+    case "subscription_deactivated":
+    case "subscription_offer":
+      return pushContentFor(type, payload);
+    default:
+      return {
+        title: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        body: typeof payload.message === "string" ? payload.message : "You have a new notification.",
+      };
+  }
+}
+
+/**
+ * Creates the in-app notification AND delivers an FCM push (xclinic app) to every
+ * device the given clinic-side user (staff, doctor, or owner) is registered on.
+ * Push failures never fail the underlying request.
+ */
+export async function createClinicUserNotification(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+  branchId: string | null = null,
+): Promise<string> {
+  const id = await createNotification(db, userId, type, payload, branchId);
+  const content = pushContentForClinic(type, payload);
+  await sendFcmToUser(userId, { title: content.title, body: content.body, data: { type } }, "clinic");
+  return id;
+}
+
+/**
+ * Creates the in-app notification AND delivers an FCM push (xclinic app) to both
+ * audiences on the clinic side of an event: every branch_staff member at the
+ * branch, and the clinic owner. Use this (instead of calling `notifyBranchStaff`
+ * alone) for anything a patient triggers that the clinic needs to act on or track
+ * (cancellations, payments, etc.) — without it, the owner silently never learns
+ * about the event unless they also happen to be registered as branch staff.
+ */
+export async function notifyClinicSide(
+  db: Pick<PoolConnection, "query">,
+  branchId: string,
+  clinicId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  const owner = await clinicOwnerContact(db, clinicId);
+  await Promise.all([
+    notifyBranchStaff(db, branchId, type, payload),
+    owner ? createClinicUserNotification(db, owner.userId, type, payload, branchId) : Promise.resolve(),
+  ]);
+}
+
+/**
  * Emails for everyone tied to a branch: its staff and the owning clinic's
  * owner. The UNION dedupes in case the same address appears in both roles.
  */
@@ -323,24 +445,17 @@ ${imgTag}
 
 // Hosted on Cloudinary (not APP_URL) so the logo renders in emails even if
 // the app deployment is down or hasn't served /public assets yet.
-const LOGO_URL =
-  process.env.EMAIL_LOGO_URL ??
-  "https://res.cloudinary.com/p274ocjz/image/upload/v1787036452/medinexa/email-logo.png";
 const APP_ICON_URL =
   process.env.EMAIL_APP_ICON_URL ??
   "https://res.cloudinary.com/p274ocjz/image/upload/v1787035848/medinexa/email-app-icon.png";
-
-function logoImg(): string {
-  return `<img src="${LOGO_URL}" alt="Jido Healthcare" style="display:block;margin:0 auto;border:0;max-height:56px;width:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,0.15));"/>`;
-}
 
 function appIconImg(): string {
   return `<img src="${APP_ICON_URL}" alt="Jido Healthcare" width="64" height="64" style="display:block;margin:0 auto;border:0;border-radius:14px;box-shadow:0 4px 10px rgba(0,0,0,0.15);"/>`;
 }
 
-/** Branded HTML email with the centered logo (non-patient recipients). */
+/** Branded HTML email with the centered app icon as the logo. */
 export function emailHtml(body: string): string {
-  return emailShell(logoImg(), textToHtml(body));
+  return emailShell(appIconImg(), textToHtml(body));
 }
 
 /** Branded HTML email for a login OTP, with the code rendered large and bold in a dashed box. */
@@ -352,7 +467,7 @@ export function otpEmailHtml(otp: string, expiryMinutes: number): string {
 <span style="font-family:'Courier New',Courier,monospace;font-size:36px;font-weight:800;letter-spacing:8px;color:${BRAND_PURPLE};">${escapeHtml(otp)}</span>
 </div>
 <p style="color:#94a3b8;font-size:13px;margin:0;">This code expires in ${expiryMinutes} minutes. Do not share this code with anyone.</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /** Branded HTML email with the centered app icon (patient recipients). */
@@ -388,7 +503,7 @@ ${opts.note ? `<p style="color:#94a3b8;font-size:13px;margin:0 0 20px;">${escape
 <hr style="border:0;border-top:1px solid #e2e8f0;margin:25px 0;"/>
 <p style="color:#94a3b8;font-size:12px;margin:0 0 8px;line-height:1.4;">If the button doesn't work, copy and paste this link into your browser:</p>
 <p style="color:${BRAND_PURPLE};font-size:12px;word-break:break-all;margin:0;">${escapeHtml(opts.ctaUrl)}</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
@@ -423,7 +538,7 @@ ${opts.intro ? `<p style="color:#64748b;font-size:14px;margin:0 0 24px;">${escap
 </td></tr>
 </table>
 ${opts.note ? `<p style="color:#94a3b8;font-size:12px;margin:0;line-height:1.5;">${escapeHtml(opts.note)}</p>` : ""}`;
-  return emailShell(opts.patientFacing ? appIconImg() : logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
@@ -445,7 +560,7 @@ You have been successfully added to <strong>${escapeHtml(opts.branchName)}</stro
 You can now manage your schedule and appointments at this branch using your existing MediBook account. No further action is required.
 </p>
 <p style="color:#94a3b8;font-size:13px;margin:0;">If you have any questions, please contact the clinic administrator.</p>`;
-  return emailShell(logoImg(), body);
+  return emailShell(appIconImg(), body);
 }
 
 /**
@@ -521,8 +636,16 @@ export async function sendEmail(
  * SMS delivery through the Jido SMS Gateway (credentials in .env via
  * SMS_API_KEY, an optional SMS_API_URL override). Falls back to a console log
  * in local dev when SMS_API_KEY is not configured. Never throws.
+ *
+ * Not exported. Policy: SMS is reserved for OTP/confirmation codes and doctor
+ * invitations — every other notification (to patients, clinic owners, doctors,
+ * and branch staff alike) goes out over WhatsApp + email + push only, with no
+ * SMS fallback if those fail. This is the one place that can reach the SMS
+ * gateway, so keeping it unexported is what actually enforces the policy —
+ * route handlers can't call it even by accident. The only callers are
+ * `sendOtpSms`/`sendOtpDual` (OTP) and `sendInviteDual` (doctor invites) below.
  */
-export async function sendSms(to: string, body: string): Promise<void> {
+async function sendSms(to: string, body: string): Promise<void> {
   const apiKey = process.env.SMS_API_KEY;
   const apiUrl =
     process.env.SMS_API_URL ??
@@ -735,9 +858,9 @@ export async function sendWhatsappFile(
   }
 }
 
-/** Sends the same message to every phone number over both SMS and WhatsApp. */
-export async function notifyPhonesSmsWhatsapp(phones: string[], text: string): Promise<void> {
-  await Promise.all(phones.flatMap((phone) => [sendSms(phone, text), sendWhatsapp(phone, text)]));
+/** Sends the same message to every phone number over WhatsApp. */
+export async function notifyPhonesWhatsapp(phones: string[], text: string): Promise<void> {
+  await Promise.all(phones.map((phone) => sendWhatsapp(phone, text)));
 }
 
 /**
@@ -805,37 +928,17 @@ export async function sendOtpDual(opts: {
   await Promise.allSettled([smsPromise, whatsappPromise, emailPromise]);
 }
 
-/** Sends a doctor invitation link via SMS. */
-export async function sendInviteSms(opts: {
+/**
+ * Sends a doctor invitation link via SMS + WhatsApp (email is sent separately by the
+ * caller, since it also carries the branded invite card). Doctor invitations are the
+ * one non-OTP flow allowed to use SMS.
+ */
+export async function sendInviteDual(opts: {
   phone: string;
   doctorName: string;
   clinicName: string;
   inviteUrl: string;
 }): Promise<void> {
-  await sendSms(
-    opts.phone,
-    `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`,
-  );
-}
-
-/**
- * Sends an SMS to a user's registered phone number, if one is on file.
- * Used to mirror email notifications over SMS (per the dual-channel policy).
- * Never throws; silently no-ops when the user has no phone.
- */
-export async function sendSmsIfPhone(
-  db: Pick<PoolConnection, "query">,
-  userId: string,
-  message: string,
-): Promise<void> {
-  try {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT phone FROM users WHERE id = ? AND phone IS NOT NULL`,
-      [userId],
-    );
-    const phone = rows[0]?.phone as string | undefined;
-    if (phone) await sendSms(phone, message);
-  } catch (err) {
-    console.error(`[sms] failed to send to user ${userId}:`, err);
-  }
+  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`;
+  await Promise.allSettled([sendSms(opts.phone, text), sendWhatsapp(opts.phone, text)]);
 }
