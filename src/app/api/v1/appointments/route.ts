@@ -140,7 +140,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
   const result = await runIdempotent("appointments:create", idemKey, rawBody, async () => {
     const [branches] = await pool.query<Row[]>(
-      `SELECT b.id, b.timezone, b.clinic_id, c.owner_user_id
+      `SELECT b.id, b.name, b.timezone, b.clinic_id, c.owner_user_id
          FROM branches b
          JOIN clinics c ON c.id = b.clinic_id
         WHERE b.id = ? AND b.deleted_at IS NULL AND c.deleted_at IS NULL`,
@@ -197,7 +197,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         [body.doctor_id, body.branch_id, branchWeekday, body.date, body.date],
       ),
       pool.query<Row[]>(
-        `SELECT dba.id, dba.fee_amount, dba.currency
+        `SELECT dba.id, dba.fee_amount, dba.currency, d.name AS doctor_name
            FROM doctor_branch_assignments dba
            JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
           WHERE dba.doctor_id = ? AND dba.branch_id = ? AND dba.is_active = 1`,
@@ -319,6 +319,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           const payload = {
             appointment_id: id,
             doctor_id: body.doctor_id,
+            doctor_name: assignment.doctor_name,
+            branch_name: branch.name,
             patient_id: auth.userId,
             date: body.date,
             time: scheduledTime,

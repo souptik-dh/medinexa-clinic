@@ -116,6 +116,42 @@ export async function getAppointmentInScope(
   return row;
 }
 
+/**
+ * Doctor/branch/patient display names for an appointment — used to build full-text
+ * push notification bodies (doctor, branch) at the point a notification is created,
+ * since `getAppointmentInScope` itself only joins branch timezone.
+ */
+export async function getAppointmentNames(
+  db: Db,
+  appointmentId: string,
+): Promise<{
+  doctor_name: string | null;
+  branch_name: string | null;
+  patient_name: string | null;
+  visitor_name: string | null;
+  visitor_relationship: string | null;
+}> {
+  const [rows] = await db.query<Row[]>(
+    `SELECT d.name AS doctor_name, b.name AS branch_name, u.name AS patient_name,
+            ap.name AS visitor_name, ap.relationship AS visitor_relationship
+       FROM appointments a
+       JOIN doctors d ON d.id = a.doctor_id
+       JOIN branches b ON b.id = a.branch_id
+       JOIN users u ON u.id = a.patient_id
+       LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
+      WHERE a.id = ?`,
+    [appointmentId],
+  );
+  const row = rows[0];
+  return {
+    doctor_name: row?.doctor_name ?? null,
+    branch_name: row?.branch_name ?? null,
+    patient_name: row?.patient_name ?? null,
+    visitor_name: row?.visitor_name ?? null,
+    visitor_relationship: row?.visitor_relationship ?? null,
+  };
+}
+
 export async function writeStatusLog(
   conn: PoolConnection,
   appointmentId: string,

@@ -4,7 +4,7 @@ import { pool, withTransaction, type Row } from "@/lib/db";
 import { parseBody } from "@/lib/validators";
 import { requireRoles } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/errors";
-import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
+import { getAppointmentInScope, getAppointmentNames, transition, serializeAppointment } from "@/lib/appointments";
 import {
   createPatientNotification,
   notifyClinicSide,
@@ -79,16 +79,25 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
            payment_count = payment_count + 1`,
         [newId(), appt.clinic_id, appt.branch_id, appt.currency, body.fee_amount],
       );
+      const names = await getAppointmentNames(conn, appt.id);
       await createPatientNotification(conn, appt.patient_id, "payment_received", {
         appointment_id: appt.id,
         amount: body.fee_amount,
         method: body.method,
+        currency: appt.currency,
+        date: appt.scheduled_date,
+        time: appt.scheduled_time,
+        doctor_name: names.doctor_name,
+        branch_name: names.branch_name,
       });
       await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "payment_received", {
         appointment_id: appt.id,
         patient_id: appt.patient_id,
         amount: body.fee_amount,
         method: body.method,
+        currency: appt.currency,
+        branch_name: names.branch_name,
+        visitor_name: names.visitor_name ?? names.patient_name,
       });
     });
 

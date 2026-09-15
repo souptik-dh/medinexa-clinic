@@ -50,6 +50,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       test_name: appointment.test_name,
       patient_id: appointment.patient_id,
       reason: body.reason ?? null,
+      visitor_name: appointment.visitor_name ?? appointment.patient_name,
+      branch_name: appointment.branch_name,
     });
   } else {
     await createPatientNotification(pool, appointment.patient_id, "lab_test_cancelled", {
