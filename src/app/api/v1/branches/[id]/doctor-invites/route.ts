@@ -6,7 +6,7 @@ import { requireRoles } from "@/lib/auth";
 import { badRequest, conflict, isUniqueViolation, notFound, unprocessable } from "@/lib/errors";
 import { newId } from "@/lib/ids";
 import { generateInviteCode, hashToken } from "@/lib/auth";
-import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteSms, sendSms } from "@/lib/notifications";
+import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteDual, sendWhatsapp } from "@/lib/notifications";
 import { requireBranchAccess } from "@/lib/permissions";
 import { getInviteSpecializations } from "@/lib/specializations";
 
@@ -144,7 +144,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       );
     }
     if (doctorPhone) {
-      await sendSms(
+      await sendWhatsapp(
         doctorPhone,
         `Dr. ${doctorName}, you have been added to ${branch.name} under ${clinicName}. You can now manage your schedule and appointments using your existing MediBook account.`,
       );
@@ -350,7 +350,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       [clinicId],
     );
     const clinicName = String(clinicNameRow[0]?.name ?? "a clinic");
-    await sendInviteSms({
+    // Doctor invitations are the one non-OTP notification allowed to use SMS (in addition
+    // to WhatsApp here and email above) — push isn't possible yet since an invited doctor
+    // has no account/device to push to until they accept.
+    await sendInviteDual({
       phone: body.phone,
       doctorName: body.name,
       clinicName,

@@ -270,6 +270,13 @@ export function pushContentForClinic(
           ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""}.`
           : "A payment has been received.",
       };
+    case "lab_test_payment_success":
+      return {
+        title: "Lab test payment received",
+        body: typeof payload.amount === "number"
+          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""} for a lab test.`
+          : "A lab test payment has been received.",
+      };
     case "subscription_expiring":
     case "subscription_expired":
     case "subscription_activated":
@@ -300,6 +307,28 @@ export async function createClinicUserNotification(
   const content = pushContentForClinic(type, payload);
   await sendFcmToUser(userId, { title: content.title, body: content.body, data: { type } }, "clinic");
   return id;
+}
+
+/**
+ * Creates the in-app notification AND delivers an FCM push (xclinic app) to both
+ * audiences on the clinic side of an event: every branch_staff member at the
+ * branch, and the clinic owner. Use this (instead of calling `notifyBranchStaff`
+ * alone) for anything a patient triggers that the clinic needs to act on or track
+ * (cancellations, payments, etc.) — without it, the owner silently never learns
+ * about the event unless they also happen to be registered as branch staff.
+ */
+export async function notifyClinicSide(
+  db: Pick<PoolConnection, "query">,
+  branchId: string,
+  clinicId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  const owner = await clinicOwnerContact(db, clinicId);
+  await Promise.all([
+    notifyBranchStaff(db, branchId, type, payload),
+    owner ? createClinicUserNotification(db, owner.userId, type, payload, branchId) : Promise.resolve(),
+  ]);
 }
 
 /**
@@ -607,8 +636,16 @@ export async function sendEmail(
  * SMS delivery through the Jido SMS Gateway (credentials in .env via
  * SMS_API_KEY, an optional SMS_API_URL override). Falls back to a console log
  * in local dev when SMS_API_KEY is not configured. Never throws.
+ *
+ * Not exported. Policy: SMS is reserved for OTP/confirmation codes and doctor
+ * invitations — every other notification (to patients, clinic owners, doctors,
+ * and branch staff alike) goes out over WhatsApp + email + push only, with no
+ * SMS fallback if those fail. This is the one place that can reach the SMS
+ * gateway, so keeping it unexported is what actually enforces the policy —
+ * route handlers can't call it even by accident. The only callers are
+ * `sendOtpSms`/`sendOtpDual` (OTP) and `sendInviteDual` (doctor invites) below.
  */
-export async function sendSms(to: string, body: string): Promise<void> {
+async function sendSms(to: string, body: string): Promise<void> {
   const apiKey = process.env.SMS_API_KEY;
   const apiUrl =
     process.env.SMS_API_URL ??
@@ -821,9 +858,9 @@ export async function sendWhatsappFile(
   }
 }
 
-/** Sends the same message to every phone number over both SMS and WhatsApp. */
-export async function notifyPhonesSmsWhatsapp(phones: string[], text: string): Promise<void> {
-  await Promise.all(phones.flatMap((phone) => [sendSms(phone, text), sendWhatsapp(phone, text)]));
+/** Sends the same message to every phone number over WhatsApp. */
+export async function notifyPhonesWhatsapp(phones: string[], text: string): Promise<void> {
+  await Promise.all(phones.map((phone) => sendWhatsapp(phone, text)));
 }
 
 /**
@@ -891,37 +928,17 @@ export async function sendOtpDual(opts: {
   await Promise.allSettled([smsPromise, whatsappPromise, emailPromise]);
 }
 
-/** Sends a doctor invitation link via SMS. */
-export async function sendInviteSms(opts: {
+/**
+ * Sends a doctor invitation link via SMS + WhatsApp (email is sent separately by the
+ * caller, since it also carries the branded invite card). Doctor invitations are the
+ * one non-OTP flow allowed to use SMS.
+ */
+export async function sendInviteDual(opts: {
   phone: string;
   doctorName: string;
   clinicName: string;
   inviteUrl: string;
 }): Promise<void> {
-  await sendSms(
-    opts.phone,
-    `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`,
-  );
-}
-
-/**
- * Sends an SMS to a user's registered phone number, if one is on file.
- * Used to mirror email notifications over SMS (per the dual-channel policy).
- * Never throws; silently no-ops when the user has no phone.
- */
-export async function sendSmsIfPhone(
-  db: Pick<PoolConnection, "query">,
-  userId: string,
-  message: string,
-): Promise<void> {
-  try {
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT phone FROM users WHERE id = ? AND phone IS NOT NULL`,
-      [userId],
-    );
-    const phone = rows[0]?.phone as string | undefined;
-    if (phone) await sendSms(phone, message);
-  } catch (err) {
-    console.error(`[sms] failed to send to user ${userId}:`, err);
-  }
+  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`;
+  await Promise.allSettled([sendSms(opts.phone, text), sendWhatsapp(opts.phone, text)]);
 }
