@@ -51,9 +51,21 @@ function app(pushApp: PushApp): App | null {
     return null;
   }
 
-  const created = initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) }, pushApp);
-  apps[pushApp] = created;
-  return created;
+  // A malformed credential (e.g. a private key mangled by a host env var UI —
+  // see normalizePrivateKey above) makes initializeApp/cert throw synchronously.
+  // sendFcmToUser's callers await this from inside a DB transaction (booking
+  // creation, etc), so an uncaught throw here would roll back the triggering
+  // request instead of just skipping the push. Cache the failure so we don't
+  // re-throw (and re-log) on every subsequent call in this process either.
+  try {
+    const created = initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) }, pushApp);
+    apps[pushApp] = created;
+    return created;
+  } catch (err) {
+    console.error(`[push:${pushApp}] Firebase Admin init failed — check FIREBASE${pushApp === "clinic" ? "_CLINIC" : ""}_* env vars (especially PRIVATE_KEY formatting):`, err);
+    apps[pushApp] = null;
+    return null;
+  }
 }
 
 export interface FcmMessage {
@@ -70,7 +82,10 @@ export interface FcmMessage {
  */
 export async function sendFcmToUser(userId: string, msg: FcmMessage, pushApp: PushApp = "patient"): Promise<void> {
   const firebaseApp = app(pushApp);
-  if (!firebaseApp) return;
+  if (!firebaseApp) {
+    console.error(`[push:${pushApp}] not configured (missing FIREBASE${pushApp === "clinic" ? "_CLINIC" : ""}_* env vars) — skipping send to user ${userId}.`);
+    return;
+  }
 
   const [rows] = await pool.query<Row[]>(
     `SELECT token FROM device_tokens WHERE user_id = ? AND app = ?`,
@@ -85,6 +100,11 @@ export async function sendFcmToUser(userId: string, msg: FcmMessage, pushApp: Pu
       notification: { title: msg.title, body: msg.body },
       data: msg.data,
     });
+    if (response.failureCount > 0) {
+      response.responses.forEach((r, i) => {
+        if (!r.success) console.error(`[push:${pushApp}] send to token ${tokens[i]} failed:`, r.error?.code, r.error?.message);
+      });
+    }
 
     const staleTokens = response.responses
       .map((r, i) => (!r.success && isUnregistered(r.error?.code) ? tokens[i] : null))
