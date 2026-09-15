@@ -93,6 +93,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     test_name: appointment.test_name,
     amount: Number(appointment.price),
     currency: appointment.currency,
+    visitor_name: appointment.visitor_name ?? appointment.patient_name,
+    branch_name: appointment.branch_name,
   });
 
   const [rows] = await pool.query<RowDataPacket[]>(

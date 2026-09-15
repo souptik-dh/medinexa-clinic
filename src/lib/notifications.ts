@@ -71,87 +71,144 @@ export interface PushMessage {
   body: string;
 }
 
+function withDoctor(name: unknown): string | null {
+  return typeof name === "string" && name.trim().length > 0 ? `Dr. ${name}` : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+function money(amount: unknown, currency: unknown): string | null {
+  return typeof amount === "number" ? `${amount}${typeof currency === "string" ? ` ${currency}` : ""}` : null;
+}
+
 /** Maps an in-app notification type to a user-facing push title/body. */
 export function pushContentFor(
   type: NotificationType,
   payload: Record<string, unknown> = {},
 ): PushMessage {
   const when = [payload.date, payload.time].filter(Boolean).join(" at ");
+  const doctor = withDoctor(payload.doctor_name);
+  const branch = asString(payload.branch_name);
+  const doctorAt = [doctor, branch ? `at ${branch}` : null].filter(Boolean).join(" ");
+  const testName = asString(payload.test_name);
+  const apptNo = asString(payload.appointment_number);
+  const apptNoSuffix = apptNo ? ` ${apptNo}` : "";
+  const reasonSuffix = asString(payload.reason) ? ` Reason: ${payload.reason}` : "";
   switch (type) {
     case "booking_confirmed":
       return {
         title: "Appointment confirmed",
-        body: when
-          ? `Your appointment for ${when} has been confirmed.`
-          : "Your appointment has been confirmed.",
+        body: doctor
+          ? `Your appointment with ${doctorAt}${when ? ` on ${when}` : ""} has been confirmed.`
+          : when
+            ? `Your appointment for ${when} has been confirmed.`
+            : "Your appointment has been confirmed.",
       };
-    case "payment_received":
+    case "payment_received": {
+      const amount = money(payload.amount, payload.currency);
+      const method = asString(payload.method) ? ` via ${payload.method}` : "";
       return {
         title: "Payment received",
-        body: `Payment for your appointment${when ? ` on ${when}` : ""} has been received.`,
+        body: amount
+          ? `Payment of ${amount}${method} received for your appointment${doctor ? ` with ${doctorAt}` : ""}${when ? ` on ${when}` : ""}.`
+          : `Payment for your appointment${when ? ` on ${when}` : ""} has been received.`,
       };
+    }
     case "consultation_completed":
       return {
         title: "Consultation completed",
-        body: `Your consultation${when ? ` on ${when}` : ""} is complete.`,
+        body: doctor
+          ? `Your consultation with ${doctorAt}${when ? ` on ${when}` : ""} is complete.`
+          : `Your consultation${when ? ` on ${when}` : ""} is complete.`,
       };
-    case "prescription_ready":
+    case "prescription_ready": {
+      const excerpt = asString(payload.prescription_text);
+      const snippet = excerpt ? truncate(excerpt.trim(), 200) : null;
       return {
         title: "Prescription ready",
-        body: "Your prescription is ready to view.",
+        body: doctor
+          ? `${doctor} has issued your prescription${snippet ? `: ${snippet}` : ""}.`
+          : snippet
+            ? `Your prescription is ready: ${snippet}`
+            : "Your prescription is ready to view.",
       };
-    case "patient_document_uploaded":
+    }
+    case "patient_document_uploaded": {
+      const title = asString(payload.title);
+      const description = asString(payload.description);
+      const snippet = description ? truncate(description.trim(), 150) : null;
       return {
         title: "New document available",
-        body: typeof payload.title === "string"
-          ? `${payload.title} is now available in Reports & Prescriptions.`
+        body: title
+          ? `${title}${snippet ? ` — ${snippet}` : ""} is now available in Reports & Prescriptions.`
           : "A new document is now available in Reports & Prescriptions.",
       };
+    }
     case "appointment_cancelled":
       return {
         title: "Appointment cancelled",
-        body: `Your appointment${when ? ` on ${when}` : ""} has been cancelled.`,
+        body: doctor
+          ? `Your appointment with ${doctorAt}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
+          : `Your appointment${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
     case "lab_test_booked":
       return {
         title: "Lab test booked",
-        body: when
-          ? `Your lab test booking for ${when} has been submitted.`
-          : "Your lab test booking has been submitted.",
+        body: testName
+          ? `Your lab test booking${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` for ${when}` : ""} has been submitted.`
+          : when
+            ? `Your lab test booking for ${when} has been submitted.`
+            : "Your lab test booking has been submitted.",
       };
-    case "lab_test_approved":
+    case "lab_test_approved": {
+      const precautions = Array.isArray(payload.precautions)
+        ? payload.precautions.filter((p): p is string => typeof p === "string")
+        : [];
       return {
         title: "Lab test confirmed",
-        body: when
-          ? `Your lab test appointment for ${when} has been confirmed.`
-          : "Your lab test appointment has been confirmed.",
+        body: testName
+          ? `Your lab test${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` on ${when}` : ""} has been confirmed.${precautions.length > 0 ? ` Precautions: ${precautions.join(", ")}` : ""}`
+          : when
+            ? `Your lab test appointment for ${when} has been confirmed.`
+            : "Your lab test appointment has been confirmed.",
       };
+    }
     case "lab_test_rejected":
       return {
         title: "Lab test booking rejected",
-        body: when
-          ? `Your lab test booking for ${when} has been rejected.`
-          : "Your lab test booking has been rejected.",
+        body: testName
+          ? `Your lab test booking${apptNoSuffix} (${testName}) has been rejected.${reasonSuffix}`
+          : `Your lab test booking${when ? ` for ${when}` : ""} has been rejected.${reasonSuffix}`,
       };
     case "lab_test_cancelled":
       return {
         title: "Lab test cancelled",
-        body: when
-          ? `Your lab test appointment for ${when} has been cancelled.`
-          : "Your lab test appointment has been cancelled.",
+        body: testName
+          ? `Your lab test${apptNoSuffix} (${testName})${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
+          : `Your lab test appointment${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
     case "lab_test_completed":
       return {
         title: "Lab test completed",
-        body: when
-          ? `Your lab test on ${when} has been completed.`
-          : "Your lab test has been completed.",
+        body: testName
+          ? `Your lab test${apptNoSuffix} (${testName}) has been completed. Your report is now available.`
+          : `Your lab test${when ? ` on ${when}` : ""} has been completed.`,
       };
-    case "lab_test_payment_success":
+    case "lab_test_payment_success": {
+      const amount = money(payload.amount, payload.currency);
       return {
         title: "Payment received",
-        body: `Payment for your lab test${when ? ` on ${when}` : ""} has been received.`,
+        body: amount
+          ? `Payment of ${amount} received for your lab test${testName ? ` (${testName})` : ""}${apptNoSuffix}.`
+          : `Payment for your lab test${when ? ` on ${when}` : ""} has been received.`,
       };
+    }
     case "subscription_expiring":
       return {
         title: "Subscription expiring soon",
@@ -226,57 +283,66 @@ export function pushContentForClinic(
   payload: Record<string, unknown> = {},
 ): PushMessage {
   const when = [payload.date, payload.time].filter(Boolean).join(" at ");
-  const visitor = typeof payload.visitor_name === "string" ? payload.visitor_name : null;
+  const visitor = asString(payload.visitor_name);
+  const doctor = withDoctor(payload.doctor_name);
+  const branch = asString(payload.branch_name);
+  const testName = asString(payload.test_name);
+  const apptNo = asString(payload.appointment_number);
+  const apptNoSuffix = apptNo ? ` ${apptNo}` : "";
+  const reasonSuffix = asString(payload.reason) ? ` Reason: ${payload.reason}` : "";
   switch (type) {
     case "new_booking":
       return {
         title: "New booking",
         body: visitor
-          ? `${visitor} booked an appointment${when ? ` for ${when}` : ""}.`
+          ? `${visitor} booked an appointment${doctor ? ` with ${doctor}` : ""}${branch ? ` at ${branch}` : ""}${when ? ` for ${when}` : ""}.`
           : `A new appointment was booked${when ? ` for ${when}` : ""}.`,
       };
     case "appointment_cancelled":
       return {
         title: "Appointment cancelled",
         body: visitor
-          ? `${visitor}'s appointment${when ? ` on ${when}` : ""} has been cancelled.`
-          : `An appointment${when ? ` on ${when}` : ""} has been cancelled.`,
+          ? `${visitor}'s appointment${doctor ? ` with ${doctor}` : ""}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
+          : `An appointment${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
     case "lab_test_booked":
       return {
         title: "New lab test booking",
         body: visitor
-          ? `${visitor} booked a lab test${when ? ` for ${when}` : ""}.`
+          ? `${visitor} booked a lab test${testName ? ` (${testName})` : ""}${branch ? ` at ${branch}` : ""}${when ? ` for ${when}` : ""}.`
           : `A new lab test was booked${when ? ` for ${when}` : ""}.`,
       };
     case "lab_test_cancelled":
       return {
         title: "Lab test cancelled",
         body: visitor
-          ? `${visitor}'s lab test${when ? ` on ${when}` : ""} has been cancelled.`
-          : `A lab test${when ? ` on ${when}` : ""} has been cancelled.`,
+          ? `${visitor}'s lab test${testName ? ` (${testName})` : ""}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
+          : `A lab test${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
     case "doctor_invite_accepted":
       return {
         title: "Invitation accepted",
-        body: typeof payload.doctor_name === "string"
-          ? `Dr. ${payload.doctor_name} has accepted your invitation.`
-          : "A doctor has accepted your invitation.",
+        body: doctor ? `${doctor} has accepted your invitation.` : "A doctor has accepted your invitation.",
       };
-    case "payment_received":
+    case "payment_received": {
+      const amount = money(payload.amount, payload.currency);
+      const method = asString(payload.method) ? ` via ${payload.method}` : "";
       return {
         title: "Payment received",
-        body: typeof payload.amount === "number"
-          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""}.`
+        body: amount
+          ? `A payment of ${amount}${method} has been received${visitor ? ` from ${visitor}` : ""}${branch ? ` at ${branch}` : ""}.`
           : "A payment has been received.",
       };
-    case "lab_test_payment_success":
+    }
+    case "lab_test_payment_success": {
+      const amount = money(payload.amount, payload.currency);
       return {
         title: "Lab test payment received",
-        body: typeof payload.amount === "number"
-          ? `A payment of ${payload.amount} has been received${visitor ? ` from ${visitor}` : ""} for a lab test.`
+        body: amount
+          ? `A payment of ${amount} has been received${visitor ? ` from ${visitor}` : ""} for lab test${testName ? ` (${testName})` : ""}${apptNoSuffix}.`
           : "A lab test payment has been received.",
       };
+    }
     case "subscription_expiring":
     case "subscription_expired":
     case "subscription_activated":

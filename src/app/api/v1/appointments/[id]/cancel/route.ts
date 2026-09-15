@@ -5,7 +5,7 @@ import { parseBody } from "@/lib/validators";
 import { requireRoles } from "@/lib/auth";
 import { notFound } from "@/lib/errors";
 
-import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
+import { getAppointmentInScope, getAppointmentNames, transition, serializeAppointment } from "@/lib/appointments";
 import { createPatientNotification, notifyClinicSide, notifyPhonesWhatsapp, branchContactPhones, personalizeForPatient } from "@/lib/notifications";
 import { assertBranchStaffPermission } from "@/lib/permissions";
 
@@ -30,12 +30,18 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         : ["pending", "confirmed", "paid"];
 
     await transition(conn, appt, "cancelled", auth.userId, allowedFrom, body.reason ?? null);
+    const names = await getAppointmentNames(conn, appt.id);
 
     if (auth.role === "patient") {
       await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "appointment_cancelled", {
         appointment_id: appt.id,
         patient_id: appt.patient_id,
         reason: body.reason ?? null,
+        date: appt.scheduled_date,
+        time: appt.scheduled_time,
+        doctor_name: names.doctor_name,
+        branch_name: names.branch_name,
+        visitor_name: names.visitor_name ?? names.patient_name,
       });
     } else {
       await createPatientNotification(conn, appt.patient_id, "appointment_cancelled", {
@@ -43,6 +49,8 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         date: appt.scheduled_date,
         time: appt.scheduled_time,
         reason: body.reason ?? null,
+        doctor_name: names.doctor_name,
+        branch_name: names.branch_name,
       });
     }
     return appt;

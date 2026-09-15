@@ -1,7 +1,7 @@
 import { api, json } from "@/lib/http";
 import { pool, withTransaction, type Row } from "@/lib/db";
 import { requireRoles } from "@/lib/auth";
-import { getAppointmentInScope, transition, serializeAppointment } from "@/lib/appointments";
+import { getAppointmentInScope, getAppointmentNames, transition, serializeAppointment } from "@/lib/appointments";
 import {
   createPatientNotification,
   sendEmail,
@@ -26,10 +26,13 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     await assertClinicOperational(conn, appt.clinic_id);
     await assertBranchStaffPermission(conn, auth, appt.branch_id, "appointments:confirm");
     await transition(conn, appt, "confirmed", auth.userId, ["pending"]);
+    const names = await getAppointmentNames(conn, appt.id);
     await createPatientNotification(conn, appt.patient_id, "booking_confirmed", {
       appointment_id: appt.id,
       date: appt.scheduled_date,
       time: appt.scheduled_time,
+      doctor_name: names.doctor_name,
+      branch_name: names.branch_name,
     });
   });
 
