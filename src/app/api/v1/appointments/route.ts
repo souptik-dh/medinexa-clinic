@@ -18,6 +18,8 @@ import {
   getBranchSchedule,
   isWeekdayOpen,
   findCoveringLeave,
+  scheduleFinalEndTime,
+  isPastBookingCutoff,
 } from "@/lib/availability";
 import { fetchPage } from "@/lib/pagination";
 import { assertClinicOperational } from "@/lib/subscriptions";
@@ -228,6 +230,16 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       throw unprocessable(
         "OUTSIDE_DOCTOR_AVAILABILITY",
         "The doctor is not available on this date.",
+      );
+    }
+
+    // Patients cannot book once the doctor's final slot for the day is within 30
+    // minutes (fixed or sequential schedule alike); reception/clinic-owner walk-in
+    // bookings are exempt, mirroring the patient-only checks above.
+    if (auth.role === "patient" && isPastBookingCutoff(body.date, scheduleFinalEndTime(templates), tz)) {
+      throw conflict(
+        "BOOKING_CUTOFF_PASSED",
+        "New bookings for this date are closed within 30 minutes of the doctor's last available slot.",
       );
     }
 
