@@ -94,6 +94,50 @@ export function generateSlotTimes(startTime: string, endTime: string, durationMi
   return times;
 }
 
+export const DEFAULT_BOOKING_CUTOFF_MINUTES = 30;
+
+// The doctor's actual final appointment end time for a day, derived from the last
+// generated slot rather than the raw `end_time` column — the two only differ when
+// slot_duration_minutes doesn't evenly divide the configured window, and it's the
+// last real slot's end that must anchor the cutoff. Multiple template rows (e.g. a
+// morning + evening shift on the same weekday) are supported by taking the max.
+export function scheduleFinalEndTime(templates: Row[]): string | null {
+  let maxEnd: number | null = null;
+  for (const t of templates) {
+    const dur = Number(t.slot_duration_minutes);
+    const keys = generateSlotTimes(t.start_time, t.end_time, dur);
+    const lastKey = keys[keys.length - 1];
+    if (lastKey === undefined) continue;
+    const end = toMinutes(lastKey) + dur;
+    if (maxEnd === null || end > maxEnd) maxEnd = end;
+  }
+  return maxEnd === null ? null : fmtMinutes(maxEnd);
+}
+
+// True once "now" (in the branch's tz) is within `cutoffMinutes` of, at, or past the
+// day's final end time — the shared predicate behind the patient booking cutoff, for
+// both fixed and sequential schedules alike (see scheduleFinalEndTime above).
+export function isPastBookingCutoff(
+  date: string,
+  finalEndTime: string | null,
+  tz: string,
+  cutoffMinutes: number = DEFAULT_BOOKING_CUTOFF_MINUTES,
+): boolean {
+  if (finalEndTime === null) return false;
+  const today = todayInTz(tz);
+  if (date < today) return true;
+  if (date > today) return false;
+  const cutoff = fmtMinutes(Math.max(0, toMinutes(finalEndTime) - cutoffMinutes));
+  return currentTimeKeyInTz(tz) >= cutoff;
+}
+
+// Reception/staff/clinic-owner bookings and dashboards are exempt from the patient
+// booking cutoff; an absent role (unauthenticated/public callers) is treated as a
+// patient view for safety.
+export function bookingCutoffAppliesToRole(role: string | null | undefined): boolean {
+  return role == null || role === "patient";
+}
+
 export type SlotType = "fixed" | "sequential";
 
 export interface DaySlot {
@@ -102,13 +146,19 @@ export interface DaySlot {
   slot_type: SlotType;
 }
 
+export interface DaySlotsResult {
+  slots: DaySlot[];
+  pastBookingCutoff: boolean;
+}
+
 export async function computeDaySlots(
   db: Db,
   doctorId: string,
   date: string,
   tz: string,
   branchId?: string,
-): Promise<DaySlot[]> {
+  applyBookingCutoff = true,
+): Promise<DaySlotsResult> {
   const wd = weekdayInTz(date, tz);
   const params: unknown[] = [doctorId];
   const branchFilter = branchId ? "AND dba.branch_id = ?" : "";
@@ -150,9 +200,18 @@ export async function computeDaySlots(
     }
   }
 
-  return [...slots.entries()]
-    .map(([time, { available, slotType }]) => ({ time, available, slot_type: slotType }))
-    .sort((a, b) => a.time.localeCompare(b.time));
+  const pastBookingCutoff =
+    applyBookingCutoff && isPastBookingCutoff(date, scheduleFinalEndTime(templates), tz);
+  if (pastBookingCutoff) {
+    for (const entry of slots.values()) entry.available = false;
+  }
+
+  return {
+    slots: [...slots.entries()]
+      .map(([time, { available, slotType }]) => ({ time, available, slot_type: slotType }))
+      .sort((a, b) => a.time.localeCompare(b.time)),
+    pastBookingCutoff,
+  };
 }
 
 export async function findNextSequentialSlot(
@@ -426,6 +485,7 @@ export type DateStatus =
   | "clinic_closed"
   | "unavailable"
   | "fully_booked"
+  | "booking_closed"
   | "outside_schedule"
   | "past";
 
@@ -443,6 +503,8 @@ export interface DateAvailability {
 // derived schedule range, not covered by an active doctor leave, not in the past, and
 // has at least one open slot for that weekday. Every availability endpoint
 // (single-date, range, week, calendar) and the booking endpoint must agree with this.
+// `applyBookingCutoff` (default true) folds in the 30-minute patient booking cutoff;
+// callers viewing on behalf of reception/staff/clinic-owner pass false to bypass it.
 export async function computeDateAvailability(
   db: Db,
   doctorId: string,
@@ -453,6 +515,7 @@ export async function computeDateAvailability(
   leaves: LeaveRange[],
   today: string,
   branchSchedule: BranchScheduleGate,
+  applyBookingCutoff = true,
 ): Promise<DateAvailability> {
   if (date < today) {
     return { date, status: "past", is_bookable: false, leave: null, closure: null, slots: [] };
@@ -485,14 +548,14 @@ export async function computeDateAvailability(
       slots: [],
     };
   }
-  const slots = await computeDaySlots(db, doctorId, date, tz, branchId);
+  const { slots, pastBookingCutoff } = await computeDaySlots(db, doctorId, date, tz, branchId, applyBookingCutoff);
   if (slots.length === 0) {
     return { date, status: "unavailable", is_bookable: false, leave: null, closure: null, slots: [] };
   }
   const hasOpen = slots.some((s) => s.available);
   return {
     date,
-    status: hasOpen ? "available" : "fully_booked",
+    status: hasOpen ? "available" : pastBookingCutoff ? "booking_closed" : "fully_booked",
     is_bookable: hasOpen,
     leave: null,
     closure: null,
