@@ -11,6 +11,7 @@ export type NotificationType =
   | "doctor_invited"
   | "doctor_invite_accepted"
   | "appointment_cancelled"
+  | "appointment_rescheduled"
   | "lab_test_booked"
   | "lab_test_approved"
   | "lab_test_rejected"
@@ -157,6 +158,14 @@ export function pushContentFor(
           ? `Your appointment with ${doctorAt}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
           : `Your appointment${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
+    case "appointment_rescheduled": {
+      const oldWhen = [payload.old_date, payload.old_time].filter(Boolean).join(" at ");
+      const newWhen = [payload.new_date, payload.new_time].filter(Boolean).join(" at ");
+      return {
+        title: "Appointment rescheduled",
+        body: `Please reschedule your appointment${doctor ? ` with ${doctorAt}` : ""} — the doctor's availability changed${oldWhen ? `, so your visit on ${oldWhen}` : ""}${newWhen ? ` has been moved to ${newWhen}` : ""}.${reasonSuffix}`,
+      };
+    }
     case "lab_test_booked":
       return {
         title: "Lab test booked",

@@ -133,15 +133,20 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       const [eh, em] = String(t.end_time).split(":");
       await conn.query(
         `INSERT INTO doctor_slot_templates
-           (id, doctor_branch_assignment_id, weekday, start_time, end_time, slot_duration_minutes, start_date, end_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, doctor_branch_assignment_id, weekday, label, start_time, end_time, slot_duration_minutes, max_patients, is_active, start_date, end_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId(),
           assignmentId,
           t.weekday,
+          t.label ?? null,
           `${h}:${m}:00`,
           `${eh}:${em}:00`,
           t.slot_duration_minutes,
+          // Invites created before max_patients/is_active existed store neither in
+          // their JSON snapshot — default to today's implicit behavior (1 patient, active).
+          t.max_patients ?? 1,
+          t.is_active === false ? 0 : 1,
           t.start_date,
           t.end_date ?? null,
         ],

@@ -1828,17 +1828,23 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
   "slot_template": [
     {
       "weekday": 1,
+      "label": "morning",
       "start_time": "09:00",
       "end_time": "13:00",
       "slot_duration_minutes": 20,
+      "max_patients": 1,
+      "is_active": true,
       "start_date": "2026-08-17",
       "end_date": "2026-12-31"
     },
     {
-      "weekday": 3,
+      "weekday": 1,
+      "label": "evening",
       "start_time": "16:00",
       "end_time": "20:00",
       "slot_duration_minutes": 20,
+      "max_patients": 1,
+      "is_active": true,
       "start_date": "2026-08-17",
       "end_date": null
     }
@@ -1860,11 +1866,14 @@ Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:m
 | `currency` | string | required, 3-letter code |
 | `certificate` | string? | max 500 |
 | `slot_type` | string? | `fixed` \| `sequential`, defaults to `fixed` — see [Slot types](#slot-types) |
-| `slot_template` | array | required, ≥ 1 entry |
+| `slot_template` | array | required, ≥ 1 entry. Multiple entries may share the same `weekday` (e.g. a `morning` and an `evening` range) as long as their time windows don't overlap — overlapping ranges for the same weekday return `422 VALIDATION_ERROR` |
 | `slot_template[].weekday` | number | 0 (Sun) – 6 (Sat); the pattern repeats every week within the date range below |
+| `slot_template[].label` | string? | `morning` \| `afternoon` \| `evening` \| `custom` \| `null` — display hint only, not used by scheduling logic |
 | `slot_template[].start_time` | string | `HH:MM` |
 | `slot_template[].end_time` | string | `HH:MM`, must be after start |
 | `slot_template[].slot_duration_minutes` | number | 5–240 |
+| `slot_template[].max_patients` | number? | 1–100, defaults to `1` — how many concurrent bookings each generated slot in this range allows |
+| `slot_template[].is_active` | boolean? | defaults to `true` — an inactive range is excluded from availability/booking without deleting it |
 | `slot_template[].start_date` | string | `YYYY-MM-DD`, required — first date the weekly pattern applies |
 | `slot_template[].end_date` | string? | `YYYY-MM-DD`, nullable — last date the pattern applies; `null`/omitted means it repeats indefinitely |
 
@@ -2227,6 +2236,14 @@ Auth: `clinic_owner`, must own the branch **or** `branch_staff` with `doctors:ma
 
 **Errors:** `404 BRANCH_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `404 DOCTOR_NOT_FOUND`, `400 INVALID_PUBLIC_ID`, `400 VALIDATION_ERROR`.
 
+### GET /doctor-assignments/:id
+
+Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Returns the assignment's current `slot_template` rows so a schedule editor can load-then-edit them (nothing else returns these raw rows).
+
+**Response `200`** — same shape as the PATCH response below.
+
+**Errors:** `404 ASSIGNMENT_NOT_FOUND`.
+
 ### PATCH /doctor-assignments/:id
 
 Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff` with `doctors:manage`. Doctors may only update `slot_type`/`slot_template`/`certificate`; attempting to set `fee_amount` as a doctor returns `403 FEE_OWNER_CONTROLLED`.
@@ -2239,9 +2256,12 @@ Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff`
   "slot_type": "sequential",
   "slot_template": [{
     "weekday": 2,
+    "label": "morning",
     "start_time": "10:00",
     "end_time": "14:00",
     "slot_duration_minutes": 30,
+    "max_patients": 1,
+    "is_active": true,
     "start_date": "2026-08-17",
     "end_date": "2026-12-31"
   }],
@@ -2251,7 +2271,17 @@ Auth: `clinic_owner` (branch scope) **or** `doctor` (self) **or** `branch_staff`
 
 `slot_type` ∈ `fixed | sequential` — see [Slot types](#slot-types). Switching an assignment to `sequential` does not require changing `slot_template`; the same weekday/time-range/duration rows are reused, just booked in order instead of by patient-picked time.
 
+Each `slot_template` entry:
+- `label` ∈ `morning | afternoon | evening | custom | null` — a display hint only, not used by scheduling logic.
+- `max_patients` (default `1`) — how many concurrent bookings this range's generated slots each allow (a "group slot" capacity, not a total for the whole range). Availability responses report per-slot `capacity`/`remaining` derived from this.
+- `is_active` (default `true`) — an inactive range is excluded from availability/booking entirely (as if it didn't exist) without deleting its definition, so it can be re-enabled later without re-entering it.
+- A clinic may set several entries for the **same weekday** (e.g. a `morning` and an `evening` range) as long as their `[start_time, end_time)` windows don't overlap — overlapping ranges for the same weekday are rejected with `422 VALIDATION_ERROR`, regardless of `is_active`.
+
 Sending `slot_template` fully replaces the assignment's existing rows — it is not a diff/patch of individual entries. Each entry's `weekday` pattern repeats every week between `start_date` and `end_date` (or indefinitely if `end_date` is `null`). To keep a doctor's weekly schedule but pull them off a single date within that range (holiday, leave, etc.), use the exceptions endpoints below instead of shrinking the date range. These per-entry dates are also what `GET /branches/:id/doctors` aggregates into its top-level `start_date`/`end_date` per doctor — see that endpoint's docs.
+
+**Auto-reschedule on `slot_template` change:** whenever a request includes `slot_template`, every existing `pending`/`confirmed` appointment for this doctor at this branch (today or later) is checked against the *new* rows. One that no longer lines up (its weekday/time no longer falls inside any active range, e.g. the range moved, was removed, or `slot_duration_minutes` changed so the exact time no longer aligns) is automatically moved to the soonest matching open slot under the new schedule — same slot-picking logic as `next_available_slot` elsewhere, so it respects branch closures, doctor leaves, and capacity, and never doubles up two rescheduled patients into the same slot. If no matching slot exists within the next 60 days, the appointment is cancelled instead (`status` → `cancelled`), the same fallback already used when a doctor goes on leave over their only remaining slots (see `POST /doctor-assignments/:id/exceptions`). `paid` appointments are left untouched either way — moving or cancelling a paid visit has refund implications out of scope here; the clinic must resolve those manually.
+
+Every affected patient is notified — in-app notification (`appointment_rescheduled` or `appointment_cancelled`), push, email, and WhatsApp (if a phone is on file) — after the transaction commits, worded as "please reschedule your appointment" for moved appointments. This runs synchronously inside the PATCH request, so the response is not returned until every affected appointment has been resolved and notified.
 
 **Response `200`**
 
@@ -2263,11 +2293,27 @@ Sending `slot_template` fully replaces the assignment's existing rows — it is 
   "fee_amount": 600,
   "currency": "INR",
   "slot_type": "sequential",
-  "certificate_url": "https://example.com/new-cert.pdf"
+  "certificate_url": "https://example.com/new-cert.pdf",
+  "slot_template": [{
+    "id": "f1a2b3c4-...",
+    "weekday": 2,
+    "label": "morning",
+    "start_time": "10:00",
+    "end_time": "14:00",
+    "slot_duration_minutes": 30,
+    "max_patients": 1,
+    "is_active": true,
+    "start_date": "2026-08-17",
+    "end_date": "2026-12-31"
+  }],
+  "rescheduled_appointment_count": 2,
+  "cancelled_appointment_count": 0
 }
 ```
 
-**Errors:** `404 ASSIGNMENT_NOT_FOUND`, `403 FEE_OWNER_CONTROLLED`.
+`rescheduled_appointment_count`/`cancelled_appointment_count` are always present (`0` when `slot_template` wasn't in the request, or nothing was affected) — a quick signal for the clinic UI to surface ("2 appointments were automatically rescheduled") without a follow-up call.
+
+**Errors:** `404 ASSIGNMENT_NOT_FOUND`, `403 FEE_OWNER_CONTROLLED`, `422 VALIDATION_ERROR` (overlapping ranges for the same weekday, or another `slot_template` validation failure).
 
 ### DELETE /doctor-assignments/:id
 
@@ -2495,14 +2541,14 @@ Two modes, selected by which query params are present:
   "leave": null,
   "closure": null,
   "slots": [
-    { "time": "09:00", "available": true, "slot_type": "fixed" },
-    { "time": "09:20", "available": true, "slot_type": "fixed" },
-    { "time": "09:40", "available": false, "slot_type": "fixed" }
+    { "time": "09:00", "available": true, "slot_type": "fixed", "capacity": 1, "remaining": 1 },
+    { "time": "09:20", "available": true, "slot_type": "fixed", "capacity": 3, "remaining": 2 },
+    { "time": "09:40", "available": false, "slot_type": "fixed", "capacity": 1, "remaining": 0 }
   ]
 }
 ```
 
-`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one.
+`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one. `capacity` is that slot template range's `max_patients` and `remaining` is `capacity` minus current non-cancelled bookings at that exact time (added additively; `available` is simply `remaining > 0` and stays correct for clients that ignore the new fields).
 
 **Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day.
 
@@ -2527,7 +2573,7 @@ Two modes, selected by which query params are present:
       "is_bookable": true,
       "leave": null,
       "closure": null,
-      "slots": [{ "time": "09:00", "available": true, "slot_type": "fixed" }]
+      "slots": [{ "time": "09:00", "available": true, "slot_type": "fixed", "capacity": 1, "remaining": 1 }]
     },
     {
       "date": "2026-08-20",

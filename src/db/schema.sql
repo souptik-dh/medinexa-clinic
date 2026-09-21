@@ -338,9 +338,12 @@ CREATE TABLE IF NOT EXISTS doctor_slot_templates (
   id CHAR(36) NOT NULL,
   doctor_branch_assignment_id CHAR(36) NOT NULL,
   weekday TINYINT NOT NULL,
+  label ENUM('morning','afternoon','evening','custom') NULL,
   start_time TIME NOT NULL,
   end_time TIME NOT NULL,
   slot_duration_minutes SMALLINT NOT NULL,
+  max_patients SMALLINT NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
   start_date DATE NOT NULL,
   end_date DATE NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -377,6 +380,12 @@ CREATE TABLE IF NOT EXISTS appointments (
   doctor_id CHAR(36) NOT NULL,
   scheduled_date DATE NOT NULL,
   scheduled_time VARCHAR(5) NOT NULL,
+  -- Occupancy index within a (doctor, date, time) slot, 0-based — lets a slot template
+  -- with max_patients > 1 hold multiple concurrent bookings while still using a unique
+  -- key (rather than row locks) to guarantee no more than max_patients are ever
+  -- inserted: the app tries slot_seq 0, 1, 2... and treats a duplicate-key error as
+  -- "that seq is taken", exactly like the existing sequential-slot retry pattern.
+  slot_seq SMALLINT NOT NULL DEFAULT 0,
   duration_minutes SMALLINT NOT NULL DEFAULT 20,
   status ENUM('pending','confirmed','paid','completed','cancelled','no_show') NOT NULL DEFAULT 'pending',
   fee_amount DECIMAL(10,2) NOT NULL,
@@ -384,8 +393,8 @@ CREATE TABLE IF NOT EXISTS appointments (
   payment_method VARCHAR(16) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  -- Partial unique constraint: a slot is unique per (doctor, date) while NOT cancelled.
-  slot_key VARCHAR(5) GENERATED ALWAYS AS (IF(status = 'cancelled', NULL, scheduled_time)) STORED,
+  -- Partial unique constraint: a slot is unique per (doctor, date, time, seq) while NOT cancelled.
+  slot_key VARCHAR(8) GENERATED ALWAYS AS (IF(status = 'cancelled', NULL, CONCAT(scheduled_time, '#', slot_seq))) STORED,
   PRIMARY KEY (id),
   UNIQUE KEY uniq_doctor_date_slot (doctor_id, scheduled_date, slot_key),
   KEY idx_appt_branch_status (branch_id, status),

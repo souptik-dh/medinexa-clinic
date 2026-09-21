@@ -144,11 +144,57 @@ export interface DaySlot {
   time: string;
   available: boolean;
   slot_type: SlotType;
+  capacity: number;
+  remaining: number;
 }
 
 export interface DaySlotsResult {
   slots: DaySlot[];
   pastBookingCutoff: boolean;
+}
+
+export interface SlotCapacity {
+  slotType: SlotType;
+  maxPatients: number;
+  durationMinutes: number;
+}
+
+// Shared by computeDaySlots/findNextSequentialSlot/nextAvailableSlot and the booking
+// route: expands every template row into its generated HH:MM keys and records each
+// key's slot_type/max_patients/duration — a doctor with multiple ranges in one day
+// (e.g. morning + evening) can have different durations per range, so the caller must
+// never assume a single `templates[0]` applies to every generated key. Two templates
+// should never generate the same key post overlap validation, but the max capacity is
+// taken defensively for data written before that check existed.
+export function buildSlotCapacityMap(templates: Row[]): Map<string, SlotCapacity> {
+  const map = new Map<string, SlotCapacity>();
+  for (const t of templates) {
+    const dur = Number(t.slot_duration_minutes);
+    const maxPatients = Number(t.max_patients ?? 1);
+    for (const key of generateSlotTimes(t.start_time, t.end_time, dur)) {
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, { slotType: t.slot_type as SlotType, maxPatients, durationMinutes: dur });
+      } else if (maxPatients > existing.maxPatients) {
+        existing.maxPatients = maxPatients;
+      }
+    }
+  }
+  return map;
+}
+
+// Non-cancelled booking counts per time for a doctor/date, used to derive remaining
+// capacity per slot key.
+export async function bookedCountsByTime(db: Db, doctorId: string, date: string): Promise<Map<string, number>> {
+  const [rows] = await db.query<Row[]>(
+    `SELECT scheduled_time, COUNT(*) AS cnt FROM appointments
+      WHERE doctor_id = ? AND scheduled_date = ? AND status != 'cancelled'
+      GROUP BY scheduled_time`,
+    [doctorId, date],
+  );
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(r.scheduled_time, Number(r.cnt));
+  return map;
 }
 
 export async function computeDaySlots(
@@ -166,11 +212,11 @@ export async function computeDaySlots(
   params.push(wd, date, date, date, date);
 
   const [templates] = await db.query<Row[]>(
-    `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes, dba.slot_type
+    `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes, dst.max_patients, dba.slot_type
        FROM doctor_slot_templates dst
        JOIN doctor_branch_assignments dba ON dba.id = dst.doctor_branch_assignment_id
        JOIN branches b ON b.id = dba.branch_id AND b.deleted_at IS NULL
-      WHERE dba.doctor_id = ? ${branchFilter} AND dba.is_active = 1 AND dst.weekday = ?
+      WHERE dba.doctor_id = ? ${branchFilter} AND dba.is_active = 1 AND dst.is_active = 1 AND dst.weekday = ?
         AND dst.start_date <= ? AND (dst.end_date IS NULL OR dst.end_date >= ?)
         AND NOT EXISTS (
           SELECT 1 FROM doctor_slot_exceptions dse
@@ -180,38 +226,27 @@ export async function computeDaySlots(
     params,
   );
 
-  const slots = new Map<string, { available: boolean; slotType: SlotType }>();
-  for (const t of templates) {
-    const dur = Number(t.slot_duration_minutes);
-    for (const key of generateSlotTimes(t.start_time, t.end_time, dur)) {
-      if (!slots.has(key)) slots.set(key, { available: true, slotType: t.slot_type as SlotType });
-    }
-  }
-
-  if (slots.size > 0) {
-    const [booked] = await db.query<Row[]>(
-      `SELECT scheduled_time FROM appointments
-        WHERE doctor_id = ? AND scheduled_date = ? AND status != 'cancelled'`,
-      [doctorId, date],
-    );
-    for (const b of booked) {
-      const entry = slots.get(b.scheduled_time);
-      if (entry) entry.available = false;
-    }
-  }
+  const capacityMap = buildSlotCapacityMap(templates);
+  const booked = capacityMap.size > 0 ? await bookedCountsByTime(db, doctorId, date) : new Map<string, number>();
 
   const pastBookingCutoff =
     applyBookingCutoff && isPastBookingCutoff(date, scheduleFinalEndTime(templates), tz);
-  if (pastBookingCutoff) {
-    for (const entry of slots.values()) entry.available = false;
-  }
 
-  return {
-    slots: [...slots.entries()]
-      .map(([time, { available, slotType }]) => ({ time, available, slot_type: slotType }))
-      .sort((a, b) => a.time.localeCompare(b.time)),
-    pastBookingCutoff,
-  };
+  const slots: DaySlot[] = [...capacityMap.entries()]
+    .map(([time, { slotType, maxPatients }]) => {
+      const bookedCount = booked.get(time) ?? 0;
+      const remaining = pastBookingCutoff ? 0 : Math.max(0, maxPatients - bookedCount);
+      return {
+        time,
+        available: remaining > 0,
+        slot_type: slotType,
+        capacity: maxPatients,
+        remaining,
+      };
+    })
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  return { slots, pastBookingCutoff };
 }
 
 export async function findNextSequentialSlot(
@@ -231,11 +266,11 @@ export async function findNextSequentialSlot(
     return null;
   }
   const [templates] = await db.query<Row[]>(
-    `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes
+    `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes, dst.max_patients
        FROM doctor_slot_templates dst
        JOIN doctor_branch_assignments dba ON dba.id = dst.doctor_branch_assignment_id
       WHERE dba.doctor_id = ? AND dba.branch_id = ? AND dba.is_active = 1
-        AND dba.slot_type = 'sequential' AND dst.weekday = ?
+        AND dba.slot_type = 'sequential' AND dst.weekday = ? AND dst.is_active = 1
         AND dst.start_date <= ? AND (dst.end_date IS NULL OR dst.end_date >= ?)
         AND NOT EXISTS (
           SELECT 1 FROM doctor_slot_exceptions dse
@@ -246,27 +281,20 @@ export async function findNextSequentialSlot(
   );
   if (templates.length === 0) return null;
 
-  const [booked] = await db.query<Row[]>(
-    `SELECT scheduled_time FROM appointments
-      WHERE doctor_id = ? AND scheduled_date = ? AND status != 'cancelled'`,
-    [doctorId, date],
-  );
-  const taken = new Set(booked.map((b) => b.scheduled_time));
-  for (const t of excludeTimes) taken.add(t);
+  const capacityMap = buildSlotCapacityMap(templates);
+  const booked = await bookedCountsByTime(db, doctorId, date);
+  // A time already tried and rejected in this same booking attempt counts as one
+  // more occupant, so a capacity > 1 slot doesn't hand out the same key twice in a row.
+  for (const t of excludeTimes) booked.set(t, (booked.get(t) ?? 0) + 1);
 
   const today = todayInTz(tz);
   const nowKey = date === today ? currentTimeKeyInTz(tz) : null;
 
-  const candidates: string[] = [];
-  for (const t of templates) {
-    for (const key of generateSlotTimes(t.start_time, t.end_time, Number(t.slot_duration_minutes))) {
-      candidates.push(key);
-    }
-  }
-  candidates.sort((a, b) => a.localeCompare(b));
+  const candidates = [...capacityMap.keys()].sort((a, b) => a.localeCompare(b));
 
   for (const key of candidates) {
-    if (taken.has(key)) continue;
+    const { maxPatients } = capacityMap.get(key)!;
+    if ((booked.get(key) ?? 0) >= maxPatients) continue;
     if (nowKey !== null && key <= nowKey) continue;
     return key;
   }
@@ -311,18 +339,15 @@ export async function nextAvailableSlot(
     const wd = weekdayInTz(date, tz);
     if (!isWeekdayOpen(branchSchedule, wd) || findCoveringLeave(date, branchSchedule.closures)) continue;
     const nowKey = dayOffset === 0 ? currentTimeKeyInTz(tz) : null;
-    for (const t of templates) {
-      if (Number(t.weekday) !== wd) continue;
-      if (t.start_date > date) continue;
-      if (t.end_date && t.end_date < date) continue;
-      const [booked] = await db.query<Row[]>(
-        `SELECT scheduled_time FROM appointments
-          WHERE doctor_id = ? AND scheduled_date = ? AND status != 'cancelled'`,
-        [doctorId, date],
-      );
-      const taken = new Set(booked.map((b) => b.scheduled_time));
+    const dayTemplates = templates.filter(
+      (t) => Number(t.weekday) === wd && Number(t.is_active) === 1 && t.start_date <= date && (!t.end_date || t.end_date >= date),
+    );
+    if (dayTemplates.length === 0) continue;
+    const booked = await bookedCountsByTime(db, doctorId, date);
+    for (const t of dayTemplates) {
+      const maxPatients = Number(t.max_patients ?? 1);
       for (const key of generateSlotTimes(t.start_time, t.end_time, Number(t.slot_duration_minutes))) {
-        if (taken.has(key)) continue;
+        if ((booked.get(key) ?? 0) >= maxPatients) continue;
         if (nowKey !== null && key <= nowKey) continue;
         return `${date}T${key}:00`;
       }
@@ -364,7 +389,7 @@ export async function getAvailabilityPeriods(
             MIN(start_date) AS start_date,
             CASE WHEN SUM(end_date IS NULL) > 0 THEN NULL ELSE MAX(end_date) END AS end_date
        FROM doctor_slot_templates
-      WHERE doctor_branch_assignment_id IN (?)
+      WHERE doctor_branch_assignment_id IN (?) AND is_active = 1
       GROUP BY doctor_branch_assignment_id`,
     [assignmentIds],
   );
