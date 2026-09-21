@@ -205,6 +205,10 @@ CREATE TABLE IF NOT EXISTS branch_staff (
   user_id CHAR(36) NOT NULL,
   added_by CHAR(36) NOT NULL,
   permissions_json JSON NULL,
+  -- NULL until this staff member's first successful OTP login ("joining") — set once,
+  -- atomically, so the clinic-owner push notification fires exactly once per staff member
+  -- even if verify-otp is retried.
+  joined_at DATETIME(3) NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uniq_staff_branch_user (branch_id, user_id),

@@ -81,7 +81,8 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const slotTemplates = invite.slot_template as Array<Record<string, unknown>>;
 
   const [ownerRows] = await pool.query<Row[]>(
-    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone
+    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone,
+            b.name AS branch_name, c.name AS clinic_name
        FROM branches b
        JOIN clinics c ON c.id = b.clinic_id
        JOIN users co ON co.id = c.owner_user_id
@@ -152,17 +153,18 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
         ],
       );
     }
-    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", {
+    const acceptedPayload = {
       doctor_id: doctorId,
+      doctor_name: invite.name,
       branch_id: invite.branch_id,
+      branch_name: owner?.branch_name ?? null,
+      clinic_name: owner?.clinic_name ?? null,
+      status: "accepted",
       phone: body.phone,
-    });
+    };
+    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", acceptedPayload);
     if (owner && owner.owner_user_id !== invite.invited_by) {
-      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
-        doctor_id: doctorId,
-        branch_id: invite.branch_id,
-        phone: body.phone,
-      });
+      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", acceptedPayload);
     }
   }).catch((err) => {
     if (isUniqueViolation(err)) {
