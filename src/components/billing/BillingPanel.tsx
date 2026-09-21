@@ -35,6 +35,10 @@ import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
 import { useTranslation } from "@/hooks/useTranslation";
 
+// Clinic payments are temporarily disabled platform-wide — see the matching flag in
+// jido-healthcare-clinic-app's subscription.page.ts.
+const PAYMENTS_DISABLED = true;
+
 const PAYMENT_METHODS = [
   { value: "upi", label: "UPI" },
   { value: "card", label: "Card" },
@@ -187,6 +191,7 @@ export default function BillingPanel() {
   // and hands the resulting payment id/signature back to the backend to verify.
   const launchCheckout = useCallback(
     async (payment: SubscriptionPayment) => {
+      if (PAYMENTS_DISABLED) return;
       setCheckoutError(null);
       setCheckoutStage("opening");
       try {
@@ -237,7 +242,7 @@ export default function BillingPanel() {
   );
 
   const handleInitiate = async () => {
-    if (!clinicId) return;
+    if (!clinicId || PAYMENTS_DISABLED) return;
     setInitiating(true);
     try {
       const res = await subscriptionsApi.initiatePayment(clinicId, {
@@ -256,7 +261,7 @@ export default function BillingPanel() {
   };
 
   const handleReactivate = async () => {
-    if (!clinicId) return;
+    if (!clinicId || PAYMENTS_DISABLED) return;
     setReactivating(true);
     try {
       const res = await subscriptionsApi.reactivate(clinicId);
@@ -282,6 +287,12 @@ export default function BillingPanel() {
 
   return (
     <div className="space-y-4">
+      {PAYMENTS_DISABLED && (
+        <div className="rounded-2xl border border-warning-500/30 bg-warning-50 p-4 text-sm text-warning-600 dark:bg-warning-500/10 dark:text-warning-400">
+          {t("billing.paymentsUnavailable")}
+        </div>
+      )}
+
       {/* Clinic selector */}
       <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div className="w-full sm:w-72">
@@ -308,6 +319,7 @@ export default function BillingPanel() {
                 setPendingPayment(null);
                 setPayOpen(true);
               }}
+              disabled={PAYMENTS_DISABLED}
               className="inline-flex h-10 items-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
               {t("billing.payRenew")}
@@ -316,7 +328,7 @@ export default function BillingPanel() {
           {isInactive && (
             <button
               onClick={handleReactivate}
-              disabled={reactivating}
+              disabled={reactivating || PAYMENTS_DISABLED}
               className="inline-flex h-10 items-center rounded-lg bg-success-500 px-4 text-sm font-medium text-white transition-colors hover:bg-success-600 disabled:opacity-60"
             >
               {reactivating ? t("billing.reactivating") : t("billing.reactivate")}
@@ -666,7 +678,7 @@ export default function BillingPanel() {
             </div>
             <button
               onClick={handleInitiate}
-              disabled={initiating}
+              disabled={initiating || PAYMENTS_DISABLED}
               className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
               {initiating ? t("billing.initiating") : t("billing.createOrder")}
@@ -696,7 +708,7 @@ export default function BillingPanel() {
 
             <button
               onClick={() => launchCheckout(pendingPayment)}
-              disabled={checkoutStage === "opening" || checkoutStage === "verifying"}
+              disabled={checkoutStage === "opening" || checkoutStage === "verifying" || PAYMENTS_DISABLED}
               className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
             >
               {checkoutStage === "error" ? t("billing.retryPayment") : t("billing.reopenPaymentWindow")}

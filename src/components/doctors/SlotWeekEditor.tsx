@@ -1,5 +1,6 @@
 "use client";
-import { BranchOperatingDay, SlotTemplateItem } from "@/lib/api";
+import toast from "react-hot-toast";
+import { BranchOperatingDay, SlotLabel, SlotTemplateItem } from "@/lib/api";
 import { today } from "@/lib/utils";
 import DatePicker from "@/components/form/date-picker";
 import { inputClass, weekdayLabel, weekdayShortLabel } from "@/components/doctors/scheduleShared";
@@ -19,15 +20,26 @@ function nextDateForWeekday(weekday: number): string {
   return formatDateOnly(base);
 }
 
-function newSlotForWeekday(weekday: number): SlotTemplateItem {
+const PRESET_TIMES: Record<SlotLabel, { start_time: string; end_time: string }> = {
+  morning: { start_time: "07:00", end_time: "10:00" },
+  afternoon: { start_time: "13:00", end_time: "15:00" },
+  evening: { start_time: "18:00", end_time: "21:00" },
+  custom: { start_time: "09:00", end_time: "13:00" },
+};
+
+const SLOT_LABELS: SlotLabel[] = ["morning", "afternoon", "evening", "custom"];
+
+function newSlotForWeekday(weekday: number, label: SlotLabel = "custom"): SlotTemplateItem {
   const startDate = nextDateForWeekday(weekday);
   const endDate = new Date(`${startDate}T00:00:00`);
   endDate.setDate(endDate.getDate() + 90);
   return {
     weekday,
-    start_time: "09:00",
-    end_time: "13:00",
+    label,
+    ...PRESET_TIMES[label],
     slot_duration_minutes: 20,
+    max_patients: 1,
+    is_active: true,
     start_date: startDate,
     end_date: formatDateOnly(endDate),
   };
@@ -60,8 +72,20 @@ export default function SlotWeekEditor({
     }
   };
 
-  const addRangeForDay = (weekday: number) => {
-    onChange([...slots, newSlotForWeekday(weekday)]);
+  const slotLabelText = (label: SlotLabel): string =>
+    ({
+      morning: t("slotWeekEditor.labelMorning"),
+      afternoon: t("slotWeekEditor.labelAfternoon"),
+      evening: t("slotWeekEditor.labelEvening"),
+      custom: t("slotWeekEditor.labelCustom"),
+    })[label];
+
+  const addRangeForDay = (weekday: number, label: SlotLabel = "custom") => {
+    if (label !== "custom" && slots.some((s) => s.weekday === weekday && s.label === label)) {
+      toast.error(`${slotLabelText(label)} is already added for this day.`);
+      return;
+    }
+    onChange([...slots, newSlotForWeekday(weekday, label)]);
   };
 
   const updateEntry = (index: number, patch: Partial<SlotTemplateItem>) => {
@@ -130,24 +154,47 @@ export default function SlotWeekEditor({
             key={group.weekday}
             className="rounded-lg border border-gray-200 p-3 dark:border-gray-800"
           >
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
                 {weekdayLabel(group.weekday, t)}
               </p>
-              <button
-                type="button"
-                onClick={() => addRangeForDay(group.weekday)}
-                className="text-xs font-medium text-brand-500 hover:underline"
-              >
-                {t("labSchedule.addTimeRange")}
-              </button>
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                {SLOT_LABELS.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => addRangeForDay(group.weekday, label)}
+                    className="min-h-[34px] basis-[calc(50%-0.25rem)] rounded-md border border-gray-200 px-2 py-1.5 text-center text-xs font-medium text-brand-500 hover:underline dark:border-gray-800 sm:basis-auto sm:min-h-0 sm:flex-none sm:border-0 sm:px-0 sm:py-0"
+                  >
+                    + {slotLabelText(label)}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="space-y-3">
               {group.entries.map(({ slot, index }) => (
                 <div
                   key={index}
-                  className="flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 first:border-t-0 first:pt-0 dark:border-gray-800"
+                  className={`flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 first:border-t-0 first:pt-0 dark:border-gray-800 ${
+                    slot.is_active === false ? "opacity-50" : ""
+                  }`}
                 >
+                  <div className="w-32">
+                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {t("slotWeekEditor.period")}
+                    </label>
+                    <select
+                      value={slot.label ?? "custom"}
+                      onChange={(e) => updateEntry(index, { label: e.target.value as SlotLabel })}
+                      className={inputClass}
+                    >
+                      {SLOT_LABELS.map((label) => (
+                        <option key={label} value={label}>
+                          {slotLabelText(label)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="w-40">
                     <DatePicker
                       id={`slot-from-${index}`}
@@ -209,6 +256,30 @@ export default function SlotWeekEditor({
                       className={inputClass}
                     />
                   </div>
+                  <div className="w-24">
+                    <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {t("slotWeekEditor.maxPatients")}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={slot.max_patients}
+                      onChange={(e) =>
+                        updateEntry(index, { max_patients: Number(e.target.value) })
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <label className="mb-1 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={slot.is_active}
+                      onChange={(e) => updateEntry(index, { is_active: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/10"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-400">{t("status.active")}</span>
+                  </label>
                   <button
                     type="button"
                     onClick={() => removeEntry(index)}

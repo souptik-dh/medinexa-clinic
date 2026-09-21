@@ -57,8 +57,6 @@ interface AuthContextValue {
   verifyOwnerOtp: (phone: string, otp: string) => Promise<void>;
   /** Clinic owner login: phone + password (alternative to OTP). */
   loginOwnerWithPassword: (phone: string, password: string) => Promise<void>;
-  /** Sets a password for the current session (e.g. after an OTP-only login). */
-  setPassword: (newPassword: string, confirmPassword: string) => Promise<string>;
   /** Doctor login step 1: sends OTP to phone. */
   sendDoctorLoginOtp: (phone: string) => Promise<string>;
   /** Doctor login step 2: verifies OTP, stores session. */
@@ -233,45 +231,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // After an OTP login on an account with no password yet, nudge the owner
-  // toward setting one so next time they can skip the OTP round-trip.
-  const promptSetPasswordIfNeeded = useCallback(
-    (requiresPasswordSetup?: boolean) => {
-      if (!requiresPasswordSetup) return;
-      toast(
-        (t) => (
-          <div className="flex items-center gap-3">
-            <span>Add a password for faster sign-in next time?</span>
-            <button
-              type="button"
-              className="shrink-0 rounded-md bg-brand-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-600"
-              onClick={() => {
-                toast.dismiss(t.id);
-                router.push("/settings");
-              }}
-            >
-              Set password
-            </button>
-          </div>
-        ),
-        { duration: 8000 }
-      );
-    },
-    [router]
-  );
-
   const verifyOwnerOtp = useCallback(async (phone: string, otp: string) => {
     try {
       const res = await authApi.verifyClinicOwnerOtp({ phone, otp });
       setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
       await persist(res.user, res.clinic);
       toast.success("Signed in successfully.");
-      promptSetPasswordIfNeeded(res.requires_password_setup);
     } catch (err) {
       if (err instanceof ApiError) throw new Error(err.message);
       throw err;
     }
-  }, [persist, promptSetPasswordIfNeeded]);
+  }, [persist]);
 
   const loginOwnerWithPassword = useCallback(async (phone: string, password: string) => {
     try {
@@ -284,19 +254,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw err;
     }
   }, [persist]);
-
-  const setPassword = useCallback(async (newPassword: string, confirmPassword: string) => {
-    try {
-      const res = await authApi.setPassword({
-        new_password: newPassword,
-        confirm_password: confirmPassword,
-      });
-      return res.message;
-    } catch (err) {
-      if (err instanceof ApiError) throw new Error(err.message);
-      throw err;
-    }
-  }, []);
 
   const sendDoctorLoginOtp = useCallback(async (phone: string) => {
     try {
@@ -483,7 +440,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sendOwnerLoginOtp,
         verifyOwnerOtp,
         loginOwnerWithPassword,
-        setPassword,
         sendDoctorLoginOtp,
         verifyDoctorOtp,
         superAdminLogin,

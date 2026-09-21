@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
@@ -148,6 +148,24 @@ export default function DoctorsPanel() {
     sessionStorage.setItem("doctors-panel-tab", tabKey);
     if (tabKey !== "search") load(branch, tabKey);
   };
+
+  // A doctor accepting an invite (or any other change) happens outside this tab
+  // entirely — on the doctor's own device/app — so this page can't know about it as
+  // it happens. Refetching whenever the browser tab/window regains focus or
+  // visibility means staff see the update without a manual refresh the next time
+  // they look back at this page, instead of staring at stale data indefinitely.
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      if (branch && tab !== "search") load(branch, tab);
+    };
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
+  }, [branch, tab, load]);
 
   const runSearch = async () => {
     const q = searchQuery.trim();
@@ -704,9 +722,16 @@ export default function DoctorsPanel() {
         description={t("doctors.inviteDoctorDesc")}
       >
         <InviteDoctorForm
-          onDone={() => {
+          onDone={(result) => {
             setInviteOpen(false);
-            if (branch) load(branch, "invites");
+            if (!branch) return;
+            // A direct assignment resolves immediately — it never becomes a pending
+            // invite, it lands straight in the Doctors list, so that's the list (and
+            // tab) that needs to refresh for the change to actually be visible.
+            const targetTab: Tab = result?.isDirect ? "doctors" : "invites";
+            setTab(targetTab);
+            sessionStorage.setItem("doctors-panel-tab", targetTab);
+            load(branch, targetTab);
           }}
           onCancel={() => setInviteOpen(false)}
         />
@@ -723,7 +748,13 @@ export default function DoctorsPanel() {
         <AddExistingDoctorForm
           onDone={() => {
             setAddExistingOpen(false);
-            if (branch) load(branch, "invites");
+            if (!branch) return;
+            // This always assigns the doctor directly (no invite/token — see the
+            // description above), so it's the Doctors list that needs refreshing,
+            // never Invites.
+            setTab("doctors");
+            sessionStorage.setItem("doctors-panel-tab", "doctors");
+            load(branch, "doctors");
           }}
           onCancel={() => setAddExistingOpen(false)}
         />
