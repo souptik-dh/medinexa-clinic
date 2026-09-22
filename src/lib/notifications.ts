@@ -10,7 +10,9 @@ export type NotificationType =
   | "prescription_ready"
   | "doctor_invited"
   | "doctor_invite_accepted"
+  | "staff_joined"
   | "appointment_cancelled"
+  | "appointment_rescheduled"
   | "lab_test_booked"
   | "lab_test_approved"
   | "lab_test_rejected"
@@ -157,6 +159,14 @@ export function pushContentFor(
           ? `Your appointment with ${doctorAt}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
           : `Your appointment${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
+    case "appointment_rescheduled": {
+      const oldWhen = [payload.old_date, payload.old_time].filter(Boolean).join(" at ");
+      const newWhen = [payload.new_date, payload.new_time].filter(Boolean).join(" at ");
+      return {
+        title: "Appointment rescheduled",
+        body: `Please reschedule your appointment${doctor ? ` with ${doctorAt}` : ""} — the doctor's availability changed${oldWhen ? `, so your visit on ${oldWhen}` : ""}${newWhen ? ` has been moved to ${newWhen}` : ""}.${reasonSuffix}`,
+      };
+    }
     case "lab_test_booked":
       return {
         title: "Lab test booked",
@@ -286,6 +296,8 @@ export function pushContentForClinic(
   const visitor = asString(payload.visitor_name);
   const doctor = withDoctor(payload.doctor_name);
   const branch = asString(payload.branch_name);
+  const clinic = asString(payload.clinic_name);
+  const staffName = asString(payload.staff_name);
   const testName = asString(payload.test_name);
   const apptNo = asString(payload.appointment_number);
   const apptNoSuffix = apptNo ? ` ${apptNo}` : "";
@@ -319,11 +331,24 @@ export function pushContentForClinic(
           ? `${visitor}'s lab test${testName ? ` (${testName})` : ""}${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`
           : `A lab test${when ? ` on ${when}` : ""} has been cancelled.${reasonSuffix}`,
       };
-    case "doctor_invite_accepted":
+    case "doctor_invite_accepted": {
+      const at = [clinic, branch].filter(Boolean).join(" — ");
       return {
-        title: "Invitation accepted",
-        body: doctor ? `${doctor} has accepted your invitation.` : "A doctor has accepted your invitation.",
+        title: "Doctor invitation accepted",
+        body: doctor
+          ? `${doctor} has accepted your invitation${at ? ` and joined ${at}` : ""}.`
+          : "A doctor has accepted your invitation.",
       };
+    }
+    case "staff_joined": {
+      const at = [clinic, branch].filter(Boolean).join(" — ");
+      return {
+        title: "Staff member joined",
+        body: staffName
+          ? `${staffName} has joined${at ? ` ${at}` : " your clinic"} as a staff member.`
+          : `A staff member has joined${at ? ` ${at}` : " your clinic"}.`,
+      };
+    }
     case "payment_received": {
       const amount = money(payload.amount, payload.currency);
       const method = asString(payload.method) ? ` via ${payload.method}` : "";

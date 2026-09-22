@@ -9,26 +9,7 @@ import { generateInviteCode, hashToken } from "@/lib/auth";
 import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteDual, sendWhatsapp } from "@/lib/notifications";
 import { requireBranchAccess } from "@/lib/permissions";
 import { getInviteSpecializations } from "@/lib/specializations";
-
-const slotTemplateSchema = z
-  .object({
-    weekday: z.number().int().min(0).max(6),
-    start_time: z.string().regex(/^\d{2}:\d{2}$/),
-    end_time: z.string().regex(/^\d{2}:\d{2}$/),
-    slot_duration_minutes: z.number().int().min(5).max(240),
-    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  })
-  .array()
-  .min(1)
-  .refine(
-    (arr) => arr.every((s) => s.start_time < s.end_time),
-    "start_time must be earlier than end_time.",
-  )
-  .refine(
-    (arr) => arr.every((s) => !s.end_date || s.start_date <= s.end_date),
-    "start_date must not be after end_date.",
-  );
+import { slotTemplateSchema } from "@/lib/slot-template";
 
 const createSchema = z
   .object({
@@ -118,9 +99,21 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       for (const slot of body.slot_template) {
         await conn.query(
           `INSERT INTO doctor_slot_templates
-             (id, doctor_branch_assignment_id, weekday, start_time, end_time, slot_duration_minutes, start_date, end_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [newId(), assignmentId, slot.weekday, slot.start_time, slot.end_time, slot.slot_duration_minutes, slot.start_date, slot.end_date ?? null],
+             (id, doctor_branch_assignment_id, weekday, label, start_time, end_time, slot_duration_minutes, max_patients, is_active, start_date, end_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newId(),
+            assignmentId,
+            slot.weekday,
+            slot.label ?? null,
+            slot.start_time,
+            slot.end_time,
+            slot.slot_duration_minutes,
+            slot.max_patients,
+            slot.is_active ? 1 : 0,
+            slot.start_date,
+            slot.end_date ?? null,
+          ],
         );
       }
     });

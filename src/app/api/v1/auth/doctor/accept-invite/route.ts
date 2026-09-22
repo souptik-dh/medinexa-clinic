@@ -81,7 +81,8 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const slotTemplates = invite.slot_template as Array<Record<string, unknown>>;
 
   const [ownerRows] = await pool.query<Row[]>(
-    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone
+    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone,
+            b.name AS branch_name, c.name AS clinic_name
        FROM branches b
        JOIN clinics c ON c.id = b.clinic_id
        JOIN users co ON co.id = c.owner_user_id
@@ -133,31 +134,37 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       const [eh, em] = String(t.end_time).split(":");
       await conn.query(
         `INSERT INTO doctor_slot_templates
-           (id, doctor_branch_assignment_id, weekday, start_time, end_time, slot_duration_minutes, start_date, end_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, doctor_branch_assignment_id, weekday, label, start_time, end_time, slot_duration_minutes, max_patients, is_active, start_date, end_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId(),
           assignmentId,
           t.weekday,
+          t.label ?? null,
           `${h}:${m}:00`,
           `${eh}:${em}:00`,
           t.slot_duration_minutes,
+          // Invites created before max_patients/is_active existed store neither in
+          // their JSON snapshot — default to today's implicit behavior (1 patient, active).
+          t.max_patients ?? 1,
+          t.is_active === false ? 0 : 1,
           t.start_date,
           t.end_date ?? null,
         ],
       );
     }
-    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", {
+    const acceptedPayload = {
       doctor_id: doctorId,
+      doctor_name: invite.name,
       branch_id: invite.branch_id,
+      branch_name: owner?.branch_name ?? null,
+      clinic_name: owner?.clinic_name ?? null,
+      status: "accepted",
       phone: body.phone,
-    });
+    };
+    await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", acceptedPayload);
     if (owner && owner.owner_user_id !== invite.invited_by) {
-      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", {
-        doctor_id: doctorId,
-        branch_id: invite.branch_id,
-        phone: body.phone,
-      });
+      await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", acceptedPayload);
     }
   }).catch((err) => {
     if (isUniqueViolation(err)) {

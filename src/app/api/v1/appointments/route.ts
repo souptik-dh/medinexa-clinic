@@ -13,13 +13,13 @@ import {
   todayInTz,
   weekdayInTz,
   currentTimeKeyInTz,
-  generateSlotTimes,
   findNextSequentialSlot,
   getBranchSchedule,
   isWeekdayOpen,
   findCoveringLeave,
   scheduleFinalEndTime,
   isPastBookingCutoff,
+  buildSlotCapacityMap,
 } from "@/lib/availability";
 import { fetchPage } from "@/lib/pagination";
 import { assertClinicOperational } from "@/lib/subscriptions";
@@ -191,10 +191,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         [body.doctor_id, body.branch_id, body.date, body.date],
       ),
       pool.query<Row[]>(
-        `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes, dba.slot_type
+        `SELECT dst.start_time, dst.end_time, dst.slot_duration_minutes, dst.max_patients, dba.slot_type
            FROM doctor_slot_templates dst
            JOIN doctor_branch_assignments dba ON dba.id = dst.doctor_branch_assignment_id
-          WHERE dba.doctor_id = ? AND dba.branch_id = ? AND dba.is_active = 1
+          WHERE dba.doctor_id = ? AND dba.branch_id = ? AND dba.is_active = 1 AND dst.is_active = 1
             AND dst.weekday = ? AND dst.start_date <= ? AND (dst.end_date IS NULL OR dst.end_date >= ?)`,
         [body.doctor_id, body.branch_id, branchWeekday, body.date, body.date],
       ),
@@ -244,7 +244,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     }
 
     const isSequential = template.slot_type === "sequential";
-    const dur = Number(template.slot_duration_minutes);
+    // A doctor can have several ranges on the same weekday (e.g. morning + evening)
+    // with different durations/capacities, so every generated key across all of
+    // today's templates — not just templates[0] — must be considered.
+    const capacityMap = buildSlotCapacityMap(templates);
     let scheduledTime: string;
 
     if (isSequential) {
@@ -260,11 +263,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       if (!body.time) {
         throw badRequest("VALIDATION_ERROR", "time is required.", "time");
       }
-      let aligned = false;
-      for (const key of generateSlotTimes(template.start_time, template.end_time, dur)) {
-        if (key === body.time) aligned = true;
-      }
-      if (!aligned) {
+      if (!capacityMap.has(body.time)) {
         throw unprocessable(
           "OUTSIDE_DOCTOR_AVAILABILITY",
           "The requested time is not an available slot for this doctor.",
@@ -291,80 +290,95 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const triedTimes = new Set<string>();
     let attemptsLeft = isSequential ? 25 : 1;
     for (;;) {
-      try {
-        await withTransaction(async (conn) => {
-          await conn.query(
-            `INSERT INTO appointments
-               (id, patient_id, clinic_id, branch_id, doctor_id, scheduled_date, scheduled_time, duration_minutes, status, fee_amount, currency)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-            [
-              id,
-              auth.userId,
-              branch.clinic_id,
-              body.branch_id,
-              body.doctor_id,
-              body.date,
-              scheduledTime,
-              dur,
-              assignment.fee_amount,
-              assignment.currency,
-            ],
-          );
-          const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
-          await conn.query(
-            `INSERT INTO appointment_patients
-               (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              newId(),
-              id,
-              servicePatient.patientId,
-              servicePatient.bookingSource,
-              servicePatient.bookedBy,
-              patientDetails.relationship,
-              patientDetails.name,
-              patientDetails.phone ?? null,
-              patientDetails.age ?? null,
-              patientDetails.gender ?? null,
-            ],
-          );
-          const payload = {
-            appointment_id: id,
-            doctor_id: body.doctor_id,
-            doctor_name: assignment.doctor_name,
-            branch_name: branch.name,
-            patient_id: auth.userId,
-            date: body.date,
-            time: scheduledTime,
-            visitor_name: patientDetails.name,
-            visitor_relationship: patientDetails.relationship,
-          };
-          await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
-          await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
-        });
-        break;
-      } catch (err) {
-        if (!isUniqueViolation(err)) throw err;
-        if (!isSequential) {
-          throw conflict(
-            "SLOT_ALREADY_BOOKED",
-            "This time slot was just taken. Please choose another.",
-          );
+      const capacity = capacityMap.get(scheduledTime);
+      const maxPatients = capacity?.maxPatients ?? 1;
+      const dur = capacity?.durationMinutes ?? Number(template.slot_duration_minutes);
+      let seq = 0;
+      let inserted = false;
+      // Try slot_seq 0, 1, 2... up to this slot's capacity — a duplicate-key error
+      // means that particular seq is taken, so the next one is tried immediately
+      // (same guarantee the old single-seq unique constraint gave for max_patients=1).
+      while (seq < maxPatients) {
+        try {
+          await withTransaction(async (conn) => {
+            await conn.query(
+              `INSERT INTO appointments
+                 (id, patient_id, clinic_id, branch_id, doctor_id, scheduled_date, scheduled_time, slot_seq, duration_minutes, status, fee_amount, currency)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+              [
+                id,
+                auth.userId,
+                branch.clinic_id,
+                body.branch_id,
+                body.doctor_id,
+                body.date,
+                scheduledTime,
+                seq,
+                dur,
+                assignment.fee_amount,
+                assignment.currency,
+              ],
+            );
+            const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
+            await conn.query(
+              `INSERT INTO appointment_patients
+                 (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                newId(),
+                id,
+                servicePatient.patientId,
+                servicePatient.bookingSource,
+                servicePatient.bookedBy,
+                patientDetails.relationship,
+                patientDetails.name,
+                patientDetails.phone ?? null,
+                patientDetails.age ?? null,
+                patientDetails.gender ?? null,
+              ],
+            );
+            const payload = {
+              appointment_id: id,
+              doctor_id: body.doctor_id,
+              doctor_name: assignment.doctor_name,
+              branch_name: branch.name,
+              patient_id: auth.userId,
+              date: body.date,
+              time: scheduledTime,
+              visitor_name: patientDetails.name,
+              visitor_relationship: patientDetails.relationship,
+            };
+            await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
+            await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
+          });
+          inserted = true;
+          break;
+        } catch (err) {
+          if (!isUniqueViolation(err)) throw err;
+          seq += 1;
         }
-        triedTimes.add(scheduledTime);
-        attemptsLeft -= 1;
-        const next: string | null =
-          attemptsLeft > 0
-            ? await findNextSequentialSlot(pool, body.doctor_id, body.branch_id, body.date, tz, triedTimes)
-            : null;
-        if (!next) {
-          throw conflict(
-            "DOCTOR_FULLY_BOOKED",
-            "No slots are left for this doctor on the selected date.",
-          );
-        }
-        scheduledTime = next;
       }
+      if (inserted) break;
+
+      if (!isSequential) {
+        throw conflict(
+          "SLOT_ALREADY_BOOKED",
+          "This time slot was just taken. Please choose another.",
+        );
+      }
+      triedTimes.add(scheduledTime);
+      attemptsLeft -= 1;
+      const next: string | null =
+        attemptsLeft > 0
+          ? await findNextSequentialSlot(pool, body.doctor_id, body.branch_id, body.date, tz, triedTimes)
+          : null;
+      if (!next) {
+        throw conflict(
+          "DOCTOR_FULLY_BOOKED",
+          "No slots are left for this doctor on the selected date.",
+        );
+      }
+      scheduledTime = next;
     }
 
     // Independent reads — none depends on the others — so they run as one round trip.
