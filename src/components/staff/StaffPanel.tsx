@@ -38,6 +38,7 @@ export default function StaffPanel() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
     resetKey: branch?.id,
@@ -69,6 +70,7 @@ export default function StaffPanel() {
   const openCreate = () => {
     setName("");
     setPhone("");
+    setEmail("");
     setError(null);
     openModal();
   };
@@ -85,10 +87,19 @@ export default function StaffPanel() {
       toast.error(message);
       return;
     }
+    const trimmedEmail = email.trim();
+    // Optional — only validate the format when something was actually typed; an
+    // empty field must never block staff creation.
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      const message = "Please enter a valid email address, or leave it empty.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await staffApi.create(branch.id, { name, phone });
+      await staffApi.create(branch.id, { name, phone, email: trimmedEmail || null });
       closeModal();
       await load(branch);
       toast.success(t("staff.addedSuccess"));
@@ -214,6 +225,11 @@ export default function StaffPanel() {
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
                         {member.name}
                       </p>
+                      {member.email && (
+                        <span className="text-gray-400 text-theme-xs dark:text-gray-500">
+                          {member.email}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="py-3 align-top text-gray-500 text-theme-sm dark:text-gray-400">
                       {member.phone ?? "—"}
@@ -307,6 +323,21 @@ export default function StaffPanel() {
                 className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 pl-12 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
             </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+              {t("staff.email")} <span className="text-gray-400">({t("common.optional")})</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="staff@clinic.com"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {t("staff.emailHint")}
+            </p>
           </div>
         </div>
         <div className="mt-6 flex items-center justify-end gap-3">
