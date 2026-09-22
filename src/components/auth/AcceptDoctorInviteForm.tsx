@@ -6,13 +6,13 @@ import Input from "@/components/form/input/InputField";
 import OtpInput from "@/components/form/input/OtpInput";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 const REDIRECT_DELAY_MS = 2000;
+const DEFAULT_PASSWORD = "12345678";
 
 type RequiredField = "inviteCode" | "phone" | "otp";
 
@@ -37,11 +37,8 @@ export default function AcceptDoctorInviteForm() {
   const [inviteCode, setInviteCode] = useState(codeFromLink ?? "");
   const [phone, setPhone] = useState(localPhoneFromLink(phoneFromLink));
   const [regNo, setRegNo] = useState(reg_no ?? "");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
-  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,10 +88,6 @@ export default function AcceptDoctorInviteForm() {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
-    if (password !== confirmPassword) {
-      setError(t("auth.passwordsDoNotMatch"));
-      return;
-    }
     activationInFlight.current = true;
     setSubmitting(true);
     try {
@@ -102,7 +95,7 @@ export default function AcceptDoctorInviteForm() {
         phone,
         invite_code: inviteCode,
         otp,
-        password: password.trim() || undefined,
+        password: DEFAULT_PASSWORD,
         reg_no: regNo.trim() || undefined,
       });
       setDone(true);
@@ -185,6 +178,7 @@ export default function AcceptDoctorInviteForm() {
                         ? PHONE_VALIDATION_MESSAGE
                         : undefined
                     }
+                    disabled={!!phoneFromLink}
                     required
                   />
                 </div>
@@ -205,6 +199,7 @@ export default function AcceptDoctorInviteForm() {
                       ? REQUIRED_FIELD_MESSAGE
                       : undefined
                   }
+                  disabled={!!codeFromLink}
                   required
                 />
               </div>
@@ -253,36 +248,6 @@ export default function AcceptDoctorInviteForm() {
                   placeholder={t("auth.registrationNoPlaceholder")}
                   value={regNo}
                   onChange={(e) => setRegNo(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>{t("auth.password")} <span className="text-error-500">({t("auth.optional")})</span></Label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder={t("auth.passwordPlaceholder")}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <span
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
-                  >
-                    {showPassword ? (
-                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-                    ) : (
-                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-                    )}
-                  </span>
-                </div>
-              </div>
-              <div>
-                <Label>{t("auth.confirmPassword")}</Label>
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder={t("auth.confirmPasswordPlaceholder")}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
               {error && (

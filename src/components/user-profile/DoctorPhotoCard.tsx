@@ -1,6 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import toast from "react-hot-toast";
 import { ApiError, DoctorProfile, doctorsApi } from "@/lib/api";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -42,8 +43,11 @@ export default function DoctorPhotoCard() {
       const res = await doctorsApi.uploadPhoto(file);
       setPhotoUrl(res.photo_url);
       setOk(t("doctorProfile.photoUploaded"));
+      toast.success(t("doctorProfile.photoUploaded"));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed"));
+      const message = err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed");
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";

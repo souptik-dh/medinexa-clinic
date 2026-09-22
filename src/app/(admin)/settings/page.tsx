@@ -1,5 +1,4 @@
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
-import SetPasswordCard from "@/components/settings/SetPasswordCard";
 import { Metadata } from "next";
 import React from "react";
 
@@ -12,7 +11,9 @@ export default function SettingsPage() {
   return (
     <div>
       <PageBreadcrumb pageTitle="Settings" />
-      <SetPasswordCard />
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+        No settings available right now. Manage your profile from the Profile page.
+      </div>
     </div>
   );
 }

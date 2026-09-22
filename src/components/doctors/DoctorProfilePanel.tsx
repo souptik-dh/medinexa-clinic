@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Skeleton, DetailSkeleton, ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import RatingStars from "@/components/common/RatingStars";
@@ -208,8 +209,11 @@ export default function DoctorProfilePanel() {
     try {
       const res = await doctorsApi.uploadBranchDoctorPhoto(branchId, doctor.id, file);
       setDoctor((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
+      toast.success(t("doctorProfile.photoUploaded"));
     } catch (err) {
-      setPhotoError(err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed"));
+      const message = err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed");
+      setPhotoError(message);
+      toast.error(message);
     } finally {
       setPhotoBusy(false);
       if (fileRef.current) fileRef.current.value = "";

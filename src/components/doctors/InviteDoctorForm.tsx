@@ -46,6 +46,9 @@ export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null 
     if (slot.slot_duration_minutes < 5 || slot.slot_duration_minutes > 240) {
       return "Slot duration must be between 5 and 240 minutes.";
     }
+    if (slot.max_patients < 1 || slot.max_patients > 100) {
+      return "Max patients must be between 1 and 100.";
+    }
     if (!slot.start_date) {
       return "Every slot needs a start date.";
     }
@@ -56,13 +59,33 @@ export function validateSlotTemplates(slots: SlotTemplateItem[]): string | null 
       return "A slot's end date must be on or after its start date.";
     }
   }
+  // Mirrors the backend's overlap check (src/lib/slot-template.ts) so staff see the
+  // same rejection client-side instead of only after submitting.
+  const byWeekday = new Map<number, SlotTemplateItem[]>();
+  for (const slot of slots) {
+    const list = byWeekday.get(slot.weekday) ?? [];
+    list.push(slot);
+    byWeekday.set(slot.weekday, list);
+  }
+  for (const list of byWeekday.values()) {
+    const sorted = [...list].sort((a, b) => a.start_time.localeCompare(b.start_time));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].end_time > sorted[i + 1].start_time) {
+        return "Time ranges for the same day must not overlap.";
+      }
+    }
+  }
   return null;
 }
 
 interface InviteDoctorFormProps {
   /** When provided, the form is embedded (e.g. inside a drawer): success and
-   * cancel hand control back to the host instead of navigating away. */
-  onDone?: () => void;
+   * cancel hand control back to the host instead of navigating away.
+   * `isDirect` is true when the invite resolved immediately as a direct
+   * assignment (the invitee already had an account) — the doctor lands
+   * straight in the Doctors list, never in Invites, so the host should
+   * refresh/show that list instead. */
+  onDone?: (result?: { isDirect: boolean }) => void;
   onCancel?: () => void;
 }
 
@@ -112,8 +135,11 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
     try {
       const res = await doctorInvitesApi.uploadCertificate(file);
       setCertificate(res.certificate_url);
+      toast.success(t("doctors.certificateUploaded"));
     } catch (err) {
-      setError(getErrorMessage(err, t("doctors.certificateUploadFailed")));
+      const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
+      setError(message);
+      toast.error(message);
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -182,7 +208,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
         isDirect ? t("doctors.doctorAddedSuccess") : t("doctors.inviteSent"),
       );
       if (onDone) {
-        onDone();
+        onDone({ isDirect });
       } else {
         router.push("/doctors");
       }
