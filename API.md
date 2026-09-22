@@ -603,7 +603,7 @@ The doctor's **phone** is the primary invite identifier and must be verified wit
 `phone_verification` OTP first (sent via `POST /auth/verify-phone/send` or any OTP-send
 endpoint). A password is optional.
 
-On success, an in-app `doctor_invite_accepted` notification is created for whoever sent the invite **and** for the clinic owner (deduped if they're the same person), and the clinic owner is emailed (and SMS'd) that the doctor has joined.
+On success, an in-app + push `doctor_invite_accepted` notification (with the doctor's name, branch name, and clinic name in its payload) is created for whoever sent the invite **and** for the clinic owner (deduped if they're the same person), and the clinic owner is emailed (and SMS'd) that the doctor has joined. Retrying an already-accepted invite never re-sends any of this — the `409 INVITE_ALREADY_ACCEPTED` guard below runs before any notification is created.
 
 **Request body**
 
@@ -677,6 +677,8 @@ Public. Rate limited 20/min per IP. Requests a passwordless OTP for an existing 
 ### POST /auth/branch-staff/verify-otp
 
 Verifies the OTP and issues tokens. Rate limited 20/min per IP. Max 5 attempts per OTP.
+
+The **first** successful verify-otp for a given staff membership ("joining" the clinic) sends a push + in-app `staff_joined` notification to the clinic owner, with the staff member's name, branch name, and clinic name in its payload. This is recorded via `branch_staff.joined_at` (set once, atomically), so every later login by the same staff member — and any retry of this same request — never notifies again. A notification failure here never fails the login itself.
 
 **Request body**
 
@@ -1736,18 +1738,21 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch only).
 Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Creates the staff user and sends
 a welcome message by **SMS and WhatsApp** to the new staff member's phone: "Hi {name}, you have
 been added as a staff member of {clinic name}, {branch name}. Welcome to Jido Healthcare! You can
-log in with this phone number using OTP." (staff sign in via phone + OTP).
+log in with this phone number using OTP." (staff sign in via phone + OTP — email is never used to
+sign in). The same welcome message is also **emailed** when `email` is provided; nothing is sent by
+email otherwise. Failures sending the welcome message never fail the request.
 
 **Request body**
 
 ```json
-{ "name": "Rohit Sharma", "phone": "+919876543212" }
+{ "name": "Rohit Sharma", "phone": "+919876543212", "email": "rohit@clinic.com" }
 ```
 
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | required |
 | `phone` | string | required, normalized to `+91XXXXXXXXXX`; the staff member's login identifier |
+| `email` | string? | optional — omit or send `null`/`""` for no email; validated as an email address when present. Never blocks staff creation either way, and is never a login identifier (OTP over `phone` is the only sign-in path) |
 | `permissions` | string[]? | optional, any subset of the keys above; defaults to the four appointment permissions plus `patients:view` |
 
 **Response `201`**
@@ -1757,6 +1762,7 @@ log in with this phone number using OTP." (staff sign in via phone + OTP).
   "id": "1a2b3c4d-5e6f-7890-abcd-ef1234567890",
   "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
   "name": "Rohit Sharma",
+  "email": "rohit@clinic.com",
   "phone": "+919876543212",
   "added_by": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "permissions": ["appointments:confirm", "appointments:payment", "appointments:complete", "appointments:cancel", "patients:view"],

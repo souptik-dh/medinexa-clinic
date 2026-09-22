@@ -1489,6 +1489,17 @@ try {
     console.log('Applied migration: device_tokens.app');
   }
 
+  const [branchStaffJoinedAtCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_staff' AND COLUMN_NAME = 'joined_at'`,
+  );
+  if (Number(branchStaffJoinedAtCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE branch_staff ADD COLUMN joined_at DATETIME(3) NULL AFTER permissions_json`,
+    );
+    console.log('Applied migration: branch_staff.joined_at');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();
