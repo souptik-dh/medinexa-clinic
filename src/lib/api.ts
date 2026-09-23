@@ -35,8 +35,7 @@ export interface AuthTokens {
 export interface ClinicOwnerAuthResponse extends AuthTokens {
   user: User;
   clinic?: Clinic;
-  // True when this account has never set a password - OTP remains the only
-  // login method until the owner sets one via authApi.setPassword.
+  // True when this account has never set a password - OTP remains the only login method.
   requires_password_setup?: boolean;
 }
 
@@ -541,17 +540,24 @@ export interface StaffMember {
   id: string;
   branch_id: string;
   name: string;
+  email?: string | null;
   phone: string;
   added_by: string;
   permissions?: string[];
   created_at: string;
 }
 
+export type SlotLabel = "morning" | "afternoon" | "evening" | "custom";
+
 export interface SlotTemplateItem {
+  id?: string;
   weekday: number;
+  label?: SlotLabel | null;
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+  max_patients: number;
+  is_active: boolean;
   start_date: string;
   end_date?: string | null;
 }
@@ -686,6 +692,11 @@ export interface DoctorAssignment {
   currency: string;
   certificate_url: string | null;
   slot_type: SlotType;
+  slot_template?: SlotTemplateItem[];
+  // Present on the PATCH response only — appointments the backend automatically moved
+  // or cancelled because they no longer fit the just-saved slot_template.
+  rescheduled_appointment_count?: number;
+  cancelled_appointment_count?: number;
 }
 
 export interface DoctorProfile {
@@ -1767,18 +1778,6 @@ export const authApi = {
     });
   },
 
-  // Auth required. Lets an already-logged-in user (who signed in via OTP
-  // with no password on file) set one without re-verifying by OTP again.
-  async setPassword(input: {
-    new_password: string;
-    confirm_password: string;
-  }): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>("/auth/set-password", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-  },
-
   // ── Email verification (unchanged) ───────────────────────────────────
   async verifyEmail(token: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/verify-email", {
@@ -2119,7 +2118,7 @@ export const staffApi = {
 
   async create(
     branchId: string,
-    input: { name: string; phone: string; permissions?: BranchStaffPermission[] }
+    input: { name: string; phone: string; email?: string | null; permissions?: BranchStaffPermission[] }
   ): Promise<StaffMember> {
     return apiFetch<StaffMember>(`/branches/${branchId}/staff`, {
       method: "POST",
@@ -2334,6 +2333,10 @@ export const doctorsApi = {
         body: JSON.stringify({ public_id: grant.public_id }),
       }
     );
+  },
+
+  async getAssignment(id: string): Promise<DoctorAssignment> {
+    return apiFetch<DoctorAssignment>(`/doctor-assignments/${id}`);
   },
 
   async updateAssignment(

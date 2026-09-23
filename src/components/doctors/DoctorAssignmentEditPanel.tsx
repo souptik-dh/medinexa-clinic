@@ -117,7 +117,12 @@ export default function DoctorAssignmentEditPanel({
         setFee(String(found.fee_amount));
         setCertificate(found.certificate_url ?? "");
         setSlotType(found.slot_type ?? "fixed");
-        setSlots([]);
+        // Load the assignment's real current ranges — starting this editor from an
+        // empty list would mean any edit (even an unrelated fee change that also
+        // touched a slot) silently wipes every range the PATCH doesn't resend, since
+        // slot_template fully replaces the existing rows server-side.
+        const assignment = await doctorsApi.getAssignment(found.assignment_id);
+        setSlots(assignment.slot_template ?? []);
         setSlotsDirty(false);
       }
     } catch (err) {
@@ -218,8 +223,11 @@ export default function DoctorAssignmentEditPanel({
     try {
       const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
       setCertificate(res.certificate_url);
+      toast.success(t("doctors.certificateUploaded"));
     } catch (err) {
-      setError(getErrorMessage(err, t("doctors.certificateUploadFailed")));
+      const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
+      setError(message);
+      toast.error(message);
     } finally {
       setUploadingCertificate(false);
       if (certificateFileRef.current) certificateFileRef.current.value = "";
@@ -248,13 +256,22 @@ export default function DoctorAssignmentEditPanel({
     setBusy(true);
     setError(null);
     try {
-      await doctorsApi.updateAssignment(doctor.assignment_id, {
+      const res = await doctorsApi.updateAssignment(doctor.assignment_id, {
         ...(isDoctorSelf ? {} : { fee_amount: amount }),
         certificate: certificate.trim() || undefined,
         slot_type: slotType,
         ...(slotsDirty ? { slot_template: slots } : {}),
       });
-      toast.success(t("doctorAssignmentEdit.assignmentUpdated"));
+      const rescheduled = res.rescheduled_appointment_count ?? 0;
+      const cancelled = res.cancelled_appointment_count ?? 0;
+      if (rescheduled > 0 || cancelled > 0) {
+        const parts: string[] = [];
+        if (rescheduled > 0) parts.push(`${rescheduled} appointment${rescheduled > 1 ? "s" : ""} rescheduled`);
+        if (cancelled > 0) parts.push(`${cancelled} appointment${cancelled > 1 ? "s" : ""} cancelled (no slot available)`);
+        toast.success(`${t("doctorAssignmentEdit.assignmentUpdated")} — ${parts.join(", ")}. Affected patients were notified.`);
+      } else {
+        toast.success(t("doctorAssignmentEdit.assignmentUpdated"));
+      }
       if (onDone) {
         onDone();
       } else {
