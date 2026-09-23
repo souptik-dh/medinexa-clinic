@@ -513,8 +513,9 @@ summary, same as `verify-otp`.
 
 Public. Rate limited 20/min per IP. Single-use, 24h-expiry token. With phone-first sign-in,
 email is no longer required to activate an account, so this endpoint remains for:
-**confirming a pending email change** requested via `POST /patients/me/change-email` — on
-success it updates `users.email` to the new address.
+**confirming a pending email change** requested via `POST /patients/me/change-email` or via
+`PATCH /auth/me` (`clinic_owner`/`branch_staff`/`doctor`/`sys_admin`) — on success it updates
+`users.email` to the new address.
 
 The verification link is emailed as `{VERIFY_EMAIL_URL}/verify_email?token={VERIFICATION_TOKEN}` — `VERIFY_EMAIL_URL` defaults to `https://healthcare.jido.co.in`.
 
@@ -925,6 +926,70 @@ Auth required. Revokes the given refresh token.
 ```
 
 **Response `204 No Content`**
+
+### GET /auth/me
+
+Auth required (any role). Basic account profile for the signed-in user — `name`/`email`/`phone`
+as stored on `users`, regardless of role. This is the generic counterpart to the role-specific
+profile endpoints (`GET /doctors/me`, `GET /patients/me`) — it's what the clinic portal
+(`clinic_owner`/`branch_staff`) uses today since those two roles have no role-specific profile
+endpoint of their own.
+
+**Response `200`**
+
+```json
+{
+  "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
+  "name": "Suresh Nair",
+  "email": "owner@example.com",
+  "phone": "+919876543211",
+  "phone_verified": true,
+  "role": "clinic_owner"
+}
+```
+
+### PATCH /auth/me
+
+Auth required (any role). Updates the signed-in user's `name`/`email`/`phone` on `users`. `phone`
+and `email` are login identities, so neither is overwritten directly:
+
+- `phone` equal to the current number is a no-op. A **different** number is rejected outright —
+  `400 PHONE_CHANGE_REQUIRES_VERIFICATION` — the client must instead run
+  `POST /auth/verify-phone/send` + `POST /auth/verify-phone` (OTP) to change it. There is no
+  endpoint that changes `users.phone` directly for any role.
+- `email` equal to the current address is a no-op. A **different** address does not update
+  `users.email` immediately — it creates a 24h `email_verification_tokens` row (same table/flow
+  as `POST /patients/me/change-email`) and emails a confirmation link to the **new** address (and
+  a heads-up notice to the old one, if one existed). The change only lands once that link is
+  opened via `POST /auth/verify-email`. The response reports the requested address as
+  `pending_email` and includes a `message` telling the caller to check their inbox; the `email`
+  field in the same response is still the **old**, unchanged address.
+- `email` can be cleared to `null`; `name`/`phone` cannot be cleared to empty.
+
+**Request body** (partial) — any subset of `name, phone, email`.
+
+```json
+{ "name": "Suresh Nair", "phone": "+919876543211", "email": "owner@example.com" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string? | cannot be cleared to empty |
+| `phone` | string? | normalized to `+91XXXXXXXXXX`; must equal the current number or the request is rejected — see above |
+| `email` | string? | optional field, may be cleared to `null`; a changed value is not applied until confirmed — see above |
+
+**Response `200`** — the same shape as `GET /auth/me`, plus:
+
+```json
+{
+  "pending_email": "new@example.com",
+  "message": "Check your new email address for a confirmation link to complete the change."
+}
+```
+
+`pending_email` is `null` (and `message` omitted) when the request didn't change `email`.
+
+**Errors:** `400 VALIDATION_ERROR`, `400 PHONE_CHANGE_REQUIRES_VERIFICATION`, `409 EMAIL_ALREADY_REGISTERED`.
 
 ---
 
