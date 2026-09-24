@@ -653,7 +653,19 @@ On success, an in-app + push `doctor_invite_accepted` notification (with the doc
 }
 ```
 
-**Errors:** `404 INVITE_NOT_FOUND`, `410 INVITE_EXPIRED`, `409 INVITE_ALREADY_ACCEPTED`, `401 INVALID_OTP`/`410 OTP_EXPIRED`, `409 PHONE_ALREADY_REGISTERED`, `409 EMAIL_ALREADY_REGISTERED`, `409 REG_NO_ALREADY_REGISTERED`.
+**Errors:** `404 INVITE_NOT_FOUND`, `410 INVITE_EXPIRED`, `410 INVITE_REVOKED`, `409 INVITE_ALREADY_ACCEPTED` (the code matches an invite this doctor already accepted - a reused link never repeats the acceptance), `401 INVALID_OTP`/`410 OTP_EXPIRED`, `409 PHONE_ALREADY_REGISTERED`, `409 EMAIL_ALREADY_REGISTERED`, `409 REG_NO_ALREADY_REGISTERED`.
+
+Invite codes are valid for 24 hours from creation.
+
+### GET /auth/doctor/invite-status
+
+Public. Rate limited 30/min per IP. Used by the accept-invite page to decide what to render for a link before requesting an OTP - only `pending` should open the acceptance form.
+
+**Query:** `code` (required), plus `phone` or `email` (the one the invite was sent to).
+
+**Response `200`:** `{ "status": "pending" | "accepted" | "expired" | "revoked", "expires_at": "…" }` - a lapsed invite reports `expired` even before anyone has tried to accept it.
+
+**Errors:** `400 VALIDATION_ERROR`, `404 INVITE_NOT_FOUND`.
 
 ### POST /auth/branch-staff/login
 
@@ -5516,6 +5528,7 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `CLINIC_NOT_FOUND` / `BRANCH_NOT_FOUND` / `DOCTOR_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` / `INVITE_NOT_FOUND` / `APPOINTMENT_NOT_FOUND` / `PRESCRIPTION_NOT_FOUND` / `RECEIPT_NOT_FOUND` / `DOCUMENT_NOT_FOUND` / `PATIENT_NOT_FOUND` / `PATIENT_DOCUMENT_NOT_FOUND` / `MEDICATION_NOT_FOUND` / `DOSE_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` / `JOB_NOT_FOUND` / `IMAGE_NOT_FOUND` / `SESSION_NOT_FOUND` / `EXCEPTION_NOT_FOUND` / `CLOSURE_NOT_FOUND` / `TEST_NOT_FOUND` / `SCHEDULE_NOT_FOUND` | 404 | Resource missing (or not visible to the caller) |
 | `USER_NOT_FOUND` / `SUPER_ADMIN_NOT_FOUND` / `PAYMENT_NOT_FOUND` / `SUBSCRIPTION_NOT_FOUND` | 404 | Super Admin / subscription resource missing |
 | `INVITE_EXPIRED` / `OTP_EXPIRED` / `RESET_TOKEN_EXPIRED` | 410 | Expired one-time code |
+| `INVITE_REVOKED` | 410 | Invite withdrawn by the clinic |
 | `FILE_TOO_LARGE` | 413 | Upload exceeds size limit |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Upload has a disallowed MIME type |
 | `RATE_LIMITED` | 429 | Too many requests |

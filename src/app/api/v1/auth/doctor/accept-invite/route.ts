@@ -8,6 +8,7 @@ import { ApiError, conflict, notFound, isUniqueViolation, badRequest } from "@/l
 import { createClinicUserNotification, sendEmail, emailHtml, sendWhatsapp } from "@/lib/notifications";
 import { getInviteSpecializations } from "@/lib/specializations";
 import { assertClinicOperational, resolveClinicIdByBranch } from "@/lib/subscriptions";
+import { effectiveInviteStatus, findInviteByCode } from "@/lib/doctor-invites";
 import type { ResultSetHeader } from "mysql2/promise";
 
 const schema = z.object({
@@ -50,20 +51,30 @@ async function verifyAcceptOtp(phone: string, otp: string): Promise<void> {
 export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const body = parseBody(schema, await readJson(ctx.request));
 
-  // Look up the pending invite by phone (invites have phone as primary
-  // identifier); fall back to email for backward compatibility.
-  const [invites] = await pool.query<Row[]>(
-    `SELECT * FROM doctor_invites
-      WHERE (phone = ? OR (email = ? AND phone IS NULL)) AND status = 'pending'
-      ORDER BY created_at DESC LIMIT 1`,
-    [body.phone, body.email ?? null],
-  );
-  const invite = invites[0];
-  if (!invite || hashToken(body.invite_code) !== invite.invite_code_hash) {
+  // Match the code against this doctor's invites in any status, so a reused link
+  // gets "already accepted" / "expired" / "revoked" rather than a generic not-found.
+  const invite = await findInviteByCode(pool, body.invite_code, body.phone, body.email ?? null);
+  if (!invite) {
     throw notFound("INVITE_NOT_FOUND", "Invite not found or invite code is invalid.");
   }
-  if (parseDbTimestamp(invite.expires_at).getTime() < Date.now()) {
-    await pool.query(`UPDATE doctor_invites SET status = 'expired' WHERE id = ?`, [invite.id]);
+  const inviteStatus = effectiveInviteStatus(invite);
+  if (inviteStatus === "accepted") {
+    throw conflict("INVITE_ALREADY_ACCEPTED", "This invitation has already been accepted.");
+  }
+  if (inviteStatus === "revoked") {
+    throw new ApiError(410, "INVITE_REVOKED", "This invitation was withdrawn by the clinic. Contact the clinic for a new one.");
+  }
+  if (inviteStatus === "expired") {
+    if (invite.status === "pending") {
+      await pool.query(
+        `UPDATE doctor_invites SET status = 'expired' WHERE id = ? AND status = 'pending'`,
+        [invite.id],
+      ).catch((err) => {
+        // uniq_invite_pending also covers 'expired'; an older expired row for this
+        // doctor just means this one stays 'pending' in the table (still reported expired).
+        if (!isUniqueViolation(err)) throw err;
+      });
+    }
     throw new ApiError(410, "INVITE_EXPIRED", "This invite has expired. Contact the clinic for a new one.");
   }
 
@@ -101,7 +112,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       [regNo, smcName, doctorDegree, body.phone, invite.id],
     );
     if (claim.affectedRows !== 1) {
-      throw conflict("INVITE_ALREADY_ACCEPTED", "This invite has already been accepted.");
+      throw conflict("INVITE_ALREADY_ACCEPTED", "This invitation has already been accepted.");
     }
 
     await conn.query(

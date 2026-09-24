@@ -10,6 +10,10 @@ import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteDual, send
 import { requireBranchAccess } from "@/lib/permissions";
 import { getInviteSpecializations } from "@/lib/specializations";
 import { slotTemplateSchema } from "@/lib/slot-template";
+import { effectiveInviteStatus } from "@/lib/doctor-invites";
+
+// Doctor invite codes/links are valid for 24 hours from creation.
+const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const createSchema = z
   .object({
@@ -238,14 +242,25 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       ? [branchId, body.email]
       : [branchId, body.phone!];
   const [existing] = await pool.query<Row[]>(
-    `SELECT status FROM doctor_invites
+    `SELECT id, status, expires_at FROM doctor_invites
       WHERE branch_id = ? AND (${inviteMatchExpr})
       ORDER BY created_at DESC LIMIT 1`,
     inviteMatchArgs,
   );
   if (existing[0]) {
     if (existing[0].status === "pending") {
-      throw conflict("INVITE_ALREADY_PENDING", "A pending invite already exists for this doctor.");
+      if (effectiveInviteStatus(existing[0]) === "pending") {
+        throw conflict("INVITE_ALREADY_PENDING", "A pending invite already exists for this doctor.");
+      }
+      // Lapsed but never accepted, so still 'pending' - retire it so a fresh invite
+      // can be sent. uniq_invite_pending also covers 'expired', so if this doctor
+      // already has an expired invite at this branch, drop the stale row instead.
+      try {
+        await pool.query(`UPDATE doctor_invites SET status = 'expired' WHERE id = ?`, [existing[0].id]);
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        await pool.query(`DELETE FROM doctor_invites WHERE id = ?`, [existing[0].id]);
+      }
     }
     if (existing[0].status === "accepted") {
       throw conflict("DOCTOR_ALREADY_ASSIGNED", "This doctor is already assigned to this branch.");
@@ -269,7 +284,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
   const inviteCode = generateInviteCode();
   const id = newId();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const expiresAt = new Date(Date.now() + INVITE_TTL_MS)
     .toISOString()
     .slice(0, 19)
     .replace("T", " ");
@@ -321,7 +336,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
   // Send the invitation via email (if present) and/or SMS (if phone present).
   if (body.email) {
-    const inviteBody = `You've been invited to join ${branch.name} on MediBook.\n\nAccept your invitation here: ${acceptUrl}\n\nYour one-time invite code is: ${inviteCode}\n\nThis code expires in 7 days.`;
+    const inviteBody = `You've been invited to join ${branch.name} on MediBook.\n\nAccept your invitation here: ${acceptUrl}\n\nYour one-time invite code is: ${inviteCode}\n\nThis code expires in 24 hours.`;
     await sendEmail(
       body.email,
       `Dr. ${body.name}, you've been invited to ${branch.name}`,
@@ -333,7 +348,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         codeLabel: "Your One-Time Invite Code",
         ctaLabel: "Accept Invitation",
         ctaUrl: acceptUrl,
-        note: "This invite code and link expire in 7 days.",
+        note: "This invite code and link expire in 24 hours.",
       }),
     );
   }
@@ -393,7 +408,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       specializations: specializationsByInvite.get(String(r.id)) ?? [],
       smc_name: r.smc_name,
       doctor_degree: r.doctor_degree,
-      status: r.status,
+      status: effectiveInviteStatus(r),
       expires_at: r.expires_at,
       created_at: r.created_at,
     })),
