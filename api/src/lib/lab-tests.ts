@@ -1,0 +1,485 @@
+import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
+import { conflict, notFound } from "@api/lib/errors";
+import { newId } from "@api/lib/ids";
+import type { AuthContext } from "@api/lib/auth";
+
+type Db = Pool | PoolConnection;
+type Row = RowDataPacket;
+
+// Category is clinic-defined free text (no fixed list) — a clinic types
+// whatever category name it wants when creating a test.
+
+export const LAB_TEST_STATUSES = ["active", "inactive"] as const;
+export type LabTestStatus = (typeof LAB_TEST_STATUSES)[number];
+
+export const LAB_APT_STATUSES = ["PENDING", "APPROVED", "REJECTED", "CANCELLED", "COMPLETED"] as const;
+export type LabAptStatus = (typeof LAB_APT_STATUSES)[number];
+
+export const LAB_APT_TRANSITIONS: Record<LabAptStatus, readonly LabAptStatus[]> = {
+  PENDING: ["APPROVED", "REJECTED", "CANCELLED"],
+  APPROVED: ["COMPLETED", "CANCELLED"],
+  REJECTED: [],
+  CANCELLED: [],
+  COMPLETED: [],
+};
+
+export const PAYMENT_STATUSES = ["UNPAID", "PENDING", "PAID", "FAILED", "REFUNDED"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const SERVICE_MODES = ["CLINIC", "HOME"] as const;
+export type ServiceMode = (typeof SERVICE_MODES)[number];
+
+export function serializeLabTest(r: Row) {
+  const base: Record<string, unknown> = {
+    id: r.id,
+    clinic_id: r.clinic_id,
+    name: r.name,
+    code: r.code,
+    description: r.description ?? null,
+    category: r.category,
+    instructions: r.instructions ?? null,
+    default_precautions: r.default_precautions
+      ? typeof r.default_precautions === "string"
+        ? JSON.parse(r.default_precautions)
+        : r.default_precautions
+      : [],
+    status: r.status,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+
+  // Only present when the query joined branch pricing (e.g. the clinic list
+  // endpoint) — a catalog lab test itself has no price, that's set per branch
+  // in `branch_lab_tests`, so a clinic with multiple branches can price the
+  // same test differently.
+  if (r.min_price !== undefined) {
+    base.min_price = r.min_price !== null ? Number(r.min_price) : null;
+    base.max_price = r.max_price !== null ? Number(r.max_price) : null;
+    base.currency = r.price_currency ?? null;
+  }
+
+  return base;
+}
+
+export function serializeLabTestCategory(r: Row) {
+  return {
+    id: r.id ?? null,
+    name: r.name,
+    badge_color: r.badge_color ?? null,
+  };
+}
+
+export function serializeBranchLabTest(r: Row) {
+  return {
+    id: r.id,
+    clinic_id: r.clinic_id,
+    branch_id: r.branch_id,
+    test_id: r.test_id,
+    test_name: r.test_name ?? null,
+    test_code: r.test_code ?? null,
+    test_category: r.test_category ?? null,
+    test_description: r.test_description ?? null,
+    price: Number(r.price),
+    currency: r.currency,
+    duration_minutes: Number(r.duration_minutes),
+    clinic_available: Boolean(r.clinic_available),
+    home_collection_available: Boolean(r.home_collection_available),
+    prescription_required: Boolean(r.prescription_required),
+    status: r.status,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+}
+
+export function serializeLabTestAppointment(r: Row) {
+  const base: Record<string, unknown> = {
+    id: r.id,
+    appointment_number: r.appointment_number,
+    patient_id: r.patient_id,
+    clinic_id: r.clinic_id,
+    branch_id: r.branch_id,
+    branch_lab_test_id: r.branch_lab_test_id,
+    test_id: r.test_id,
+    service_mode: r.service_mode,
+    appointment_date: r.appointment_date,
+    start_time: r.start_time,
+    end_time: r.end_time,
+    duration_minutes: Number(r.duration_minutes),
+    price: Number(r.price),
+    currency: r.currency,
+    payment_method: r.payment_method ?? null,
+    payment_status: r.payment_status,
+    prescription_required: Boolean(r.prescription_required),
+    prescription_id: r.prescription_id ?? null,
+    referring_doctor_name: r.referring_doctor_name ?? null,
+    patient_notes: r.patient_notes ?? null,
+    clinic_notes: r.clinic_notes ?? null,
+    precautions: r.precautions ? (typeof r.precautions === "string" ? JSON.parse(r.precautions) : r.precautions) : null,
+    status: r.status,
+    approved_by: r.approved_by ?? null,
+    approved_at: r.approved_at ?? null,
+    rejected_by: r.rejected_by ?? null,
+    rejected_at: r.rejected_at ?? null,
+    rejection_reason: r.rejection_reason ?? null,
+    completed_at: r.completed_at ?? null,
+    cancelled_at: r.cancelled_at ?? null,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+  };
+
+  // Who the test is actually for — may differ from the booking account (patient_id)
+  // when a clinic/staff booked on behalf of a walk-in patient.
+  if (r.visitor_name !== undefined) {
+    base.patient_details = {
+      patient_id: r.visitor_patient_id ?? null,
+      relationship: r.visitor_relationship ?? "self",
+      name: r.visitor_name,
+      phone: r.visitor_phone ?? null,
+      age: r.visitor_age !== null && r.visitor_age !== undefined ? Number(r.visitor_age) : null,
+      gender: r.visitor_gender ?? null,
+    };
+    base.relationship = r.visitor_relationship ?? "self";
+    base.booking_source = r.visitor_booking_source ?? null;
+    // The actual patient the test is for. `id` resolves to a real users row once
+    // known — null for legacy bookings that predate this field.
+    base.patient = {
+      id: r.visitor_patient_id ?? null,
+      name: r.visitor_name,
+      mobile: r.visitor_phone ?? null,
+    };
+    base.booked_by = { id: r.visitor_booked_by ?? r.patient_id };
+  }
+
+  if (r.service_mode === "HOME") {
+    base.home_address = r.home_address ?? null;
+    base.home_lat = r.home_lat !== null && r.home_lat !== undefined ? Number(r.home_lat) : null;
+    base.home_lng = r.home_lng !== null && r.home_lng !== undefined ? Number(r.home_lng) : null;
+    base.home_contact_phone = r.home_contact_phone ?? null;
+    base.home_notes = r.home_notes ?? null;
+  }
+
+  if (r.test_name !== undefined) {
+    base.test = {
+      id: r.test_id,
+      name: r.test_name,
+      code: r.test_code ?? null,
+      category: r.test_category ?? null,
+      description: r.test_description ?? null,
+    };
+  }
+
+  if (r.branch_name !== undefined) {
+    base.branch = {
+      id: r.branch_id,
+      name: r.branch_name ?? null,
+      phone: r.branch_phone ?? null,
+    };
+  }
+
+  if (r.patient_name !== undefined) {
+    // The account that created the booking — the patient themselves, or clinic
+    // staff booking on behalf of a walk-in/family member.
+    base.booked_by = {
+      id: r.visitor_booked_by ?? r.patient_id,
+      name: r.patient_name ?? null,
+      email: r.patient_email ?? null,
+      phone: r.patient_phone ?? null,
+    };
+  }
+
+  if (r.clinic_name !== undefined) {
+    base.clinic = {
+      id: r.clinic_id,
+      name: r.clinic_name ?? null,
+    };
+  }
+
+  return base;
+}
+
+export function serializeLabTestPayment(r: Row) {
+  return {
+    id: r.id,
+    appointment_id: r.appointment_id,
+    amount: Number(r.amount),
+    currency: r.currency,
+    payment_method: r.payment_method,
+    payment_status: r.payment_status,
+    transaction_id: r.transaction_id ?? null,
+    provider: r.provider ?? null,
+    paid_at: r.paid_at ?? null,
+    collected_by: r.collected_by ?? null,
+    collected_at: r.collected_at ?? null,
+    reference_no: r.reference_no ?? null,
+    created_at: r.created_at,
+  };
+}
+
+export function labTestScopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
+  switch (auth.role) {
+    case "patient":
+      return { where: "1 = 1", params: [] };
+    case "branch_staff":
+      // `b` is the joined `branches` row (`JOIN branches b ON b.id = blt.branch_id`),
+      // whose primary key column is `id`, not `branch_id` — that column only exists on
+      // `blt` (branch_lab_tests) and `lab_test_appointments`. Referencing `b.branch_id`
+      // is an unknown-column SQL error, which made every branch_staff call to the lab
+      // test detail/availability endpoints 500 instead of scoping to their own branch.
+      return { where: "b.id = ?", params: [auth.branchId ?? "__none__"] };
+    case "clinic_owner":
+      return {
+        where: "b.clinic_id IN (SELECT id FROM clinics WHERE owner_user_id = ?)",
+        params: [auth.userId],
+      };
+    case "sys_admin":
+      return { where: "1 = 1", params: [] };
+    default:
+      return { where: "1 = 0", params: [] };
+  }
+}
+
+// Scope for queries against `lab_tests lt JOIN clinics c` directly (no
+// `branches b` join) — labTestScopeWhere's `b.*` aliases don't exist there.
+export function labTestOwnerScopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
+  switch (auth.role) {
+    case "patient":
+      return { where: "1 = 1", params: [] };
+    case "branch_staff":
+      return {
+        where: "lt.clinic_id IN (SELECT clinic_id FROM branches WHERE id = ?)",
+        params: [auth.branchId ?? "__none__"],
+      };
+    case "clinic_owner":
+      return { where: "c.owner_user_id = ?", params: [auth.userId] };
+    case "sys_admin":
+      return { where: "1 = 1", params: [] };
+    default:
+      return { where: "1 = 0", params: [] };
+  }
+}
+
+export function labApptScopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
+  switch (auth.role) {
+    case "patient":
+      return { where: "a.patient_id = ?", params: [auth.userId] };
+    case "branch_staff":
+      return { where: "a.branch_id = ?", params: [auth.branchId ?? "__none__"] };
+    case "clinic_owner":
+      return {
+        where: "a.clinic_id IN (SELECT id FROM clinics WHERE owner_user_id = ?)",
+        params: [auth.userId],
+      };
+    case "sys_admin":
+      return { where: "1 = 1", params: [] };
+    default:
+      return { where: "1 = 0", params: [] };
+  }
+}
+
+export async function getLabTestInScope(
+  db: Db,
+  id: string,
+  auth: AuthContext,
+): Promise<Row> {
+  const { where, params } = labTestOwnerScopeWhere(auth);
+  const [rows] = await db.query<Row[]>(
+    `SELECT lt.* FROM lab_tests lt
+       JOIN clinics c ON c.id = lt.clinic_id
+     WHERE lt.id = ? AND ${where}`,
+    [id, ...params],
+  );
+  const row = rows[0];
+  if (!row) throw notFound("LAB_TEST_NOT_FOUND", "Lab test not found.");
+  return row;
+}
+
+export async function getBranchLabTestInScope(
+  db: Db,
+  id: string,
+  auth: AuthContext,
+): Promise<Row> {
+  const { where, params } = labTestScopeWhere(auth);
+  const [rows] = await db.query<Row[]>(
+    `SELECT blt.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
+            lt.description AS test_description, lt.default_precautions
+       FROM branch_lab_tests blt
+       JOIN lab_tests lt ON lt.id = blt.test_id
+       JOIN branches b ON b.id = blt.branch_id
+       JOIN clinics c ON c.id = blt.clinic_id
+     WHERE blt.id = ? AND ${where} AND blt.status = 'active' AND lt.status = 'active'`,
+    [id, ...params],
+  );
+  const row = rows[0];
+  if (!row) throw notFound("BRANCH_TEST_NOT_FOUND", "Branch lab test not found.");
+  return row;
+}
+
+// Same scope check as getBranchLabTestInScope but without the active-only
+// filter, for clinic-management routes that must be able to look up (and
+// therefore reactivate) a branch lab test that's currently inactive. The
+// active-only variant is for patient-facing routes where an inactive test
+// should behave as if it doesn't exist.
+export async function getBranchLabTestForManagement(
+  db: Db,
+  id: string,
+  auth: AuthContext,
+): Promise<Row> {
+  const { where, params } = labTestScopeWhere(auth);
+  const [rows] = await db.query<Row[]>(
+    `SELECT blt.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
+            lt.description AS test_description, lt.default_precautions
+       FROM branch_lab_tests blt
+       JOIN lab_tests lt ON lt.id = blt.test_id
+       JOIN branches b ON b.id = blt.branch_id
+       JOIN clinics c ON c.id = blt.clinic_id
+     WHERE blt.id = ? AND ${where}`,
+    [id, ...params],
+  );
+  const row = rows[0];
+  if (!row) throw notFound("BRANCH_TEST_NOT_FOUND", "Branch lab test not found.");
+  return row;
+}
+
+export async function getLabTestAppointmentInScope(
+  db: Db,
+  id: string,
+  auth: AuthContext,
+): Promise<Row> {
+  const { where, params } = labApptScopeWhere(auth);
+  const [rows] = await db.query<Row[]>(
+    `SELECT a.*,
+            lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
+            lt.description AS test_description,
+            b.name AS branch_name, b.phone AS branch_phone, b.timezone AS branch_timezone, b.address AS branch_address,
+            c.name AS clinic_name,
+            u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+            u.date_of_birth AS patient_dob, u.gender AS patient_gender,
+            ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
+            ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
+            ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
+            ltap.booked_by AS visitor_booked_by
+       FROM lab_test_appointments a
+       JOIN lab_tests lt ON lt.id = a.test_id
+       JOIN branches b ON b.id = a.branch_id
+       JOIN clinics c ON c.id = a.clinic_id
+       JOIN users u ON u.id = a.patient_id
+       LEFT JOIN lab_test_appointment_patients ltap ON ltap.appointment_id = a.id
+     WHERE a.id = ? AND ${where} FOR UPDATE`,
+    [id, ...params],
+  );
+  const row = rows[0];
+  if (!row) throw notFound("APPOINTMENT_NOT_FOUND", "Lab test appointment not found.");
+  return row;
+}
+
+function slugifyLabTestCode(input: string): string {
+  const slug = input
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 45);
+  return slug || "TEST";
+}
+
+// Create requests omitting `code` (e.g. the category-only quick-create flow)
+// get one derived from the category text, deduped against this clinic's
+// existing codes rather than relying on a DB-level uniqueness constraint
+// (lab_tests.code has none).
+export async function generateUniqueLabTestCode(
+  db: Db,
+  clinicId: string,
+  seed: string,
+): Promise<string> {
+  const base = slugifyLabTestCode(seed);
+  const [rows] = await db.query<Row[]>(
+    `SELECT code FROM lab_tests WHERE clinic_id = ? AND code LIKE ?`,
+    [clinicId, `${base}%`],
+  );
+  const existing = new Set(rows.map((r) => r.code));
+  if (!existing.has(base)) return base;
+  let n = 2;
+  while (existing.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+export async function writeLabTestStatusLog(
+  conn: PoolConnection,
+  appointmentId: string,
+  from: string | null,
+  to: string,
+  changedBy: string | null,
+  note: string | null,
+): Promise<void> {
+  const logId = newId();
+  await conn.query(
+    `INSERT INTO lab_test_appointment_status_log (id, appointment_id, from_status, to_status, changed_by, note)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [logId, appointmentId, from, to, changedBy, note ?? null],
+  );
+}
+
+// Cancels every non-terminal (PENDING/APPROVED) lab test appointment that falls inside a
+// newly created branch closure. Unlike doctor appointments, there's no payment-status
+// guard here — the manual cancel endpoint allows cancelling regardless of payment_status.
+// Returns the cancelled rows (pre-transition snapshot) so the caller can notify/email each
+// affected patient after the transaction commits.
+export async function autoCancelLabTestAppointmentsInRange(
+  conn: PoolConnection,
+  opts: { branchId: string; startDate: string; endDate: string; reason: string; changedBy: string },
+): Promise<Row[]> {
+  const [rows] = await conn.query<Row[]>(
+    `SELECT * FROM lab_test_appointments
+     WHERE branch_id = ? AND appointment_date BETWEEN ? AND ?
+       AND status IN ('PENDING', 'APPROVED')
+     FOR UPDATE`,
+    [opts.branchId, opts.startDate, opts.endDate],
+  );
+
+  for (const appt of rows) {
+    await transitionLabAppointment(conn, appt, "CANCELLED", opts.changedBy, opts.reason);
+    await conn.query(`UPDATE lab_test_appointments SET cancelled_at = NOW(3) WHERE id = ?`, [appt.id]);
+  }
+
+  return rows;
+}
+
+export async function transitionLabAppointment(
+  conn: PoolConnection,
+  appointment: Row,
+  toStatus: LabAptStatus,
+  changedBy: string | null,
+  note: string | null = null,
+): Promise<void> {
+  const allowedFrom = LAB_APT_TRANSITIONS[appointment.status as LabAptStatus];
+  if (!allowedFrom || !allowedFrom.includes(toStatus)) {
+    throw conflict(
+      "INVALID_STATUS_TRANSITION",
+      `Cannot transition lab appointment from '${appointment.status}' to '${toStatus}'.`,
+    );
+  }
+  await conn.query(`UPDATE lab_test_appointments SET status = ? WHERE id = ?`, [toStatus, appointment.id]);
+  await writeLabTestStatusLog(conn, appointment.id, appointment.status, toStatus, changedBy, note);
+}
+
+export function generateAppointmentNumber(): string {
+  const now = new Date();
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `LAB${datePart}${rand}`;
+}
+
+export async function auditLabAction(
+  db: Pick<PoolConnection, "query">,
+  actorUserId: string,
+  action: string,
+  resourceId: string,
+  changes: Record<string, unknown> | null = null,
+  ipAddress: string | null = null,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO audit_logs (id, actor_user_id, action, resource_type, resource_id, changes_json, ip_address)
+     VALUES (?, ?, ?, 'lab_test_appointment', ?, ?, ?)`,
+    [newId(), actorUserId, action, resourceId, changes ? JSON.stringify(changes) : null, ipAddress],
+  );
+}

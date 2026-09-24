@@ -1,0 +1,1186 @@
+-- MediBook schema (MySQL 8, utf8mb4, all timestamps UTC)
+-- Mirrors the resource contract in clinic-booking-tech-spec.md §6.
+
+CREATE TABLE IF NOT EXISTS users (
+  id CHAR(36) NOT NULL,
+  name VARCHAR(255) NULL,
+  first_name VARCHAR(150) NULL,
+  last_name VARCHAR(150) NULL,
+  email VARCHAR(255) NULL,
+  phone VARCHAR(32) NULL,
+  phone_verified TINYINT(1) NOT NULL DEFAULT 0,
+  date_of_birth DATE NULL,
+  gender ENUM('male','female','other','prefer_not_to_say') NULL,
+  height_cm DECIMAL(5,2) NULL,
+  weight_kg DECIMAL(5,2) NULL,
+  bmi DECIMAL(4,1) NULL,
+  address VARCHAR(500) NULL,
+  nearby_location VARCHAR(500) NULL,
+  city VARCHAR(255) NULL,
+  district VARCHAR(255) NULL,
+  pin_code VARCHAR(20) NULL,
+  state VARCHAR(255) NULL,
+  post_office VARCHAR(255) NULL,
+  photo_url VARCHAR(500) NULL,
+  preferred_clinic_id CHAR(36) NULL,
+  preferred_branch_id CHAR(36) NULL,
+  password_hash VARCHAR(255) NULL,
+  role ENUM('patient','clinic_owner','branch_staff','doctor','sys_admin') NOT NULL,
+  status ENUM('active','pending','disabled') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_users_phone (phone),
+  KEY idx_users_email (email),
+  KEY idx_users_preferred_clinic (preferred_clinic_id),
+  KEY idx_users_preferred_branch (preferred_branch_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  revoked_at DATETIME(3) NULL,
+  replaced_by CHAR(36) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_refresh_token_hash (token_hash),
+  KEY idx_refresh_user (user_id),
+  CONSTRAINT fk_refresh_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS otp_codes (
+  id CHAR(36) NOT NULL,
+  phone VARCHAR(32) NULL,
+  email VARCHAR(255) NULL,
+  purpose ENUM('branch_staff_login','patient_login','clinic_owner_login','doctor_login','phone_verification') NOT NULL,
+  code_hash CHAR(64) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  attempts TINYINT NOT NULL DEFAULT 0,
+  verified_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_otp_phone (phone),
+  KEY idx_otp_email (email)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  used_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_reset_token_hash (token_hash),
+  KEY idx_reset_user (user_id),
+  CONSTRAINT fk_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  new_email VARCHAR(255) NULL,
+  expires_at DATETIME(3) NOT NULL,
+  used_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_verify_token_hash (token_hash),
+  KEY idx_verify_user (user_id),
+  CONSTRAINT fk_verify_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+  scope VARCHAR(255) NOT NULL,
+  `key` VARCHAR(255) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  status INT NOT NULL,
+  response_json MEDIUMTEXT NULL,
+  done_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (scope, `key`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS clinics (
+  id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT NULL,
+  nearby_location VARCHAR(500) NULL,
+  city VARCHAR(255) NULL,
+  district VARCHAR(255) NULL,
+  pin_code VARCHAR(20) NULL,
+  state VARCHAR(255) NULL,
+  post_office VARCHAR(255) NULL,
+  owner_user_id CHAR(36) NOT NULL,
+  trade_license_number VARCHAR(100) NULL,
+  trade_license_url VARCHAR(500) NULL,
+  trade_license_validated TINYINT(1) NOT NULL DEFAULT 0,
+  trade_license_validation_status ENUM('PENDING','VALID','INVALID') NOT NULL DEFAULT 'PENDING',
+  trade_license_validated_at DATETIME(3) NULL,
+  drug_license_number VARCHAR(100) NULL,
+  drug_license_url VARCHAR(500) NULL,
+  clinical_establishment_reg_number VARCHAR(100) NULL,
+  clinical_establishment_reg_url VARCHAR(500) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_clinics_owner (owner_user_id),
+  CONSTRAINT fk_clinics_owner FOREIGN KEY (owner_user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS branches (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  address VARCHAR(500) NOT NULL,
+  nearby_location VARCHAR(500) NULL,
+  city VARCHAR(255) NULL,
+  district VARCHAR(255) NULL,
+  pin_code VARCHAR(20) NULL,
+  state VARCHAR(255) NULL,
+  post_office VARCHAR(255) NULL,
+  phone VARCHAR(32) NOT NULL,
+  lat DECIMAL(10,7) NULL,
+  lng DECIMAL(10,7) NULL,
+  timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+  photo_url VARCHAR(500) NULL,
+  trade_license_number VARCHAR(100) NULL,
+  trade_license_url VARCHAR(500) NULL,
+  trade_license_validated TINYINT(1) NOT NULL DEFAULT 0,
+  trade_license_validation_status ENUM('PENDING','VALID','INVALID') NOT NULL DEFAULT 'PENDING',
+  trade_license_validated_at DATETIME(3) NULL,
+  drug_license_number VARCHAR(100) NULL,
+  drug_license_url VARCHAR(500) NULL,
+  clinical_establishment_reg_number VARCHAR(100) NULL,
+  clinical_establishment_reg_url VARCHAR(500) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_branches_clinic (clinic_id),
+  CONSTRAINT fk_branches_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id)
+) ENGINE=InnoDB;
+
+-- Branch-level operating calendar: which weekdays the branch itself is open, and any
+-- branch-wide closures (holidays, maintenance, etc). This sits ABOVE doctor-level
+-- scheduling in the availability rule — a doctor can never be bookable on a day/date
+-- the branch itself isn't open, regardless of their own slot_template/leaves.
+-- Absence of a row for a given weekday means "open" (default), so existing branches
+-- behave exactly as before until a clinic owner customizes their calendar.
+CREATE TABLE IF NOT EXISTS branch_operating_days (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  weekday TINYINT NOT NULL, -- 0=Sun .. 6=Sat
+  is_open TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_branch_weekday (branch_id, weekday),
+  CONSTRAINT fk_operating_day_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Branch-wide closures (inclusive date range) — same active/cancelled soft-cancel
+-- pattern as doctor_slot_exceptions, for the same audit-trail reason.
+CREATE TABLE IF NOT EXISTS branch_closures (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  reason VARCHAR(255) NULL,
+  status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
+  created_by CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_closure_branch_range (branch_id, status, start_date),
+  CONSTRAINT fk_closure_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_closure_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS branch_staff (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  added_by CHAR(36) NOT NULL,
+  permissions_json JSON NULL,
+  -- NULL until this staff member's first successful OTP login ("joining") — set once,
+  -- atomically, so the clinic-owner push notification fires exactly once per staff member
+  -- even if verify-otp is retried.
+  joined_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_staff_branch_user (branch_id, user_id),
+  KEY idx_staff_user (user_id),
+  CONSTRAINT fk_staff_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_staff_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS branch_gallery_images (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  public_id VARCHAR(255) NOT NULL,
+  image_url VARCHAR(500) NOT NULL,
+  position INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_gallery_public_id (branch_id, public_id),
+  KEY idx_gallery_branch (branch_id, position),
+  CONSTRAINT fk_gallery_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctor_specializations (
+  id CHAR(36) NOT NULL,
+  name VARCHAR(150) NOT NULL,
+  slug VARCHAR(160) NOT NULL,
+  description VARCHAR(500) NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_specialization_slug (slug)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctor_invites (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  email VARCHAR(255) NULL,
+  name VARCHAR(255) NOT NULL,
+  specialization VARCHAR(255) NULL,
+  phone VARCHAR(32) NULL,
+  fee_amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  certificate_url VARCHAR(500) NULL,
+  slot_template JSON NULL,
+  slot_type ENUM('fixed','sequential') NOT NULL DEFAULT 'fixed',
+  invite_code_hash CHAR(64) NOT NULL,
+  reg_no VARCHAR(64) NULL,
+  smc_name VARCHAR(255) NULL,
+  doctor_degree VARCHAR(100) NULL,
+  status ENUM('pending','accepted','expired','revoked') NOT NULL DEFAULT 'pending',
+  invited_by CHAR(36) NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  invite_pending_key VARCHAR(552) GENERATED ALWAYS AS (COALESCE(email, phone)) STORED,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_invite_pending (branch_id, invite_pending_key, status),
+  KEY idx_invite_email (email),
+  KEY idx_invite_phone (phone),
+  CONSTRAINT fk_invite_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- What a clinic selected for a pending invite (an invite has no `doctors` row yet to
+-- attach doctor_specialization_map to). Copied into doctor_specialization_map on accept.
+CREATE TABLE IF NOT EXISTS doctor_invite_specializations (
+  id CHAR(36) NOT NULL,
+  doctor_invite_id CHAR(36) NOT NULL,
+  specialization_id CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_invite_specialization (doctor_invite_id, specialization_id),
+  KEY idx_invite_spec_specialization (specialization_id),
+  CONSTRAINT fk_invite_spec_invite FOREIGN KEY (doctor_invite_id) REFERENCES doctor_invites(id) ON DELETE CASCADE,
+  CONSTRAINT fk_invite_spec_specialization FOREIGN KEY (specialization_id) REFERENCES doctor_specializations(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctors (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  specialization VARCHAR(255) NULL,
+  reg_no VARCHAR(64) NULL,
+  smc_name VARCHAR(255) NULL,
+  doctor_degree VARCHAR(100) NULL,
+  phone VARCHAR(32) NULL,
+  certificate_url VARCHAR(500) NULL,
+  photo_url VARCHAR(500) NULL,
+  bio TEXT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_doctors_user (user_id),
+  -- reg_no alone can collide across state medical councils (each council numbers
+  -- its own registrations independently), so uniqueness is scoped per council.
+  UNIQUE KEY uniq_doctors_reg_no (reg_no, smc_name),
+  CONSTRAINT fk_doctors_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- A doctor may hold multiple specializations (many-to-many against the
+-- doctor_specializations master list); doctors.specialization above is legacy free text,
+-- kept only for pre-existing rows and no longer written by the app.
+CREATE TABLE IF NOT EXISTS doctor_specialization_map (
+  id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  specialization_id CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_doctor_specialization (doctor_id, specialization_id),
+  KEY idx_map_specialization (specialization_id),
+  CONSTRAINT fk_map_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+  CONSTRAINT fk_map_specialization FOREIGN KEY (specialization_id) REFERENCES doctor_specializations(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctor_branch_assignments (
+  id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  fee_amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  slot_type ENUM('fixed','sequential') NOT NULL DEFAULT 'fixed',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_assignment (doctor_id, branch_id),
+  KEY idx_assignment_branch (branch_id),
+  CONSTRAINT fk_assignment_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+  CONSTRAINT fk_assignment_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctor_slot_templates (
+  id CHAR(36) NOT NULL,
+  doctor_branch_assignment_id CHAR(36) NOT NULL,
+  weekday TINYINT NOT NULL,
+  label ENUM('morning','afternoon','evening','custom') NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  slot_duration_minutes SMALLINT NOT NULL,
+  max_patients SMALLINT NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  start_date DATE NOT NULL,
+  end_date DATE NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_slot_assignment (doctor_branch_assignment_id),
+  CONSTRAINT fk_slot_assignment FOREIGN KEY (doctor_branch_assignment_id)
+    REFERENCES doctor_branch_assignments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- A doctor leave/exception: a date range (inclusive) that overrides the assignment's
+-- otherwise-recurring doctor_slot_templates availability. excluded_date is the range's
+-- start; end_date NULL means a single-day exception (end_date = excluded_date).
+-- Only status='active' rows block availability/booking — cancelling restores
+-- availability for the range without deleting the audit row.
+CREATE TABLE IF NOT EXISTS doctor_slot_exceptions (
+  id CHAR(36) NOT NULL,
+  doctor_branch_assignment_id CHAR(36) NOT NULL,
+  excluded_date DATE NOT NULL,
+  end_date DATE NULL,
+  reason VARCHAR(255) NULL,
+  status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_exception_assignment_range (doctor_branch_assignment_id, status, excluded_date),
+  CONSTRAINT fk_exception_assignment FOREIGN KEY (doctor_branch_assignment_id)
+    REFERENCES doctor_branch_assignments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  scheduled_date DATE NOT NULL,
+  scheduled_time VARCHAR(5) NOT NULL,
+  -- Occupancy index within a (doctor, date, time) slot, 0-based — lets a slot template
+  -- with max_patients > 1 hold multiple concurrent bookings while still using a unique
+  -- key (rather than row locks) to guarantee no more than max_patients are ever
+  -- inserted: the app tries slot_seq 0, 1, 2... and treats a duplicate-key error as
+  -- "that seq is taken", exactly like the existing sequential-slot retry pattern.
+  slot_seq SMALLINT NOT NULL DEFAULT 0,
+  duration_minutes SMALLINT NOT NULL DEFAULT 20,
+  status ENUM('pending','confirmed','paid','completed','cancelled','no_show') NOT NULL DEFAULT 'pending',
+  fee_amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  payment_method VARCHAR(16) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  -- Partial unique constraint: a slot is unique per (doctor, date, time, seq) while NOT cancelled.
+  slot_key VARCHAR(8) GENERATED ALWAYS AS (IF(status = 'cancelled', NULL, CONCAT(scheduled_time, '#', slot_seq))) STORED,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_doctor_date_slot (doctor_id, scheduled_date, slot_key),
+  KEY idx_appt_branch_status (branch_id, status),
+  KEY idx_appt_patient (patient_id),
+  KEY idx_appt_doctor_date (doctor_id, scheduled_date),
+  CONSTRAINT fk_appt_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+  CONSTRAINT fk_appt_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_appt_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+  CONSTRAINT fk_appt_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+) ENGINE=InnoDB;
+
+-- Who the appointment is actually for — a patient account can book on behalf of a
+-- family member/friend, so this can differ from the booking account (appointments.patient_id).
+-- One row per appointment, always present (relationship defaults to 'self', copying the
+-- account holder's own name/phone, when the client omits patient_details entirely).
+-- `patient_id` is the resolvable actual patient (nullable for legacy rows that predate
+-- this column); `booked_by` mirrors the parent appointment's booking-account id at this
+-- grain for direct querying, same convention as appointment_status_log.changed_by.
+CREATE TABLE IF NOT EXISTS appointment_patients (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NULL,
+  booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP',
+  booked_by CHAR(36) NULL,
+  relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(32) NULL,
+  age TINYINT UNSIGNED NULL,
+  gender ENUM('male','female','other','prefer_not_to_say') NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_appointment_patient (appointment_id),
+  KEY idx_appt_patients_patient (patient_id),
+  CONSTRAINT fk_appt_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_appt_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_appt_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- changed_by NULL = system/cron (e.g. the overdue-appointment auto-cancel sweep).
+CREATE TABLE IF NOT EXISTS appointment_status_log (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  from_status VARCHAR(16) NULL,
+  to_status VARCHAR(16) NOT NULL,
+  changed_by CHAR(36) NULL,
+  changed_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  note VARCHAR(500) NULL,
+  PRIMARY KEY (id),
+  KEY idx_status_log_appt (appointment_id),
+  CONSTRAINT fk_status_log_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS payments (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  method ENUM('cash','upi') NOT NULL,
+  collected_by CHAR(36) NOT NULL,
+  collected_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  reference_no VARCHAR(255) NULL,
+  PRIMARY KEY (id),
+  KEY idx_payments_appt (appointment_id),
+  CONSTRAINT fk_payments_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS clinic_payment_ledger (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  period_month CHAR(7) NOT NULL,
+  currency CHAR(3) NOT NULL,
+  total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  payment_count INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_ledger_period (clinic_id, branch_id, period_month, currency),
+  KEY idx_ledger_clinic_period (clinic_id, period_month),
+  CONSTRAINT fk_ledger_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_ledger_branch FOREIGN KEY (branch_id) REFERENCES branches(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS medical_documents (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  category ENUM('prescription','lab_report','doctor_note','other') NOT NULL DEFAULT 'other',
+  file_url VARCHAR(500) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_meddoc_patient (patient_id),
+  KEY idx_meddoc_patient_category (patient_id, category),
+  CONSTRAINT fk_meddoc_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS patient_medical_profile (
+  patient_id CHAR(36) NOT NULL,
+  blood_group ENUM('A+','A-','B+','B-','AB+','AB-','O+','O-','unknown') NULL,
+  allergies TEXT NULL,
+  medical_conditions TEXT NULL,
+  current_medications TEXT NULL,
+  previous_surgeries TEXT NULL,
+  medical_notes TEXT NULL,
+  emergency_contact_name VARCHAR(255) NULL,
+  emergency_contact_relationship VARCHAR(100) NULL,
+  emergency_contact_phone VARCHAR(32) NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (patient_id),
+  CONSTRAINT fk_patient_medical_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS patient_devices (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  category VARCHAR(40) NOT NULL,
+  brand VARCHAR(100) NULL,
+  model VARCHAR(100) NULL,
+  serial_number VARCHAR(100) NULL,
+  notes VARCHAR(1000) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_patient_devices_patient (patient_id),
+  CONSTRAINT fk_patient_devices_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS medications (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  dosage VARCHAR(100) NOT NULL,
+  frequency_label VARCHAR(100) NULL,
+  schedule_type ENUM('daily','monthly') NOT NULL DEFAULT 'daily',
+  day_of_month TINYINT UNSIGNED NULL,
+  times JSON NOT NULL,
+  prescriber VARCHAR(255) NULL,
+  refill_date DATE NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_medications_patient (patient_id),
+  CONSTRAINT fk_medications_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS medication_doses (
+  id CHAR(36) NOT NULL,
+  medication_id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  dose_date DATE NOT NULL,
+  scheduled_time VARCHAR(5) NOT NULL,
+  taken_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_medication_dose (medication_id, dose_date, scheduled_time),
+  KEY idx_doses_patient_date (patient_id, dose_date),
+  CONSTRAINT fk_doses_medication FOREIGN KEY (medication_id) REFERENCES medications(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS prescriptions (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  scan_url VARCHAR(500) NULL,
+  digitized_text MEDIUMTEXT NULL,
+  ocr_confidence DECIMAL(5,2) NULL,
+  finalized_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_prescription_appt (appointment_id),
+  CONSTRAINT fk_prescription_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_prescription_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS prescription_scan_jobs (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  status ENUM('processing','done','failed') NOT NULL DEFAULT 'processing',
+  draft_text MEDIUMTEXT NULL,
+  confidence DECIMAL(5,2) NULL,
+  scan_url VARCHAR(500) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  completed_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_scan_jobs_appt (appointment_id),
+  CONSTRAINT fk_scan_jobs_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NULL,
+  type VARCHAR(40) NOT NULL,
+  payload_json JSON NULL,
+  read_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_notif_user (user_id, created_at),
+  KEY idx_notif_branch (branch_id),
+  CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS device_tokens (
+  id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  platform ENUM('android','ios') NOT NULL,
+  app ENUM('patient','clinic') NOT NULL DEFAULT 'patient',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_device_token (token),
+  KEY idx_device_tokens_user (user_id),
+  CONSTRAINT fk_device_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS doctor_time_offs (
+  id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  reason VARCHAR(255) NULL,
+  starts_at DATETIME(3) NOT NULL,
+  ends_at DATETIME(3) NOT NULL,
+  created_by CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_timeoff_doctor (doctor_id, starts_at),
+  KEY idx_timeoff_branch (branch_id),
+  CONSTRAINT fk_timeoff_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+  CONSTRAINT fk_timeoff_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_timeoff_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS appointment_waitlist (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  scheduled_date DATE NOT NULL,
+  preferred_time VARCHAR(5) NULL,
+  status ENUM('waiting','notified','booked','cancelled','expired') NOT NULL DEFAULT 'waiting',
+  notified_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_waitlist_pending (patient_id, doctor_id, scheduled_date, status),
+  KEY idx_waitlist_doctor_date (doctor_id, scheduled_date),
+  KEY idx_waitlist_branch (branch_id),
+  CONSTRAINT fk_waitlist_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_waitlist_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+  CONSTRAINT fk_waitlist_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS refunds (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  payment_id CHAR(36) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  reason VARCHAR(500) NULL,
+  status ENUM('pending','processed','failed') NOT NULL DEFAULT 'pending',
+  processed_by CHAR(36) NULL,
+  processed_at DATETIME(3) NULL,
+  reference_no VARCHAR(255) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_refund_appt (appointment_id),
+  KEY idx_refund_payment (payment_id),
+  CONSTRAINT fk_refund_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_refund_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_refund_processed_by FOREIGN KEY (processed_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  doctor_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NULL,
+  rating TINYINT NOT NULL,
+  comment TEXT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_review_patient_doctor (patient_id, doctor_id),
+  KEY idx_review_doctor (doctor_id),
+  KEY idx_review_branch (branch_id),
+  CONSTRAINT fk_review_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_review_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+  CONSTRAINT fk_review_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_review_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL,
+  CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id CHAR(36) NOT NULL,
+  actor_user_id CHAR(36) NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50) NOT NULL,
+  resource_id CHAR(36) NULL,
+  changes_json JSON NULL,
+  ip_address VARCHAR(45) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_audit_actor (actor_user_id, created_at),
+  KEY idx_audit_resource (resource_type, resource_id),
+  CONSTRAINT fk_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ============================================================
+-- Lab Test Appointment System
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS lab_tests (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  code VARCHAR(50) NOT NULL,
+  description TEXT NULL,
+  category VARCHAR(100) NOT NULL DEFAULT 'other',
+  instructions TEXT NULL,
+  default_precautions JSON NULL,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_lab_test_clinic (clinic_id),
+  KEY idx_lab_test_category (category),
+  KEY idx_lab_test_status (status),
+  CONSTRAINT fk_lab_test_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lab_test_categories (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  badge_color VARCHAR(20) NOT NULL DEFAULT '#6B7280',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_lab_test_category_clinic_name (clinic_id, name),
+  CONSTRAINT fk_lab_test_category_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS branch_lab_tests (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  test_id CHAR(36) NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  duration_minutes SMALLINT NOT NULL DEFAULT 30,
+  clinic_available TINYINT(1) NOT NULL DEFAULT 1,
+  home_collection_available TINYINT(1) NOT NULL DEFAULT 0,
+  prescription_required TINYINT(1) NOT NULL DEFAULT 0,
+  status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_branch_test (branch_id, test_id),
+  KEY idx_blt_clinic (clinic_id),
+  KEY idx_blt_test (test_id),
+  KEY idx_blt_status (status),
+  CONSTRAINT fk_blt_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE,
+  CONSTRAINT fk_blt_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_blt_test FOREIGN KEY (test_id) REFERENCES lab_tests(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lab_test_schedules (
+  id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  weekday TINYINT NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_lts_branch_weekday (branch_id, weekday),
+  CONSTRAINT fk_lts_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lab_test_appointments (
+  id CHAR(36) NOT NULL,
+  appointment_number VARCHAR(32) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  branch_lab_test_id CHAR(36) NOT NULL,
+  test_id CHAR(36) NOT NULL,
+  service_mode ENUM('CLINIC','HOME') NOT NULL DEFAULT 'CLINIC',
+  appointment_date DATE NOT NULL,
+  start_time VARCHAR(5) NOT NULL,
+  end_time VARCHAR(5) NOT NULL,
+  duration_minutes SMALLINT NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  payment_method ENUM('PAY_AT_CLINIC','ONLINE') NULL,
+  payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID',
+  prescription_required TINYINT(1) NOT NULL DEFAULT 0,
+  prescription_id CHAR(36) NULL,
+  referring_doctor_name VARCHAR(255) NULL,
+  home_address TEXT NULL,
+  home_lat DECIMAL(10,7) NULL,
+  home_lng DECIMAL(10,7) NULL,
+  home_contact_phone VARCHAR(32) NULL,
+  home_notes TEXT NULL,
+  patient_notes TEXT NULL,
+  clinic_notes TEXT NULL,
+  precautions JSON NULL,
+  status ENUM('PENDING','APPROVED','REJECTED','CANCELLED','COMPLETED') NOT NULL DEFAULT 'PENDING',
+  approved_by CHAR(36) NULL,
+  approved_at DATETIME(3) NULL,
+  rejected_by CHAR(36) NULL,
+  rejected_at DATETIME(3) NULL,
+  rejection_reason VARCHAR(500) NULL,
+  completed_at DATETIME(3) NULL,
+  cancelled_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  slot_key VARCHAR(5) GENERATED ALWAYS AS (IF(status = 'CANCELLED', NULL, start_time)) STORED,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_appt_number (appointment_number),
+  UNIQUE KEY uniq_lab_slot (branch_id, branch_lab_test_id, appointment_date, slot_key),
+  KEY idx_lta_patient (patient_id),
+  KEY idx_lta_clinic (clinic_id),
+  KEY idx_lta_branch (branch_id),
+  KEY idx_lta_test (test_id),
+  KEY idx_lta_date_status (appointment_date, status),
+  KEY idx_lta_payment_status (payment_status),
+  CONSTRAINT fk_lta_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+  CONSTRAINT fk_lta_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_lta_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+  CONSTRAINT fk_lta_branch_lab_test FOREIGN KEY (branch_lab_test_id) REFERENCES branch_lab_tests(id),
+  CONSTRAINT fk_lta_test FOREIGN KEY (test_id) REFERENCES lab_tests(id)
+) ENGINE=InnoDB;
+
+-- Who the lab test is actually for — a clinic/staff booking on behalf of a walk-in
+-- patient (patient_id on lab_test_appointments is the booking account, mirroring
+-- appointment_patients for doctor appointments). One row per appointment, always
+-- present (relationship defaults to 'self') when a client omits patient_details.
+CREATE TABLE IF NOT EXISTS lab_test_appointment_patients (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NULL,
+  booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP',
+  booked_by CHAR(36) NULL,
+  relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(32) NULL,
+  age TINYINT UNSIGNED NULL,
+  gender ENUM('male','female','other','prefer_not_to_say') NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_lab_test_appointment_patient (appointment_id),
+  KEY idx_lta_patients_patient (patient_id),
+  CONSTRAINT fk_lta_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_lta_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_lta_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lab_test_prescriptions (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_url VARCHAR(500) NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  file_size BIGINT NOT NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_ltp_patient (patient_id),
+  KEY idx_ltp_appointment (appointment_id),
+  CONSTRAINT fk_ltp_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ltp_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- changed_by NULL = system/cron (e.g. the overdue-appointment auto-cancel sweep).
+CREATE TABLE IF NOT EXISTS lab_test_appointment_status_log (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  from_status VARCHAR(16) NULL,
+  to_status VARCHAR(16) NOT NULL,
+  changed_by CHAR(36) NULL,
+  changed_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  note VARCHAR(500) NULL,
+  PRIMARY KEY (id),
+  KEY idx_lta_status_log_appt (appointment_id),
+  CONSTRAINT fk_lta_status_log_appt FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ============================================================
+-- Clinic Monthly Subscription System
+-- ============================================================
+
+-- Versioned plan catalog. The Super Admin "change price" operation inserts a new
+-- active version here and deactivates the previous one — existing subscriptions and
+-- already-created payments keep their own amount snapshots, so history is never
+-- rewritten when pricing changes.
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id CHAR(36) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  billing_period ENUM('monthly') NOT NULL DEFAULT 'monthly',
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  trial_months SMALLINT NOT NULL DEFAULT 2,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  effective_from DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  created_by CHAR(36) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_plan_active (is_active, effective_from),
+  CONSTRAINT fk_plan_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Platform-level key/value settings managed by Super Admin (warning windows etc).
+CREATE TABLE IF NOT EXISTS platform_settings (
+  setting_key VARCHAR(100) NOT NULL,
+  setting_value VARCHAR(255) NOT NULL,
+  description VARCHAR(255) NULL,
+  updated_by CHAR(36) NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (setting_key)
+) ENGINE=InnoDB;
+
+-- One row per clinic. Canonical stored states: TRIAL / ACTIVE / EXPIRED / INACTIVE.
+-- EXPIRING is a derived display state (ACTIVE/TRIAL with expiry inside the warning
+-- window) — never stored. Deactivating a clinic never deletes clinic or patient data;
+-- it only restricts clinic operations until payment/reactivation.
+CREATE TABLE IF NOT EXISTS clinic_subscriptions (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  status ENUM('TRIAL','ACTIVE','EXPIRED','INACTIVE') NOT NULL DEFAULT 'TRIAL',
+  plan_id CHAR(36) NULL,
+  monthly_amount DECIMAL(10,2) NOT NULL DEFAULT 49.00,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  period_start DATETIME(3) NOT NULL,
+  period_end DATETIME(3) NOT NULL,
+  is_trial TINYINT(1) NOT NULL DEFAULT 1,
+  trial_started_at DATETIME(3) NULL,
+  trial_ends_at DATETIME(3) NULL,
+  auto_renew TINYINT(1) NOT NULL DEFAULT 0,
+  deactivated_at DATETIME(3) NULL,
+  deactivated_by CHAR(36) NULL,
+  deactivation_reason VARCHAR(500) NULL,
+  last_paid_payment_id CHAR(36) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_subscription_clinic (clinic_id),
+  KEY idx_subscription_status_expiry (status, period_end),
+  CONSTRAINT fk_subscription_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_subscription_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Subscription payment attempts. Amount/period are computed server-side; the client
+-- can never set them. provider_order_id is issued at initiation; verification checks an
+-- HMAC signature over `order_id|payment_id` (gateway-style) before any activation.
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  subscription_id CHAR(36) NOT NULL,
+  plan_id CHAR(36) NULL,
+  invoice_no VARCHAR(32) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  months SMALLINT NOT NULL DEFAULT 1,
+  method ENUM('upi','card','netbanking','wallet','cash','manual') NOT NULL DEFAULT 'upi',
+  provider VARCHAR(50) NULL,
+  provider_order_id VARCHAR(100) NULL,
+  provider_payment_id VARCHAR(100) NULL,
+  provider_signature VARCHAR(255) NULL,
+  status ENUM('PENDING','PAID','FAILED') NOT NULL DEFAULT 'PENDING',
+  failure_reason VARCHAR(500) NULL,
+  reference_no VARCHAR(255) NULL,
+  verification_method ENUM('signature','webhook','manual') NULL,
+  verified_by CHAR(36) NULL,
+  verified_at DATETIME(3) NULL,
+  period_start DATETIME(3) NULL,
+  period_end DATETIME(3) NULL,
+  initiated_by CHAR(36) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_subpay_invoice (invoice_no),
+  UNIQUE KEY uniq_subpay_provider_order (provider_order_id),
+  KEY idx_subpay_clinic (clinic_id, created_at),
+  KEY idx_subpay_status (status, created_at),
+  CONSTRAINT fk_subpay_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_subpay_subscription FOREIGN KEY (subscription_id) REFERENCES clinic_subscriptions(id),
+  CONSTRAINT fk_subpay_plan FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Full lifecycle audit of a clinic's subscription (trial start, expirations,
+-- reactivations, manual super-admin changes). changed_by NULL = system/cron.
+CREATE TABLE IF NOT EXISTS subscription_history (
+  id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  subscription_id CHAR(36) NOT NULL,
+  from_status VARCHAR(16) NULL,
+  to_status VARCHAR(16) NOT NULL,
+  reason VARCHAR(500) NULL,
+  changed_by CHAR(36) NULL,
+  source ENUM('system','clinic','super_admin','payment','webhook') NOT NULL DEFAULT 'system',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_subhist_clinic (clinic_id, created_at),
+  CONSTRAINT fk_subhist_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_subhist_subscription FOREIGN KEY (subscription_id) REFERENCES clinic_subscriptions(id)
+) ENGINE=InnoDB;
+
+-- Super Admin grant list. A platform Super Admin = users row with role 'sys_admin'
+-- AND an active (revoked_at IS NULL) row here. Grants are managed via the
+-- Super Admin API itself and bootstrapped with scripts/create-super-admin.mjs.
+CREATE TABLE IF NOT EXISTS super_admins (
+  user_id CHAR(36) NOT NULL,
+  granted_by CHAR(36) NULL,
+  revoked_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_super_admin_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_super_admin_granted_by FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS lab_test_payments (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  payment_method ENUM('PAY_AT_CLINIC','ONLINE') NOT NULL,
+  payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID',
+  transaction_id VARCHAR(255) NULL,
+  provider VARCHAR(50) NULL,
+  paid_at DATETIME(3) NULL,
+  refund_status VARCHAR(50) NULL,
+  collected_by CHAR(36) NULL,
+  collected_at DATETIME(3) NULL,
+  reference_no VARCHAR(255) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_ltpay_appointment (appointment_id),
+  KEY idx_ltpay_patient (patient_id),
+  KEY idx_ltpay_status (payment_status),
+  CONSTRAINT fk_ltpay_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ltpay_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+  CONSTRAINT fk_ltpay_collected_by FOREIGN KEY (collected_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS receipts (
+  id CHAR(36) NOT NULL,
+  receipt_number VARCHAR(32) NOT NULL,
+  source_type ENUM('appointment','lab_test_appointment') NOT NULL,
+  source_id CHAR(36) NOT NULL,
+  event_type ENUM('booking_confirmed','payment_received','completed') NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  amount DECIMAL(10,2) NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  payment_method VARCHAR(20) NULL,
+  reference_no VARCHAR(255) NULL,
+  generated_by CHAR(36) NULL,
+  details_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_receipt_number (receipt_number),
+  UNIQUE KEY uniq_receipt_source_event (source_type, source_id, event_type),
+  KEY idx_receipt_patient (patient_id, created_at),
+  KEY idx_receipt_source (source_type, source_id),
+  CONSTRAINT fk_receipt_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_receipt_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_receipt_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+  CONSTRAINT fk_receipt_generated_by FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Super Admin subscription discount campaigns: a discounted per-clinic price for a
+-- fixed number of billing cycles, sent to one or many clinics over SMS/WhatsApp/
+-- email/portal. Applied automatically to the clinic's next payment(s) — see
+-- getActiveOfferForClinic() in src/lib/offers.ts. Expiry/eligibility is computed
+-- live from status/valid_until/months_remaining, never mutated by a cron sweep.
+CREATE TABLE IF NOT EXISTS subscription_offers (
+  id CHAR(36) NOT NULL,
+  title VARCHAR(150) NOT NULL,
+  message VARCHAR(1000) NOT NULL,
+  discounted_amount DECIMAL(10,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'INR',
+  duration_months SMALLINT NOT NULL,
+  valid_until DATETIME(3) NOT NULL,
+  channels_json JSON NOT NULL,
+  status ENUM('ACTIVE','CANCELLED') NOT NULL DEFAULT 'ACTIVE',
+  created_by CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  cancelled_at DATETIME(3) NULL,
+  cancelled_by CHAR(36) NULL,
+  PRIMARY KEY (id),
+  KEY idx_offers_status (status, valid_until),
+  CONSTRAINT fk_offer_created_by FOREIGN KEY (created_by) REFERENCES users(id),
+  CONSTRAINT fk_offer_cancelled_by FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS subscription_offer_recipients (
+  id CHAR(36) NOT NULL,
+  offer_id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  status ENUM('PENDING','REDEEMED') NOT NULL DEFAULT 'PENDING',
+  months_remaining SMALLINT NOT NULL,
+  notify_sms_status ENUM('SENT','SKIPPED','FAILED') NULL,
+  notify_whatsapp_status ENUM('SENT','SKIPPED','FAILED') NULL,
+  notify_email_status ENUM('SENT','SKIPPED','FAILED') NULL,
+  notified_at DATETIME(3) NULL,
+  portal_notification_id CHAR(36) NULL,
+  redeemed_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_offer_clinic (offer_id, clinic_id),
+  KEY idx_offer_recipients_clinic (clinic_id, status),
+  CONSTRAINT fk_offer_recip_offer FOREIGN KEY (offer_id) REFERENCES subscription_offers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_offer_recip_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_offer_recip_notification FOREIGN KEY (portal_notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- Clinic-issued patient documents (lab reports, prescriptions, other) — uploaded BY
+-- clinic staff/owner ON BEHALF OF a patient, scoped to a clinic/branch. Distinct from
+-- the patient-self-upload `medical_documents` table (no clinic/branch attribution,
+-- self-service only): this one is clinic-driven, with an independent multi-channel
+-- delivery trail (see patient_document_deliveries below).
+--
+-- `file_key` is the raw on-disk storage key (matches saveUpload()'s returned fileName in
+-- src/lib/upload.ts), NOT a pre-signed URL — a signed, time-limited URL is minted fresh
+-- on every authorized read (list/get/download), never persisted, so a stored link can
+-- never outlive its 15-minute signature or leak as a durable public URL.
+CREATE TABLE IF NOT EXISTS patient_documents (
+  id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  clinic_id CHAR(36) NOT NULL,
+  branch_id CHAR(36) NOT NULL,
+  document_type ENUM('LAB_REPORT','PRESCRIPTION','OTHER') NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description VARCHAR(2000) NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_key VARCHAR(255) NOT NULL,
+  file_size INT NOT NULL,
+  mime_type VARCHAR(100) NOT NULL,
+  uploaded_by CHAR(36) NOT NULL,
+  uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  status ENUM('PENDING','GENERATED') NOT NULL DEFAULT 'GENERATED',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  deleted_at DATETIME(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_pd_patient (patient_id, deleted_at, uploaded_at),
+  KEY idx_pd_clinic (clinic_id),
+  KEY idx_pd_branch (branch_id),
+  CONSTRAINT fk_pd_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+  CONSTRAINT fk_pd_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+  CONSTRAINT fk_pd_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+  CONSTRAINT fk_pd_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+-- Independent per-channel delivery/audit trail for a patient_documents row — a single
+-- document can simultaneously be Available in the patient app, Emailed, and Printed,
+-- each tracked as its own row here (never overwriting another channel's state).
+CREATE TABLE IF NOT EXISTS patient_document_deliveries (
+  id CHAR(36) NOT NULL,
+  document_id CHAR(36) NOT NULL,
+  delivery_method ENUM('APP','EMAIL','PRINT') NOT NULL,
+  status ENUM('PENDING','DELIVERED','NOT_DELIVERED') NOT NULL DEFAULT 'PENDING',
+  recipient_email VARCHAR(255) NULL,
+  delivered_at DATETIME(3) NULL,
+  attempted_by CHAR(36) NULL,
+  attempted_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  error_message VARCHAR(500) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_pdd_document (document_id, delivery_method, created_at),
+  CONSTRAINT fk_pdd_document FOREIGN KEY (document_id) REFERENCES patient_documents(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pdd_attempted_by FOREIGN KEY (attempted_by) REFERENCES users(id)
+) ENGINE=InnoDB;

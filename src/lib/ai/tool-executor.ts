@@ -2,8 +2,9 @@ import type { AiUser, ToolCall, ToolResult } from "./types";
 import { getToolById } from "./tools";
 import { hasPermission, type BranchStaffPermission } from "@/lib/permissions";
 
+// Server-side fetches need an absolute URL; the API is served by this same app.
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+  process.env.INTERNAL_API_URL || `http://127.0.0.1:${process.env.PORT || 3000}/api/v1`;
 
 async function apiRequest(
   path: string,

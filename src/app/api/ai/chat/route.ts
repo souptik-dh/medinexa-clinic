@@ -3,8 +3,9 @@ import { processMessage } from "@/lib/ai/orchestrator";
 import { createConversation, getConversation, addMessageToConversation } from "@/lib/ai/conversation-store";
 import type { AiUser, ChatRequest, ChatMessage } from "@/lib/ai/types";
 
+// Server-side fetches need an absolute URL; the API is served by this same app.
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
+  process.env.INTERNAL_API_URL || `http://127.0.0.1:${process.env.PORT || 3000}/api/v1`;
 
 function extractUserFromToken(request: NextRequest): AiUser | null {
   const authHeader = request.headers.get("authorization");

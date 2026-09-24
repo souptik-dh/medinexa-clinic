@@ -1,0 +1,44 @@
+import { z } from "zod";
+import { api, json, noContent, readJson } from "@api/lib/http";
+import { pool } from "@api/lib/db";
+import { parseBody } from "@api/lib/validators";
+import { requireRoles } from "@api/lib/auth";
+import { badRequest } from "@api/lib/errors";
+import { newId } from "@api/lib/ids";
+
+const registerSchema = z.object({
+  token: z.string().trim().min(1).max(255),
+  platform: z.enum(["android", "ios"]),
+});
+
+// A device token identifies one app install, not one user — the same phone can be
+// registered to a different account after logout/login. The upsert reassigns it to
+// whoever is currently authenticated rather than erroring, so a shared/reused device
+// always ends up pointing at the right account.
+//
+// The patient app and the xclinic (clinic-side) app are separate Firebase projects,
+// so a token is only ever valid against the project that issued it. `app` is derived
+// from the caller's role rather than trusted from the request body.
+export const POST = api({ rateLimit: 200 }, async (ctx) => {
+  const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
+  const body = parseBody(registerSchema, await readJson(ctx.request));
+  const app = auth.role === "patient" ? "patient" : "clinic";
+
+  await pool.query(
+    `INSERT INTO device_tokens (id, user_id, token, platform, app)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), platform = VALUES(platform), app = VALUES(app)`,
+    [newId(), auth.userId, body.token, body.platform, app],
+  );
+
+  return json({ registered: true }, 201);
+});
+
+export const DELETE = api({ rateLimit: 200 }, async (ctx) => {
+  const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
+  const token = ctx.request.nextUrl.searchParams.get("token");
+  if (!token) throw badRequest("VALIDATION_ERROR", "token is required.", "token");
+
+  await pool.query(`DELETE FROM device_tokens WHERE token = ? AND user_id = ?`, [token, auth.userId]);
+  return noContent();
+});

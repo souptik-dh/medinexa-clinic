@@ -1,0 +1,19 @@
+import { api, noContent } from "@api/lib/http";
+import { pool } from "@api/lib/db";
+import { requireRoles } from "@api/lib/auth";
+import { getOwnedBranch } from "@api/lib/scope";
+import { assertBranchStaffPermission } from "@api/lib/permissions";
+
+export const DELETE = api({ rateLimit: 200 }, async (ctx) => {
+  const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff"]);
+  const { id: branchId, staffId } = ctx.params;
+
+  if (auth.role === "clinic_owner") {
+    await getOwnedBranch(pool, branchId, auth.userId);
+  } else {
+    await assertBranchStaffPermission(pool, auth, branchId, "staff:manage");
+  }
+
+  await pool.query(`DELETE FROM branch_staff WHERE id = ? AND branch_id = ?`, [staffId, branchId]);
+  return noContent();
+});

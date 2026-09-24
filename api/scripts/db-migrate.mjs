@@ -1,0 +1,1506 @@
+import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { createConnection } from 'mysql2/promise';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+function slugify(name) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.error('DATABASE_URL is not set. Run with: node --env-file=.env scripts/db-migrate.mjs');
+  process.exit(1);
+}
+
+const schema = await readFile(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
+const conn = await createConnection({ uri: url, multipleStatements: true });
+try {
+  await conn.query(schema);
+
+  const [cols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctors' AND COLUMN_NAME = 'reg_no'`,
+  );
+  if (Number(cols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctors
+         ADD COLUMN reg_no VARCHAR(64) NULL AFTER specialization,
+         ADD UNIQUE KEY uniq_doctors_reg_no (reg_no)`,
+    );
+    console.log('Applied migration: doctors.reg_no');
+  }
+
+  const [inviteRegNoCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_invites' AND COLUMN_NAME = 'reg_no'`,
+  );
+  if (Number(inviteRegNoCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_invites ADD COLUMN reg_no VARCHAR(64) NULL AFTER invite_code_hash`,
+    );
+    console.log('Applied migration: doctor_invites.reg_no');
+  }
+
+  const [doctorSmcCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctors' AND COLUMN_NAME = 'smc_name'`,
+  );
+  if (Number(doctorSmcCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctors
+         ADD COLUMN smc_name VARCHAR(255) NULL AFTER reg_no,
+         ADD COLUMN doctor_degree VARCHAR(100) NULL AFTER smc_name`,
+    );
+    console.log('Applied migration: doctors.smc_name, doctors.doctor_degree');
+  }
+
+  // reg_no alone can collide across state medical councils, so the unique
+  // constraint is scoped to (reg_no, smc_name) instead. Older installs still
+  // have the single-column key; widen it in place.
+  const [regNoIndexCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctors' AND INDEX_NAME = 'uniq_doctors_reg_no'`,
+  );
+  if (Number(regNoIndexCols[0].cnt) === 1) {
+    await conn.query(
+      `ALTER TABLE doctors DROP INDEX uniq_doctors_reg_no, ADD UNIQUE KEY uniq_doctors_reg_no (reg_no, smc_name)`,
+    );
+    console.log('Applied migration: doctors.uniq_doctors_reg_no scoped to (reg_no, smc_name)');
+  }
+
+  const [inviteSmcCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_invites' AND COLUMN_NAME = 'smc_name'`,
+  );
+  if (Number(inviteSmcCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_invites
+         ADD COLUMN smc_name VARCHAR(255) NULL AFTER reg_no,
+         ADD COLUMN doctor_degree VARCHAR(100) NULL AFTER smc_name`,
+    );
+    console.log('Applied migration: doctor_invites.smc_name, doctor_invites.doctor_degree');
+  }
+
+  const [photoCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctors' AND COLUMN_NAME = 'photo_url'`,
+  );
+  if (Number(photoCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctors
+         ADD COLUMN photo_url VARCHAR(500) NULL AFTER certificate_url`,
+    );
+    console.log('Applied migration: doctors.photo_url');
+  }
+
+  const [staffPermCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_staff' AND COLUMN_NAME = 'permissions_json'`,
+  );
+  if (Number(staffPermCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE branch_staff ADD COLUMN permissions_json JSON NULL AFTER added_by`,
+    );
+    console.log('Applied migration: branch_staff.permissions_json');
+  }
+
+  const [galleryTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_gallery_images'`,
+  );
+  if (Number(galleryTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE branch_gallery_images (
+        id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        public_id VARCHAR(255) NOT NULL,
+        image_url VARCHAR(500) NOT NULL,
+        position INT NOT NULL DEFAULT 0,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_gallery_public_id (branch_id, public_id),
+        KEY idx_gallery_branch (branch_id, position),
+        CONSTRAINT fk_gallery_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: branch_gallery_images table');
+  }
+
+  const [clinicLicenseCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinics' AND COLUMN_NAME = 'trade_license_number'`,
+  );
+  if (Number(clinicLicenseCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE clinics
+        ADD COLUMN trade_license_number VARCHAR(100) NULL AFTER owner_user_id,
+        ADD COLUMN trade_license_url VARCHAR(500) NULL AFTER trade_license_number,
+        ADD COLUMN drug_license_number VARCHAR(100) NULL AFTER trade_license_url,
+        ADD COLUMN drug_license_url VARCHAR(500) NULL AFTER drug_license_number,
+        ADD COLUMN clinical_establishment_reg_number VARCHAR(100) NULL AFTER drug_license_url,
+        ADD COLUMN clinical_establishment_reg_url VARCHAR(500) NULL AFTER clinical_establishment_reg_number
+    `);
+    console.log('Applied migration: clinics licenses');
+  }
+
+  const [tradeLicenseValidationCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinics' AND COLUMN_NAME = 'trade_license_validated'`,
+  );
+  if (Number(tradeLicenseValidationCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE clinics
+        ADD COLUMN trade_license_validated TINYINT(1) NOT NULL DEFAULT 0 AFTER trade_license_url,
+        ADD COLUMN trade_license_validation_status ENUM('PENDING','VALID','INVALID') NOT NULL DEFAULT 'PENDING' AFTER trade_license_validated,
+        ADD COLUMN trade_license_validated_at DATETIME(3) NULL AFTER trade_license_validation_status
+    `);
+    console.log('Applied migration: clinics.trade_license_validated/validation_status/validated_at');
+  }
+
+  const [branchLicenseCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'trade_license_number'`,
+  );
+  if (Number(branchLicenseCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE branches
+        ADD COLUMN trade_license_number VARCHAR(100) NULL AFTER photo_url,
+        ADD COLUMN trade_license_url VARCHAR(500) NULL AFTER trade_license_number,
+        ADD COLUMN drug_license_number VARCHAR(100) NULL AFTER trade_license_url,
+        ADD COLUMN drug_license_url VARCHAR(500) NULL AFTER drug_license_number,
+        ADD COLUMN clinical_establishment_reg_number VARCHAR(100) NULL AFTER drug_license_url,
+        ADD COLUMN clinical_establishment_reg_url VARCHAR(500) NULL AFTER clinical_establishment_reg_number
+    `);
+    console.log('Applied migration: branches licenses');
+  }
+
+  const [branchTradeLicenseValidationCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'trade_license_validated'`,
+  );
+  if (Number(branchTradeLicenseValidationCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE branches
+        ADD COLUMN trade_license_validated TINYINT(1) NOT NULL DEFAULT 0 AFTER trade_license_url,
+        ADD COLUMN trade_license_validation_status ENUM('PENDING','VALID','INVALID') NOT NULL DEFAULT 'PENDING' AFTER trade_license_validated,
+        ADD COLUMN trade_license_validated_at DATETIME(3) NULL AFTER trade_license_validation_status
+    `);
+    console.log('Applied migration: branches.trade_license_validated/validation_status/validated_at');
+  }
+
+  const [userAddressCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'address'`,
+  );
+  if (Number(userAddressCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD COLUMN address VARCHAR(500) NULL AFTER phone,
+         ADD COLUMN photo_url VARCHAR(500) NULL AFTER address`,
+    );
+    console.log('Applied migration: users address/photo_url');
+  }
+
+  const [userLocationCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'nearby_location'`,
+  );
+  if (Number(userLocationCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD COLUMN nearby_location VARCHAR(500) NULL AFTER address,
+         ADD COLUMN city VARCHAR(255) NULL AFTER nearby_location,
+         ADD COLUMN district VARCHAR(255) NULL AFTER city,
+         ADD COLUMN pin_code VARCHAR(20) NULL AFTER district,
+         ADD COLUMN state VARCHAR(255) NULL AFTER pin_code,
+         ADD COLUMN post_office VARCHAR(255) NULL AFTER state`,
+    );
+    console.log('Applied migration: users nearby_location/city/district/pin_code/state/post_office');
+  }
+
+  const [userVitalsCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'height_cm'`,
+  );
+  if (Number(userVitalsCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD COLUMN height_cm DECIMAL(5,2) NULL AFTER gender,
+         ADD COLUMN weight_kg DECIMAL(5,2) NULL AFTER height_cm,
+         ADD COLUMN bmi DECIMAL(4,1) NULL AFTER weight_kg`,
+    );
+    console.log('Applied migration: users height_cm/weight_kg/bmi');
+  }
+
+  const [resetTokenTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'password_reset_tokens'`,
+  );
+  if (Number(resetTokenTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE password_reset_tokens (
+        id CHAR(36) NOT NULL,
+        user_id CHAR(36) NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        expires_at DATETIME(3) NOT NULL,
+        used_at DATETIME(3) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_reset_token_hash (token_hash),
+        KEY idx_reset_user (user_id),
+        CONSTRAINT fk_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: password_reset_tokens table');
+  }
+
+  const [verifyTokenTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'email_verification_tokens'`,
+  );
+  if (Number(verifyTokenTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE email_verification_tokens (
+        id CHAR(36) NOT NULL,
+        user_id CHAR(36) NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        expires_at DATETIME(3) NOT NULL,
+        used_at DATETIME(3) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_verify_token_hash (token_hash),
+        KEY idx_verify_user (user_id),
+        CONSTRAINT fk_verify_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: email_verification_tokens table');
+  }
+
+  const [ledgerTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinic_payment_ledger'`,
+  );
+  if (Number(ledgerTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE clinic_payment_ledger (
+        id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        period_month CHAR(7) NOT NULL,
+        currency CHAR(3) NOT NULL,
+        total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+        payment_count INT NOT NULL DEFAULT 0,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_ledger_period (clinic_id, branch_id, period_month, currency),
+        KEY idx_ledger_clinic_period (clinic_id, period_month),
+        CONSTRAINT fk_ledger_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+        CONSTRAINT fk_ledger_branch FOREIGN KEY (branch_id) REFERENCES branches(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: clinic_payment_ledger table');
+  }
+
+  const [timeOffTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_time_offs'`,
+  );
+  if (Number(timeOffTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE doctor_time_offs (
+        id CHAR(36) NOT NULL,
+        doctor_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        reason VARCHAR(255) NULL,
+        starts_at DATETIME(3) NOT NULL,
+        ends_at DATETIME(3) NOT NULL,
+        created_by CHAR(36) NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_timeoff_doctor (doctor_id, starts_at),
+        KEY idx_timeoff_branch (branch_id),
+        CONSTRAINT fk_timeoff_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+        CONSTRAINT fk_timeoff_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+        CONSTRAINT fk_timeoff_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: doctor_time_offs table');
+  }
+
+  const [waitlistTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_waitlist'`,
+  );
+  if (Number(waitlistTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE appointment_waitlist (
+        id CHAR(36) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        doctor_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        scheduled_date DATE NOT NULL,
+        preferred_time VARCHAR(5) NULL,
+        status ENUM('waiting','notified','booked','cancelled','expired') NOT NULL DEFAULT 'waiting',
+        notified_at DATETIME(3) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_waitlist_pending (patient_id, doctor_id, scheduled_date, status),
+        KEY idx_waitlist_doctor_date (doctor_id, scheduled_date),
+        KEY idx_waitlist_branch (branch_id),
+        CONSTRAINT fk_waitlist_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_waitlist_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+        CONSTRAINT fk_waitlist_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: appointment_waitlist table');
+  }
+
+  const [refundTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'refunds'`,
+  );
+  if (Number(refundTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE refunds (
+        id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NOT NULL,
+        payment_id CHAR(36) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'INR',
+        reason VARCHAR(500) NULL,
+        status ENUM('pending','processed','failed') NOT NULL DEFAULT 'pending',
+        processed_by CHAR(36) NULL,
+        processed_at DATETIME(3) NULL,
+        reference_no VARCHAR(255) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_refund_appt (appointment_id),
+        KEY idx_refund_payment (payment_id),
+        CONSTRAINT fk_refund_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
+        CONSTRAINT fk_refund_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+        CONSTRAINT fk_refund_processed_by FOREIGN KEY (processed_by) REFERENCES users(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: refunds table');
+  }
+
+  const [reviewTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reviews'`,
+  );
+  if (Number(reviewTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE reviews (
+        id CHAR(36) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        doctor_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NULL,
+        rating TINYINT NOT NULL,
+        comment TEXT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_review_patient_doctor (patient_id, doctor_id),
+        KEY idx_review_doctor (doctor_id),
+        KEY idx_review_branch (branch_id),
+        CONSTRAINT fk_review_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_review_doctor FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE,
+        CONSTRAINT fk_review_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+        CONSTRAINT fk_review_appt FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL,
+        CONSTRAINT chk_review_rating CHECK (rating BETWEEN 1 AND 5)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: reviews table');
+  }
+
+  const [auditLogTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'audit_logs'`,
+  );
+  if (Number(auditLogTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE audit_logs (
+        id CHAR(36) NOT NULL,
+        actor_user_id CHAR(36) NULL,
+        action VARCHAR(100) NOT NULL,
+        resource_type VARCHAR(50) NOT NULL,
+        resource_id CHAR(36) NULL,
+        changes_json JSON NULL,
+        ip_address VARCHAR(45) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_audit_actor (actor_user_id, created_at),
+        KEY idx_audit_resource (resource_type, resource_id),
+        CONSTRAINT fk_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: audit_logs table');
+  }
+
+  const [deviceTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patient_devices'`,
+  );
+  if (Number(deviceTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE patient_devices (
+        id CHAR(36) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(40) NOT NULL,
+        brand VARCHAR(100) NULL,
+        model VARCHAR(100) NULL,
+        serial_number VARCHAR(100) NULL,
+        notes VARCHAR(1000) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_patient_devices_patient (patient_id),
+        CONSTRAINT fk_patient_devices_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: patient_devices table');
+  }
+
+  const [userNameCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'first_name'`,
+  );
+  if (Number(userNameCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD COLUMN first_name VARCHAR(150) NULL AFTER name,
+         ADD COLUMN last_name VARCHAR(150) NULL AFTER first_name,
+         ADD COLUMN date_of_birth DATE NULL AFTER phone,
+         ADD COLUMN gender ENUM('male','female','other','prefer_not_to_say') NULL AFTER date_of_birth`,
+    );
+    console.log('Applied migration: users first_name/last_name/date_of_birth/gender');
+  }
+
+  const [userPreferredCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'preferred_clinic_id'`,
+  );
+  if (Number(userPreferredCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD COLUMN preferred_clinic_id CHAR(36) NULL AFTER push_topic,
+         ADD COLUMN preferred_branch_id CHAR(36) NULL AFTER preferred_clinic_id,
+         ADD KEY idx_users_preferred_clinic (preferred_clinic_id),
+         ADD KEY idx_users_preferred_branch (preferred_branch_id)`,
+    );
+    console.log('Applied migration: users preferred_clinic_id/preferred_branch_id');
+  }
+
+  const [userPreferredClinicFk] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND CONSTRAINT_NAME = 'fk_users_preferred_clinic'`,
+  );
+  if (Number(userPreferredClinicFk[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users
+         ADD CONSTRAINT fk_users_preferred_clinic FOREIGN KEY (preferred_clinic_id) REFERENCES clinics(id) ON DELETE SET NULL,
+         ADD CONSTRAINT fk_users_preferred_branch FOREIGN KEY (preferred_branch_id) REFERENCES branches(id) ON DELETE SET NULL`,
+    );
+    console.log('Applied migration: users preferred_clinic/branch foreign keys');
+  }
+
+  const [meddocCategoryCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medical_documents' AND COLUMN_NAME = 'category'`,
+  );
+  if (Number(meddocCategoryCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE medical_documents
+         ADD COLUMN category ENUM('prescription','lab_report','doctor_note','other') NOT NULL DEFAULT 'other' AFTER patient_id,
+         ADD KEY idx_meddoc_patient_category (patient_id, category)`,
+    );
+    console.log('Applied migration: medical_documents.category');
+  }
+
+  const [verifyNewEmailCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'email_verification_tokens' AND COLUMN_NAME = 'new_email'`,
+  );
+  if (Number(verifyNewEmailCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE email_verification_tokens ADD COLUMN new_email VARCHAR(255) NULL AFTER token_hash`,
+    );
+    console.log('Applied migration: email_verification_tokens.new_email');
+  }
+
+  const [medicalProfileTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patient_medical_profile'`,
+  );
+  if (Number(medicalProfileTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE patient_medical_profile (
+        patient_id CHAR(36) NOT NULL,
+        blood_group ENUM('A+','A-','B+','B-','AB+','AB-','O+','O-','unknown') NULL,
+        allergies TEXT NULL,
+        medical_conditions TEXT NULL,
+        current_medications TEXT NULL,
+        previous_surgeries TEXT NULL,
+        medical_notes TEXT NULL,
+        emergency_contact_name VARCHAR(255) NULL,
+        emergency_contact_relationship VARCHAR(100) NULL,
+        emergency_contact_phone VARCHAR(32) NULL,
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (patient_id),
+        CONSTRAINT fk_patient_medical_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: patient_medical_profile table');
+  }
+
+  const [assignmentSlotTypeCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_branch_assignments' AND COLUMN_NAME = 'slot_type'`,
+  );
+  if (Number(assignmentSlotTypeCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_branch_assignments
+         ADD COLUMN slot_type ENUM('fixed','sequential') NOT NULL DEFAULT 'fixed' AFTER is_active`,
+    );
+    console.log('Applied migration: doctor_branch_assignments.slot_type');
+  }
+
+  const [inviteSlotTypeCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_invites' AND COLUMN_NAME = 'slot_type'`,
+  );
+  if (Number(inviteSlotTypeCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_invites
+         ADD COLUMN slot_type ENUM('fixed','sequential') NOT NULL DEFAULT 'fixed' AFTER slot_template`,
+    );
+    console.log('Applied migration: doctor_invites.slot_type');
+  }
+
+  const [slotStartDateCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_slot_templates' AND COLUMN_NAME = 'start_date'`,
+  );
+  if (Number(slotStartDateCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_slot_templates
+         CHANGE COLUMN effective_from start_date DATE NOT NULL,
+         CHANGE COLUMN effective_to end_date DATE NULL`,
+    );
+    console.log('Applied migration: doctor_slot_templates.effective_from/to -> start_date/end_date');
+  }
+
+  const [exceptionTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_slot_exceptions'`,
+  );
+  if (Number(exceptionTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE doctor_slot_exceptions (
+        id CHAR(36) NOT NULL,
+        doctor_branch_assignment_id CHAR(36) NOT NULL,
+        excluded_date DATE NOT NULL,
+        reason VARCHAR(255) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_exception_assignment_date (doctor_branch_assignment_id, excluded_date),
+        CONSTRAINT fk_exception_assignment FOREIGN KEY (doctor_branch_assignment_id)
+          REFERENCES doctor_branch_assignments(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: doctor_slot_exceptions table');
+  }
+
+  const [assignmentDateCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_branch_assignments' AND COLUMN_NAME = 'start_date'`,
+  );
+  if (Number(assignmentDateCols[0].cnt) > 0) {
+    await conn.query(
+      `ALTER TABLE doctor_branch_assignments DROP COLUMN start_date, DROP COLUMN end_date`,
+    );
+    console.log('Applied migration: doctor_branch_assignments dropped start_date/end_date (derived from doctor_slot_templates instead)');
+  }
+
+  const [exceptionEndDateCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_slot_exceptions' AND COLUMN_NAME = 'end_date'`,
+  );
+  if (Number(exceptionEndDateCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_slot_exceptions
+         ADD COLUMN end_date DATE NULL AFTER excluded_date,
+         ADD COLUMN status ENUM('active','cancelled') NOT NULL DEFAULT 'active' AFTER reason`,
+    );
+    // The old (assignment, excluded_date) unique key can't coexist with cancel-and-recreate
+    // semantics for the same start date, so it's replaced with a plain lookup index.
+    await conn.query(
+      `ALTER TABLE doctor_slot_exceptions
+         DROP INDEX uniq_exception_assignment_date,
+         ADD INDEX idx_exception_assignment_range (doctor_branch_assignment_id, status, excluded_date)`,
+    );
+    console.log('Applied migration: doctor_slot_exceptions.end_date/status (leave ranges)');
+  }
+
+  const [slotLabelCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_slot_templates' AND COLUMN_NAME = 'label'`,
+  );
+  if (Number(slotLabelCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE doctor_slot_templates
+         ADD COLUMN label ENUM('morning','afternoon','evening','custom') NULL AFTER weekday,
+         ADD COLUMN max_patients SMALLINT NOT NULL DEFAULT 1 AFTER slot_duration_minutes,
+         ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER max_patients`,
+    );
+    console.log('Applied migration: doctor_slot_templates.label/max_patients/is_active');
+  }
+
+  const [apptSlotSeqCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointments' AND COLUMN_NAME = 'slot_seq'`,
+  );
+  if (Number(apptSlotSeqCols[0].cnt) === 0) {
+    // Widening slot_key to include slot_seq preserves every existing row's uniqueness
+    // (each becomes "<scheduled_time>#0"), so this is safe to run against live data —
+    // it only enables max_patients > 1 to book multiple rows at the same time going forward.
+    await conn.query(
+      `ALTER TABLE appointments
+         DROP INDEX uniq_doctor_date_slot,
+         ADD COLUMN slot_seq SMALLINT NOT NULL DEFAULT 0 AFTER scheduled_time,
+         MODIFY COLUMN slot_key VARCHAR(8) GENERATED ALWAYS AS (IF(status = 'cancelled', NULL, CONCAT(scheduled_time, '#', slot_seq))) STORED,
+         ADD UNIQUE KEY uniq_doctor_date_slot (doctor_id, scheduled_date, slot_key)`,
+    );
+    console.log('Applied migration: appointments.slot_seq (per-slot capacity support)');
+  }
+
+  const [operatingDaysTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_operating_days'`,
+  );
+  if (Number(operatingDaysTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE branch_operating_days (
+        id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        weekday TINYINT NOT NULL,
+        is_open TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_branch_weekday (branch_id, weekday),
+        CONSTRAINT fk_operating_day_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: branch_operating_days table');
+  }
+
+  const [closureTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_closures'`,
+  );
+  if (Number(closureTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE branch_closures (
+        id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        reason VARCHAR(255) NULL,
+        status ENUM('active','cancelled') NOT NULL DEFAULT 'active',
+        created_by CHAR(36) NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_closure_branch_range (branch_id, status, start_date),
+        CONSTRAINT fk_closure_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+        CONSTRAINT fk_closure_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: branch_closures table');
+  }
+
+  const [apptPatientTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_patients'`,
+  );
+  if (Number(apptPatientTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE appointment_patients (
+        id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NOT NULL,
+        relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(32) NULL,
+        age TINYINT UNSIGNED NULL,
+        gender ENUM('male','female','other','prefer_not_to_say') NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_appointment_patient (appointment_id),
+        CONSTRAINT fk_appt_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: appointment_patients table');
+  }
+
+  const [specMapRows] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM doctor_specialization_map`,
+  );
+  if (Number(specMapRows[0].cnt) === 0) {
+    const [legacyValues] = await conn.query(`
+      SELECT specialization FROM doctors WHERE specialization IS NOT NULL AND specialization != ''
+      UNION
+      SELECT specialization FROM doctor_invites WHERE specialization IS NOT NULL AND specialization != ''
+    `);
+    const slugToId = new Map();
+    for (const { specialization } of legacyValues) {
+      const slug = slugify(specialization);
+      if (!slug || slugToId.has(slug)) continue;
+      const [existing] = await conn.query(
+        `SELECT id FROM doctor_specializations WHERE slug = ?`,
+        [slug],
+      );
+      if (existing[0]) {
+        slugToId.set(slug, existing[0].id);
+      } else {
+        const id = randomUUID();
+        await conn.query(
+          `INSERT INTO doctor_specializations (id, name, slug, status) VALUES (?, ?, ?, 'active')`,
+          [id, specialization.trim(), slug],
+        );
+        slugToId.set(slug, id);
+      }
+    }
+
+    const [doctorRows] = await conn.query(
+      `SELECT id, specialization FROM doctors WHERE specialization IS NOT NULL AND specialization != ''`,
+    );
+    for (const d of doctorRows) {
+      const specializationId = slugToId.get(slugify(d.specialization));
+      if (!specializationId) continue;
+      await conn.query(
+        `INSERT IGNORE INTO doctor_specialization_map (id, doctor_id, specialization_id) VALUES (?, ?, ?)`,
+        [randomUUID(), d.id, specializationId],
+      );
+    }
+
+    const [inviteRows] = await conn.query(
+      `SELECT id, specialization FROM doctor_invites WHERE specialization IS NOT NULL AND specialization != ''`,
+    );
+    for (const i of inviteRows) {
+      const specializationId = slugToId.get(slugify(i.specialization));
+      if (!specializationId) continue;
+      await conn.query(
+        `INSERT IGNORE INTO doctor_invite_specializations (id, doctor_invite_id, specialization_id) VALUES (?, ?, ?)`,
+        [randomUUID(), i.id, specializationId],
+      );
+    }
+
+    console.log(`Applied migration: doctor_specializations backfill (${slugToId.size} specializations)`);
+  }
+
+  const [deviceTokenTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens'`,
+  );
+  if (Number(deviceTokenTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE device_tokens (
+        id CHAR(36) NOT NULL,
+        user_id CHAR(36) NOT NULL,
+        token VARCHAR(255) NOT NULL,
+        platform ENUM('android','ios') NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_device_token (token),
+        KEY idx_device_tokens_user (user_id),
+        CONSTRAINT fk_device_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: device_tokens table');
+  }
+
+  const [userPushTopicDropCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'push_topic'`,
+  );
+  if (Number(userPushTopicDropCols[0].cnt) > 0) {
+    await conn.query(`ALTER TABLE users DROP INDEX uniq_users_push_topic, DROP COLUMN push_topic`);
+    console.log('Applied migration: dropped users.push_topic (replaced by device_tokens/FCM)');
+  }
+
+  // ---- Lab Test Appointment tables ----
+
+  const [labTestsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests'`,
+  );
+  if (Number(labTestsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_tests (
+        id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        code VARCHAR(50) NOT NULL,
+        description TEXT NULL,
+        category VARCHAR(100) NOT NULL DEFAULT 'other',
+        instructions TEXT NULL,
+        default_precautions JSON NULL,
+        status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_lab_test_clinic (clinic_id),
+        KEY idx_lab_test_category (category),
+        KEY idx_lab_test_status (status),
+        CONSTRAINT fk_lab_test_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_tests table');
+  }
+
+  const [labTestCategoriesTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_categories'`,
+  );
+  if (Number(labTestCategoriesTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_categories (
+        id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        badge_color VARCHAR(20) NOT NULL DEFAULT '#6B7280',
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_lab_test_category_clinic_name (clinic_id, name),
+        CONSTRAINT fk_lab_test_category_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_categories table');
+  }
+
+  const [labTestCategoryCols] = await conn.query(
+    `SELECT DATA_TYPE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND COLUMN_NAME = 'category'`,
+  );
+  if (labTestCategoryCols[0] && labTestCategoryCols[0].DATA_TYPE === 'enum') {
+    await conn.query(
+      `ALTER TABLE lab_tests MODIFY COLUMN category VARCHAR(100) NOT NULL DEFAULT 'other'`,
+    );
+    console.log('Applied migration: lab_tests.category enum -> varchar (clinic-defined categories)');
+  }
+
+  const [branchLabTestsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_lab_tests'`,
+  );
+  if (Number(branchLabTestsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE branch_lab_tests (
+        id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        test_id CHAR(36) NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'INR',
+        duration_minutes SMALLINT NOT NULL DEFAULT 30,
+        clinic_available TINYINT(1) NOT NULL DEFAULT 1,
+        home_collection_available TINYINT(1) NOT NULL DEFAULT 0,
+        prescription_required TINYINT(1) NOT NULL DEFAULT 0,
+        status ENUM('active','inactive') NOT NULL DEFAULT 'active',
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_branch_test (branch_id, test_id),
+        KEY idx_blt_clinic (clinic_id),
+        KEY idx_blt_test (test_id),
+        KEY idx_blt_status (status),
+        CONSTRAINT fk_blt_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE,
+        CONSTRAINT fk_blt_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+        CONSTRAINT fk_blt_test FOREIGN KEY (test_id) REFERENCES lab_tests(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: branch_lab_tests table');
+  }
+
+  const [labTestSchedulesTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_schedules'`,
+  );
+  if (Number(labTestSchedulesTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_schedules (
+        id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        weekday TINYINT NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_lts_branch_weekday (branch_id, weekday),
+        CONSTRAINT fk_lts_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_schedules table');
+  }
+
+  const [labTestAppointmentsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointments'`,
+  );
+  if (Number(labTestAppointmentsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_appointments (
+        id CHAR(36) NOT NULL,
+        appointment_number VARCHAR(32) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        branch_lab_test_id CHAR(36) NOT NULL,
+        test_id CHAR(36) NOT NULL,
+        service_mode ENUM('CLINIC','HOME') NOT NULL DEFAULT 'CLINIC',
+        appointment_date DATE NOT NULL,
+        start_time VARCHAR(5) NOT NULL,
+        end_time VARCHAR(5) NOT NULL,
+        duration_minutes SMALLINT NOT NULL,
+        price DECIMAL(10,2) NOT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'INR',
+        payment_method ENUM('PAY_AT_CLINIC','ONLINE') NULL,
+        payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID',
+        prescription_required TINYINT(1) NOT NULL DEFAULT 0,
+        prescription_id CHAR(36) NULL,
+        home_address TEXT NULL,
+        home_lat DECIMAL(10,7) NULL,
+        home_lng DECIMAL(10,7) NULL,
+        home_contact_phone VARCHAR(32) NULL,
+        home_notes TEXT NULL,
+        patient_notes TEXT NULL,
+        clinic_notes TEXT NULL,
+        precautions JSON NULL,
+        status ENUM('PENDING','APPROVED','REJECTED','CANCELLED','COMPLETED') NOT NULL DEFAULT 'PENDING',
+        approved_by CHAR(36) NULL,
+        approved_at DATETIME(3) NULL,
+        rejected_by CHAR(36) NULL,
+        rejected_at DATETIME(3) NULL,
+        rejection_reason VARCHAR(500) NULL,
+        completed_at DATETIME(3) NULL,
+        cancelled_at DATETIME(3) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        slot_key VARCHAR(5) GENERATED ALWAYS AS (IF(status = 'CANCELLED', NULL, start_time)) STORED,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_appt_number (appointment_number),
+        UNIQUE KEY uniq_lab_slot (branch_id, branch_lab_test_id, appointment_date, slot_key),
+        KEY idx_lta_patient (patient_id),
+        KEY idx_lta_clinic (clinic_id),
+        KEY idx_lta_branch (branch_id),
+        KEY idx_lta_test (test_id),
+        KEY idx_lta_date_status (appointment_date, status),
+        KEY idx_lta_payment_status (payment_status),
+        CONSTRAINT fk_lta_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+        CONSTRAINT fk_lta_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+        CONSTRAINT fk_lta_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+        CONSTRAINT fk_lta_branch_lab_test FOREIGN KEY (branch_lab_test_id) REFERENCES branch_lab_tests(id),
+        CONSTRAINT fk_lta_test FOREIGN KEY (test_id) REFERENCES lab_tests(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_appointments table');
+  }
+
+  const [labTestPrescriptionsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_prescriptions'`,
+  );
+  if (Number(labTestPrescriptionsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_prescriptions (
+        id CHAR(36) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_url VARCHAR(500) NOT NULL,
+        mime_type VARCHAR(100) NOT NULL,
+        file_size BIGINT NOT NULL,
+        uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_ltp_patient (patient_id),
+        KEY idx_ltp_appointment (appointment_id),
+        CONSTRAINT fk_ltp_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ltp_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_prescriptions table');
+  }
+
+  const [labTestPaymentsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_payments'`,
+  );
+  if (Number(labTestPaymentsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_payments (
+        id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'INR',
+        payment_method ENUM('PAY_AT_CLINIC','ONLINE') NOT NULL,
+        payment_status ENUM('UNPAID','PENDING','PAID','FAILED','REFUNDED') NOT NULL DEFAULT 'UNPAID',
+        transaction_id VARCHAR(255) NULL,
+        provider VARCHAR(50) NULL,
+        paid_at DATETIME(3) NULL,
+        refund_status VARCHAR(50) NULL,
+        collected_by CHAR(36) NULL,
+        collected_at DATETIME(3) NULL,
+        reference_no VARCHAR(255) NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        KEY idx_ltpay_appointment (appointment_id),
+        KEY idx_ltpay_patient (patient_id),
+        KEY idx_ltpay_status (payment_status),
+        CONSTRAINT fk_ltpay_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE,
+        CONSTRAINT fk_ltpay_patient FOREIGN KEY (patient_id) REFERENCES users(id),
+        CONSTRAINT fk_ltpay_collected_by FOREIGN KEY (collected_by) REFERENCES users(id)
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_payments table');
+  }
+
+  const [labTestApptPatientsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointment_patients'`,
+  );
+  if (Number(labTestApptPatientsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE lab_test_appointment_patients (
+        id CHAR(36) NOT NULL,
+        appointment_id CHAR(36) NOT NULL,
+        relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(32) NULL,
+        age TINYINT UNSIGNED NULL,
+        gender ENUM('male','female','other','prefer_not_to_say') NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_lab_test_appointment_patient (appointment_id),
+        CONSTRAINT fk_lta_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: lab_test_appointment_patients table');
+  }
+
+  // ---- Clinic Subscription System ----
+
+  // Default plan: ₹49/month, 2-month free trial. Inserted only when no plan exists.
+  const [planRows] = await conn.query(`SELECT COUNT(*) AS cnt FROM subscription_plans`);
+  if (Number(planRows[0].cnt) === 0) {
+    await conn.query(
+      `INSERT INTO subscription_plans (id, name, billing_period, amount, currency, trial_months, is_active)
+       VALUES (?, 'Clinic Monthly', 'monthly', 49.00, 'INR', 2, 1)`,
+      [randomUUID()],
+    );
+    console.log('Applied migration: default subscription plan (INR 49/month, 2-month trial)');
+  }
+
+  const [settingRows] = await conn.query(`SELECT COUNT(*) AS cnt FROM platform_settings`);
+  if (Number(settingRows[0].cnt) === 0) {
+    await conn.query(`
+      INSERT INTO platform_settings (setting_key, setting_value, description) VALUES
+        ('subscription.expiring_warning_days', '7', 'Days before expiry when a subscription is reported as EXPIRING'),
+        ('subscription.max_months_per_payment', '12', 'Maximum months a clinic can pay for in one payment'),
+        ('subscription.currency', 'INR', 'Default subscription currency')
+    `);
+    console.log('Applied migration: default platform settings');
+  }
+
+  // Backfill subscriptions for clinics created before this system existed: give each
+  // a TRIAL row anchored at the clinic's own created_at so nobody loses access.
+  const [missingSubs] = await conn.query(
+    `SELECT c.id FROM clinics c
+       LEFT JOIN clinic_subscriptions cs ON cs.clinic_id = c.id
+      WHERE c.deleted_at IS NULL AND cs.clinic_id IS NULL`,
+  );
+  if (missingSubs.length > 0) {
+    const [activePlan] = await conn.query(
+      `SELECT id, amount, currency, trial_months FROM subscription_plans
+        WHERE is_active = 1 ORDER BY effective_from DESC LIMIT 1`,
+    );
+    const plan = activePlan[0];
+    for (const clinic of missingSubs) {
+      await conn.query(
+        `INSERT INTO clinic_subscriptions
+           (id, clinic_id, status, plan_id, monthly_amount, currency,
+            period_start, period_end, is_trial, trial_started_at, trial_ends_at)
+         SELECT ?, c.id, 'TRIAL', ?, ?, ?,
+                c.created_at, DATE_ADD(c.created_at, INTERVAL ? MONTH),
+                1, c.created_at, DATE_ADD(c.created_at, INTERVAL ? MONTH)
+           FROM clinics c WHERE c.id = ?`,
+        [
+          randomUUID(),
+          plan?.id ?? null,
+          plan?.amount ?? 49.0,
+          plan?.currency ?? 'INR',
+          plan?.trial_months ?? 2,
+          plan?.trial_months ?? 2,
+          clinic.id,
+        ],
+      );
+    }
+    console.log(`Applied migration: backfilled ${missingSubs.length} clinic subscription(s) with trial period`);
+  }
+
+  const [medScheduleCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'medications' AND COLUMN_NAME = 'schedule_type'`,
+  );
+  if (Number(medScheduleCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE medications
+         ADD COLUMN schedule_type ENUM('daily','monthly') NOT NULL DEFAULT 'daily' AFTER frequency_label,
+         ADD COLUMN day_of_month TINYINT UNSIGNED NULL AFTER schedule_type`,
+    );
+    console.log('Applied migration: medications schedule_type/day_of_month');
+  }
+
+  const [apptStatusLogChangedByCols] = await conn.query(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_status_log' AND COLUMN_NAME = 'changed_by'`,
+  );
+  if (apptStatusLogChangedByCols[0] && apptStatusLogChangedByCols[0].IS_NULLABLE === 'NO') {
+    await conn.query(`ALTER TABLE appointment_status_log MODIFY COLUMN changed_by CHAR(36) NULL`);
+    console.log('Applied migration: appointment_status_log.changed_by nullable (system/cron entries)');
+  }
+
+  const [labStatusLogChangedByCols] = await conn.query(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointment_status_log' AND COLUMN_NAME = 'changed_by'`,
+  );
+  if (labStatusLogChangedByCols[0] && labStatusLogChangedByCols[0].IS_NULLABLE === 'NO') {
+    await conn.query(`ALTER TABLE lab_test_appointment_status_log MODIFY COLUMN changed_by CHAR(36) NULL`);
+    console.log('Applied migration: lab_test_appointment_status_log.changed_by nullable (system/cron entries)');
+  }
+
+  // ── Phone-based authentication migrations ──────────────────────────────
+
+  // Add phone column to users if missing (needed for phone-based auth)
+  const [usersPhoneCol] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone'`,
+  );
+  if (Number(usersPhoneCol[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users ADD COLUMN phone VARCHAR(32) NULL AFTER email`,
+    );
+    console.log('Applied migration: users.phone');
+  }
+
+  // Make users.email nullable (phone becomes primary identifier)
+  const [emailNullable] = await conn.query(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email'`,
+  );
+  if (emailNullable[0] && emailNullable[0].IS_NULLABLE === 'NO') {
+    await conn.query(`ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NULL`);
+    console.log('Applied migration: users.email nullable');
+  }
+
+  // Add phone_verified column to users
+  const [phoneVerifiedCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone_verified'`,
+  );
+  if (Number(phoneVerifiedCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE users ADD COLUMN phone_verified TINYINT(1) NOT NULL DEFAULT 0 AFTER phone`,
+    );
+    console.log('Applied migration: users.phone_verified');
+  }
+
+  // Add unique constraint on users.phone (drop first if it already exists non-uniquely)
+  const [phoneKeyRows] = await conn.query(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone' AND NON_UNIQUE = 1`,
+  );
+  for (const row of phoneKeyRows) {
+    await conn.query(`ALTER TABLE users DROP INDEX \`${row.INDEX_NAME}\``);
+    console.log(`Dropped non-unique index ${row.INDEX_NAME} on users.phone`);
+  }
+  const [phoneUniqueRows] = await conn.query(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'phone' AND NON_UNIQUE = 0 AND INDEX_NAME LIKE 'uniq_%'`,
+  );
+  if (phoneUniqueRows.length === 0) {
+    // A unique index on phone requires each (non-NULL) value to be unique. Legacy/test
+    // rows can hold duplicate phone values (e.g. shared demo numbers), so null out the
+    // phone on every duplicate except the earliest row per phone before creating the index.
+    await conn.query(
+      `UPDATE users u
+          JOIN (
+            SELECT phone, MIN(id) AS keep_id
+              FROM users
+             WHERE phone IS NOT NULL
+             GROUP BY phone
+            HAVING COUNT(*) > 1
+          ) dups ON dups.phone = u.phone AND u.id <> dups.keep_id
+          SET u.phone = NULL`,
+    );
+    const [dupAfter] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM (
+         SELECT phone FROM users WHERE phone IS NOT NULL GROUP BY phone HAVING COUNT(*) > 1
+       ) d`,
+    );
+    if (Number(dupAfter[0].cnt) > 0) {
+      const [dups] = await conn.query(
+        `SELECT phone, COUNT(*) AS cnt FROM users WHERE phone IS NOT NULL GROUP BY phone HAVING COUNT(*) > 1`,
+      );
+      throw new Error(
+        `Cannot add unique key users.uniq_users_phone: duplicate phone values remain: ${JSON.stringify(dups)}. Re-run after deduplicating in MySQL.`,
+      );
+    }
+    await conn.query(`ALTER TABLE users ADD UNIQUE KEY uniq_users_phone (phone)`);
+    console.log('Applied migration: users.uniq_users_phone (deduplicated duplicate phones)');
+  }
+
+  // Drop unique constraint on users.email (email is now optional, not a unique auth identifier)
+  const [emailUniqueRows] = await conn.query(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email' AND NON_UNIQUE = 0 AND INDEX_NAME LIKE 'uniq_%'`,
+  );
+  for (const row of emailUniqueRows) {
+    await conn.query(`ALTER TABLE users DROP INDEX \`${row.INDEX_NAME}\``);
+    console.log(`Dropped unique index ${row.INDEX_NAME} on users.email`);
+  }
+  // Ensure there's still a non-unique index on email for lookups
+  const [emailIdxRows] = await conn.query(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'email' AND NON_UNIQUE = 1`,
+  );
+  if (emailIdxRows.length === 0) {
+    await conn.query(`ALTER TABLE users ADD INDEX idx_users_email (email)`);
+    console.log('Applied migration: users.idx_users_email (non-unique)');
+  }
+
+  // Update otp_codes: add phone column, expand purpose ENUM, make email nullable
+  const [otpPhoneCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'otp_codes' AND COLUMN_NAME = 'phone'`,
+  );
+  if (Number(otpPhoneCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE otp_codes
+        ADD COLUMN phone VARCHAR(32) NULL AFTER email,
+        ADD INDEX idx_otp_phone (phone)`,
+    );
+    console.log('Applied migration: otp_codes.phone');
+  }
+
+  // Expand otp_codes.purpose ENUM
+  const [otpPurposeCol] = await conn.query(
+    `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'otp_codes' AND COLUMN_NAME = 'purpose'`,
+  );
+  const currentEnum = otpPurposeCol[0]?.COLUMN_TYPE ?? '';
+  if (!currentEnum.includes('patient_login')) {
+    await conn.query(
+      `ALTER TABLE otp_codes
+        MODIFY COLUMN purpose ENUM('branch_staff_login','patient_login','clinic_owner_login','doctor_login','phone_verification') NOT NULL`,
+    );
+    console.log('Applied migration: otp_codes.purpose expanded');
+  }
+
+  // Make otp_codes.email nullable
+  const [otpEmailNullable] = await conn.query(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'otp_codes' AND COLUMN_NAME = 'email'`,
+  );
+  if (otpEmailNullable[0] && otpEmailNullable[0].IS_NULLABLE === 'NO') {
+    await conn.query(`ALTER TABLE otp_codes MODIFY COLUMN email VARCHAR(255) NULL`);
+    console.log('Applied migration: otp_codes.email nullable');
+  }
+
+  // Update doctor_invites: make email nullable, update unique constraint, add phone index
+  const [diEmailNullable] = await conn.query(
+    `SELECT IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_invites' AND COLUMN_NAME = 'email'`,
+  );
+  if (diEmailNullable[0] && diEmailNullable[0].IS_NULLABLE === 'NO') {
+    await conn.query(`ALTER TABLE doctor_invites MODIFY COLUMN email VARCHAR(255) NULL`);
+    console.log('Applied migration: doctor_invites.email nullable');
+  }
+
+  // Add phone index to doctor_invites
+  const [diPhoneIdx] = await conn.query(
+    `SELECT INDEX_NAME FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctor_invites' AND COLUMN_NAME = 'phone'`,
+  );
+  if (diPhoneIdx.length === 0) {
+    await conn.query(`ALTER TABLE doctor_invites ADD INDEX idx_invite_phone (phone)`);
+    console.log('Applied migration: doctor_invites.idx_invite_phone');
+  }
+
+  const [receiptsTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'receipts'`,
+  );
+  if (Number(receiptsTables[0].cnt) === 0) {
+    await conn.query(`
+      CREATE TABLE receipts (
+        id CHAR(36) NOT NULL,
+        receipt_number VARCHAR(32) NOT NULL,
+        source_type ENUM('appointment','lab_test_appointment') NOT NULL,
+        source_id CHAR(36) NOT NULL,
+        event_type ENUM('booking_confirmed','payment_received','completed') NOT NULL,
+        patient_id CHAR(36) NOT NULL,
+        clinic_id CHAR(36) NOT NULL,
+        branch_id CHAR(36) NOT NULL,
+        amount DECIMAL(10,2) NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'INR',
+        payment_method VARCHAR(20) NULL,
+        reference_no VARCHAR(255) NULL,
+        generated_by CHAR(36) NULL,
+        details_json JSON NOT NULL,
+        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_receipt_number (receipt_number),
+        UNIQUE KEY uniq_receipt_source_event (source_type, source_id, event_type),
+        KEY idx_receipt_patient (patient_id, created_at),
+        KEY idx_receipt_source (source_type, source_id),
+        CONSTRAINT fk_receipt_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_receipt_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
+        CONSTRAINT fk_receipt_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+        CONSTRAINT fk_receipt_generated_by FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB
+    `);
+    console.log('Applied migration: receipts table');
+  }
+
+  const [offerRecipientCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subscription_payments' AND COLUMN_NAME = 'offer_recipient_id'`,
+  );
+  if (Number(offerRecipientCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE subscription_payments
+        ADD COLUMN offer_recipient_id CHAR(36) NULL AFTER plan_id,
+        ADD COLUMN discounted_months SMALLINT NULL AFTER months,
+        ADD CONSTRAINT fk_payment_offer_recipient FOREIGN KEY (offer_recipient_id)
+          REFERENCES subscription_offer_recipients(id) ON DELETE SET NULL
+    `);
+    console.log('Applied migration: subscription_payments.offer_recipient_id/discounted_months');
+  }
+
+  const [apptPatientPatientIdCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_patients' AND COLUMN_NAME = 'patient_id'`,
+  );
+  if (Number(apptPatientPatientIdCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE appointment_patients
+        ADD COLUMN patient_id CHAR(36) NULL AFTER appointment_id,
+        ADD COLUMN booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP' AFTER patient_id,
+        ADD COLUMN booked_by CHAR(36) NULL AFTER booking_source,
+        ADD KEY idx_appt_patients_patient (patient_id)
+    `);
+    // Backfill from the parent appointment's booking account: booking_source is
+    // inferred from that account's role, and patient_id is only set for
+    // relationship='self' rows booked by an actual patient account — a
+    // branch_staff/clinic_owner account can never itself be the patient, even when
+    // the booking client left relationship at its 'self' default for a walk-in.
+    // Everything else can't be safely attributed to a real patient after the fact,
+    // so it's left NULL (handled as "unknown" downstream).
+    await conn.query(`
+      UPDATE appointment_patients ap
+      JOIN appointments a ON a.id = ap.appointment_id
+      JOIN users u ON u.id = a.patient_id
+      SET ap.booked_by = a.patient_id,
+          ap.booking_source = IF(u.role IN ('branch_staff','clinic_owner'), 'RECEPTION', 'PATIENT_APP'),
+          ap.patient_id = IF(u.role = 'patient' AND ap.relationship = 'self', a.patient_id, NULL)
+    `);
+    await conn.query(`
+      ALTER TABLE appointment_patients
+        ADD CONSTRAINT fk_appt_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
+        ADD CONSTRAINT fk_appt_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+    console.log('Applied migration: appointment_patients.patient_id/booking_source/booked_by');
+  }
+
+  const [ltaPatientPatientIdCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointment_patients' AND COLUMN_NAME = 'patient_id'`,
+  );
+  if (Number(ltaPatientPatientIdCols[0].cnt) === 0) {
+    await conn.query(`
+      ALTER TABLE lab_test_appointment_patients
+        ADD COLUMN patient_id CHAR(36) NULL AFTER appointment_id,
+        ADD COLUMN booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP' AFTER patient_id,
+        ADD COLUMN booked_by CHAR(36) NULL AFTER booking_source,
+        ADD KEY idx_lta_patients_patient (patient_id)
+    `);
+    await conn.query(`
+      UPDATE lab_test_appointment_patients ltap
+      JOIN lab_test_appointments a ON a.id = ltap.appointment_id
+      JOIN users u ON u.id = a.patient_id
+      SET ltap.booked_by = a.patient_id,
+          ltap.booking_source = IF(u.role IN ('branch_staff','clinic_owner'), 'RECEPTION', 'PATIENT_APP'),
+          ltap.patient_id = IF(u.role = 'patient' AND ltap.relationship = 'self', a.patient_id, NULL)
+    `);
+    await conn.query(`
+      ALTER TABLE lab_test_appointment_patients
+        ADD CONSTRAINT fk_lta_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
+        ADD CONSTRAINT fk_lta_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+    console.log('Applied migration: lab_test_appointment_patients.patient_id/booking_source/booked_by');
+  }
+
+  const [ltaReferringDoctorCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointments' AND COLUMN_NAME = 'referring_doctor_name'`,
+  );
+  if (Number(ltaReferringDoctorCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE lab_test_appointments
+         ADD COLUMN referring_doctor_name VARCHAR(255) NULL AFTER prescription_id`,
+    );
+    console.log('Applied migration: lab_test_appointments.referring_doctor_name');
+  }
+
+  const [deviceTokenAppCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = 'app'`,
+  );
+  if (Number(deviceTokenAppCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE device_tokens ADD COLUMN app ENUM('patient','clinic') NOT NULL DEFAULT 'patient' AFTER platform`,
+    );
+    console.log('Applied migration: device_tokens.app');
+  }
+
+  const [branchStaffJoinedAtCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branch_staff' AND COLUMN_NAME = 'joined_at'`,
+  );
+  if (Number(branchStaffJoinedAtCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE branch_staff ADD COLUMN joined_at DATETIME(3) NULL AFTER permissions_json`,
+    );
+    console.log('Applied migration: branch_staff.joined_at');
+  }
+
+  console.log('Schema applied successfully.');
+} finally {
+  await conn.end();
+}
