@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { forbidden, notFound } from "@/lib/errors";
-import { assertClinicOperational } from "@/lib/subscriptions";
+import { forbidden, notFound } from "@api/lib/errors";
+import { assertClinicOperational } from "@api/lib/subscriptions";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

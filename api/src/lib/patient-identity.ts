@@ -1,7 +1,7 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import { newId } from "@/lib/ids";
-import { conflict, isUniqueViolation, notFound } from "@/lib/errors";
-import type { AuthContext } from "@/lib/auth";
+import { newId } from "@api/lib/ids";
+import { conflict, isUniqueViolation, notFound } from "@api/lib/errors";
+import type { AuthContext } from "@api/lib/auth";
 
 type Row = RowDataPacket;
 

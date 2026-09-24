@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { badRequest, tooLarge, unsupported } from "@/lib/errors";
+import { badRequest, tooLarge, unsupported } from "@api/lib/errors";
 
 const CLOUDINARY_URL = process.env.CLOUDINARY_URL;
 

@@ -1,5 +1,5 @@
-import type { Row } from "@/lib/db";
-import { badRequest } from "@/lib/errors";
+import type { Row } from "@api/lib/db";
+import { badRequest } from "@api/lib/errors";
 
 export const LICENSE_TYPES = [
   "trade-license",

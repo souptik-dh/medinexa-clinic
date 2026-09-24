@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
-import { ApiError, badRequest, rateLimited } from "@/lib/errors";
-import { parseAuthContext, type AuthContext } from "@/lib/auth";
+import { ApiError, badRequest, rateLimited } from "@api/lib/errors";
+import { parseAuthContext, type AuthContext } from "@api/lib/auth";
 
 export interface Ctx<P extends Record<string, string> = Record<string, string>> {
   request: NextRequest;

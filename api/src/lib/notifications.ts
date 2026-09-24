@@ -1,6 +1,6 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import { newId } from "@/lib/ids";
-import { sendFcmToUser } from "@/lib/fcm";
+import { newId } from "@api/lib/ids";
+import { sendFcmToUser } from "@api/lib/fcm";
 
 export type NotificationType =
   | "new_booking"

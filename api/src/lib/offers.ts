@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { pool } from "@/lib/db";
-import { idSchema, currencySchema } from "@/lib/validators";
-import { sendWhatsapp, sendEmail, detailsEmailHtml, createClinicUserNotification } from "@/lib/notifications";
+import { pool } from "@api/lib/db";
+import { idSchema, currencySchema } from "@api/lib/validators";
+import { sendWhatsapp, sendEmail, detailsEmailHtml, createClinicUserNotification } from "@api/lib/notifications";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

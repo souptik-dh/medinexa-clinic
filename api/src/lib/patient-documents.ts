@@ -1,10 +1,10 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { forbidden, notFound } from "@/lib/errors";
-import type { AuthContext } from "@/lib/auth";
-import { getOwnedBranch, getOwnedClinic } from "@/lib/scope";
-import { assertBranchStaffPermission, type BranchStaffPermission } from "@/lib/permissions";
-import { signValue, verifySignedValue, SIGNED_URL_TTL_SECONDS } from "@/lib/upload";
-import { newId } from "@/lib/ids";
+import { forbidden, notFound } from "@api/lib/errors";
+import type { AuthContext } from "@api/lib/auth";
+import { getOwnedBranch, getOwnedClinic } from "@api/lib/scope";
+import { assertBranchStaffPermission, type BranchStaffPermission } from "@api/lib/permissions";
+import { signValue, verifySignedValue, SIGNED_URL_TTL_SECONDS } from "@api/lib/upload";
+import { newId } from "@api/lib/ids";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

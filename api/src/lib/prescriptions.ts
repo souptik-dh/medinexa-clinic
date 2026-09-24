@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { forbidden } from "@/lib/errors";
-import type { AuthContext } from "@/lib/auth";
+import { forbidden } from "@api/lib/errors";
+import type { AuthContext } from "@api/lib/auth";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

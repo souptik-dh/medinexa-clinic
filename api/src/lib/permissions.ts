@@ -1,8 +1,8 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { forbidden, notFound } from "@/lib/errors";
-import type { AuthContext } from "@/lib/auth";
-import { getOwnedBranch } from "@/lib/scope";
-import { assertClinicOperational, resolveClinicIdByBranch } from "@/lib/subscriptions";
+import { forbidden, notFound } from "@api/lib/errors";
+import type { AuthContext } from "@api/lib/auth";
+import { getOwnedBranch } from "@api/lib/scope";
+import { assertClinicOperational, resolveClinicIdByBranch } from "@api/lib/subscriptions";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

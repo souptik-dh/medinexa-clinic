@@ -1,5 +1,5 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { encodeCursor } from "@/lib/http";
+import { encodeCursor } from "@api/lib/http";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

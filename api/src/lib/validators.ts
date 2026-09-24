@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny, type ZodError } from "zod";
-import { badRequest } from "@/lib/errors";
+import { badRequest } from "@api/lib/errors";
 
 export function parseBody<T extends ZodTypeAny>(
   schema: T,

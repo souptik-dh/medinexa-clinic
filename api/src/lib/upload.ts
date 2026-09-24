@@ -1,7 +1,7 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { badRequest, tooLarge, unsupported } from "@/lib/errors";
+import { badRequest, tooLarge, unsupported } from "@api/lib/errors";
 
 export const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 

@@ -1,4 +1,4 @@
-import { pool, withTransaction, parseDbTimestamp, type Row } from "@/lib/db";
+import { pool, withTransaction, parseDbTimestamp, type Row } from "@api/lib/db";
 import {
   hashPassword,
   issueTokens,
@@ -6,11 +6,11 @@ import {
   generateVerificationToken,
   generateOtp,
   hashToken,
-} from "@/lib/auth";
-import { conflict, forbidden, unauthorized, badRequest, isUniqueViolation, ApiError } from "@/lib/errors";
-import { newId, type Role } from "@/lib/ids";
-import { sendEmail, emailHtml, sendOtpDual, type OtpChannel, type OtpChannelStatus } from "@/lib/notifications";
-import { ensureClinicSubscription } from "@/lib/subscriptions";
+} from "@api/lib/auth";
+import { conflict, forbidden, unauthorized, badRequest, isUniqueViolation, ApiError } from "@api/lib/errors";
+import { newId, type Role } from "@api/lib/ids";
+import { sendEmail, emailHtml, sendOtpDual, type OtpChannel, type OtpChannelStatus } from "@api/lib/notifications";
+import { ensureClinicSubscription } from "@api/lib/subscriptions";
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
 const OTP_TTL_MS = 10 * 60 * 1000;

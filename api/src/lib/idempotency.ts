@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { pool, type Row } from "@/lib/db";
-import { ApiError, conflict, unprocessable, isUniqueViolation } from "@/lib/errors";
+import { pool, type Row } from "@api/lib/db";
+import { ApiError, conflict, unprocessable, isUniqueViolation } from "@api/lib/errors";
 
 export interface IdempotentResult<T> {
   status: number;

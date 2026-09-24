@@ -1,5 +1,5 @@
-import { pool, type Row } from "@/lib/db";
-import { badRequest, notFound } from "@/lib/errors";
+import { pool, type Row } from "@api/lib/db";
+import { badRequest, notFound } from "@api/lib/errors";
 
 const MATCH_FIELDS = ["city", "district", "pin_code", "state", "post_office"] as const;
 

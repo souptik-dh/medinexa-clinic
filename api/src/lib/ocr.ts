@@ -1,5 +1,5 @@
-import { pool } from "@/lib/db";
-import { newId } from "@/lib/ids";
+import { pool } from "@api/lib/db";
+import { newId } from "@api/lib/ids";
 
 /**
  * Async OCR stub. Creates a `processing` job and marks it `done` after a short

@@ -1,9 +1,9 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
-import { pool, parseDbTimestamp, type Row } from "@/lib/db";
-import { ApiError, unauthorized } from "@/lib/errors";
-import { newId, type Role } from "@/lib/ids";
+import { pool, parseDbTimestamp, type Row } from "@api/lib/db";
+import { ApiError, unauthorized } from "@api/lib/errors";
+import { newId, type Role } from "@api/lib/ids";
 import type { NextRequest } from "next/server";
 
 const ACCESS_TTL_SECONDS = 15 * 60;

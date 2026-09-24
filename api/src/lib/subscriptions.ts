@@ -1,9 +1,9 @@
 import { createHmac, randomBytes } from "node:crypto";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { ApiError, conflict, notFound } from "@/lib/errors";
-import { newId } from "@/lib/ids";
-import { getActiveOfferForClinic, computeDiscountedAmount, redeemOfferOnPayment } from "@/lib/offers";
-import { createClinicUserNotification } from "@/lib/notifications";
+import { ApiError, conflict, notFound } from "@api/lib/errors";
+import { newId } from "@api/lib/ids";
+import { getActiveOfferForClinic, computeDiscountedAmount, redeemOfferOnPayment } from "@api/lib/offers";
+import { createClinicUserNotification } from "@api/lib/notifications";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -883,7 +883,7 @@ export function startSubscriptionCron(): void {
   cronStarted = true;
   const tick = async (): Promise<void> => {
     try {
-      const { pool } = await import("@/lib/db");
+      const { pool } = await import("@api/lib/db");
       await processExpiredSubscriptions(pool);
     } catch {
       // Swallow — next tick retries. Never crash the server from the cron path.

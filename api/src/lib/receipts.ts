@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
-import { newId } from "@/lib/ids";
-import { notFound, isUniqueViolation } from "@/lib/errors";
+import { newId } from "@api/lib/ids";
+import { notFound, isUniqueViolation } from "@api/lib/errors";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;

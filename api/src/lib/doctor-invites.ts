@@ -1,5 +1,5 @@
-import { parseDbTimestamp, type Row } from "@/lib/db";
-import { hashToken } from "@/lib/auth";
+import { parseDbTimestamp, type Row } from "@api/lib/db";
+import { hashToken } from "@api/lib/auth";
 import type { Pool, PoolConnection } from "mysql2/promise";
 
 export type InviteStatus = "pending" | "accepted" | "expired" | "revoked";

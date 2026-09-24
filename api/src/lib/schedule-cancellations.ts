@@ -1,6 +1,6 @@
-import { pool, type Row } from "@/lib/db";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp } from "@/lib/notifications";
-import type { RescheduledAppointment } from "@/lib/appointments";
+import { pool, type Row } from "@api/lib/db";
+import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp } from "@api/lib/notifications";
+import type { RescheduledAppointment } from "@api/lib/appointments";
 
 // Shared by the branch-closure and doctor-leave routes: once a closure/leave has cascaded
 // into cancelling pre-existing appointments (see autoCancelAppointmentsInRange /

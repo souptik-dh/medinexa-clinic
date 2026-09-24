@@ -1,12 +1,12 @@
 import type { Pool } from "mysql2/promise";
-import { pool as defaultPool, withTransaction, type Row } from "@/lib/db";
-import { hasSlotPassedInTz } from "@/lib/availability";
-import { transition } from "@/lib/appointments";
-import { transitionLabAppointment } from "@/lib/lab-tests";
+import { pool as defaultPool, withTransaction, type Row } from "@api/lib/db";
+import { hasSlotPassedInTz } from "@api/lib/availability";
+import { transition } from "@api/lib/appointments";
+import { transitionLabAppointment } from "@api/lib/lab-tests";
 import {
   notifyAutoCancelledDoctorAppointments,
   notifyAutoCancelledLabTestAppointments,
-} from "@/lib/schedule-cancellations";
+} from "@api/lib/schedule-cancellations";
 
 // Auto-cancels appointments whose scheduled date+time has passed while they were never
 // acted on. Mirrors autoCancelAppointmentsInRange/autoCancelLabTestAppointmentsInRange
@@ -125,7 +125,7 @@ export function startAppointmentExpiryCron(): void {
   cronStarted = true;
   const tick = async (): Promise<void> => {
     try {
-      const { pool } = await import("@/lib/db");
+      const { pool } = await import("@api/lib/db");
       await processOverdueAppointments(pool);
     } catch {
       // Swallow — next tick retries. Never crash the server from the cron path.
