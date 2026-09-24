@@ -1,0 +1,34 @@
+import { z } from "zod";
+import { api, json, readJson } from "@/lib/http";
+import { parseBody, phoneSchema } from "@/lib/validators";
+import { loginWithPassword, loadRoleBindings } from "@/lib/auth-flows";
+import { loadStaffPermissions } from "@/lib/permissions";
+import { pool } from "@/lib/db";
+
+const schema = z.object({
+  phone: phoneSchema,
+  password: z.string().min(1),
+});
+
+/**
+ * Alternative to the OTP flow (POST /auth/branch-staff/login + verify-otp)
+ * for a staff member who has set a password via POST /auth/set-password.
+ * Mirrors verify-otp's response shape (branch_id + permissions on the user).
+ */
+export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
+  const body = parseBody(schema, await readJson(ctx.request));
+  const result = await loginWithPassword(body.phone, body.password, "branch_staff");
+
+  const { branchId } = await loadRoleBindings(result.user.id, "branch_staff");
+  const permissions = branchId ? await loadStaffPermissions(pool, branchId, result.user.id) : [];
+
+  return json({
+    access_token: result.access_token,
+    refresh_token: result.refresh_token,
+    user: {
+      ...result.user,
+      branch_id: branchId,
+      permissions,
+    },
+  });
+});

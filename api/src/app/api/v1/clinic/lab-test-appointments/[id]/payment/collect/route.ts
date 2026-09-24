@@ -1,0 +1,147 @@
+import { api, json } from "@/lib/http";
+import { requireRoles } from "@/lib/auth";
+import { pool, withTransaction } from "@/lib/db";
+import { parseBody } from "@/lib/validators";
+import { getLabTestAppointmentInScope, auditLabAction, serializeLabTestPayment } from "@/lib/lab-tests";
+import { createPatientNotification, notifyClinicSide, notifyPhonesWhatsapp, personalizeForPatient } from "@/lib/notifications";
+import { assertBranchStaffPermission } from "@/lib/permissions";
+import { assertClinicOperational } from "@/lib/subscriptions";
+import { badRequest, conflict, notFound } from "@/lib/errors";
+import { issueReceipt } from "@/lib/receipts";
+import { newId } from "@/lib/ids";
+import { z } from "zod";
+import type { RowDataPacket } from "mysql2/promise";
+
+const collectSchema = z.object({
+  reference_no: z.string().max(255).optional().nullable(),
+});
+
+export const POST = api({ rateLimit: 200 }, async (ctx) => {
+  const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
+  const { id } = ctx.params;
+  const body = parseBody(collectSchema, await ctx.request.json());
+
+  const appointment = await getLabTestAppointmentInScope(pool, id, auth);
+
+  if (auth.role !== "sys_admin") {
+    await assertClinicOperational(pool, appointment.clinic_id);
+  }
+
+  if (auth.role === "branch_staff") {
+    await assertBranchStaffPermission(pool, auth, appointment.branch_id, "lab_payments:collect");
+  }
+
+  if (appointment.payment_status === "PAID") {
+    throw conflict("PAYMENT_ALREADY_COLLECTED", "Payment has already been collected.");
+  }
+
+  if (appointment.payment_method !== "PAY_AT_CLINIC") {
+    throw badRequest("INVALID_PAYMENT_METHOD", "Can only collect payment for pay-at-clinic appointments.");
+  }
+
+  if (!["APPROVED", "COMPLETED"].includes(appointment.status)) {
+    throw conflict(
+      "INVALID_STATUS_TRANSITION",
+      "Payment can only be collected for approved or completed appointments.",
+    );
+  }
+
+  await withTransaction(async (conn) => {
+    await conn.query(
+      `UPDATE lab_test_payments SET
+        payment_status = 'PAID',
+        collected_by = ?,
+        collected_at = NOW(3),
+        paid_at = NOW(3),
+        reference_no = ?
+       WHERE appointment_id = ? AND payment_status != 'PAID'`,
+      [auth.userId, body.reference_no ?? null, id],
+    );
+
+    await conn.query(
+      `UPDATE lab_test_appointments SET payment_status = 'PAID' WHERE id = ?`,
+      [id],
+    );
+
+    await conn.query(
+      `INSERT INTO clinic_payment_ledger (id, clinic_id, branch_id, period_month, currency, total_amount, payment_count)
+       VALUES (?, ?, ?, DATE_FORMAT(UTC_TIMESTAMP(3), '%Y-%m'), ?, ?, 1)
+       ON DUPLICATE KEY UPDATE
+         total_amount = total_amount + VALUES(total_amount),
+         payment_count = payment_count + 1`,
+      [newId(), appointment.clinic_id, appointment.branch_id, appointment.currency, Number(appointment.price)],
+    );
+
+    await auditLabAction(conn, auth.userId, "payment_collected", id, {
+      reference_no: body.reference_no,
+    });
+  });
+
+  await createPatientNotification(pool, appointment.patient_id, "lab_test_payment_success", {
+    appointment_id: id,
+    appointment_number: appointment.appointment_number,
+    test_name: appointment.test_name,
+    date: appointment.appointment_date,
+    amount: appointment.price,
+    currency: appointment.currency,
+  });
+
+  await notifyClinicSide(pool, appointment.branch_id, appointment.clinic_id, "lab_test_payment_success", {
+    appointment_id: id,
+    appointment_number: appointment.appointment_number,
+    patient_id: appointment.patient_id,
+    test_name: appointment.test_name,
+    amount: Number(appointment.price),
+    currency: appointment.currency,
+    visitor_name: appointment.visitor_name ?? appointment.patient_name,
+    branch_name: appointment.branch_name,
+  });
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM lab_test_payments WHERE appointment_id = ? ORDER BY updated_at DESC LIMIT 1`,
+    [id],
+  );
+
+  const receipt = await issueReceipt(pool, {
+    sourceType: "lab_test_appointment",
+    sourceId: appointment.id,
+    eventType: "payment_received",
+    patientId: appointment.patient_id,
+    clinicId: appointment.clinic_id,
+    branchId: appointment.branch_id,
+    amount: Number(appointment.price),
+    currency: appointment.currency,
+    paymentMethod: "PAY_AT_CLINIC",
+    referenceNo: body.reference_no ?? null,
+    generatedBy: auth.userId,
+    details: {
+      patient_name: appointment.patient_name ?? null,
+      test_name: appointment.test_name ?? null,
+      clinic_name: appointment.clinic_name ?? null,
+      branch_name: appointment.branch_name ?? null,
+      branch_address: appointment.branch_address ?? null,
+      branch_phone: appointment.branch_phone ?? null,
+      appointment_number: appointment.appointment_number,
+      service_mode: appointment.service_mode,
+      scheduled_date: appointment.appointment_date,
+      scheduled_time: appointment.start_time,
+      amount: Number(appointment.price),
+      currency: appointment.currency,
+      payment_method: "PAY_AT_CLINIC",
+      reference_no: body.reference_no ?? null,
+      paid: true,
+    },
+  });
+
+  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
+  if (patientPhone) {
+    const paymentText = personalizeForPatient(
+      `Payment of ${appointment.price} ${appointment.currency} received for your lab test ${appointment.appointment_number} (${appointment.test_name}).${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`,
+      appointment.visitor_name,
+      appointment.visitor_relationship,
+    );
+    void notifyPhonesWhatsapp([patientPhone], paymentText);
+  }
+
+  return json(serializeLabTestPayment(rows[0]));
+});
