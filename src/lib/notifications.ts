@@ -726,7 +726,8 @@ export async function sendEmail(
 /**
  * SMS delivery through the Jido SMS Gateway (credentials in .env via
  * SMS_API_KEY, an optional SMS_API_URL override). Falls back to a console log
- * in local dev when SMS_API_KEY is not configured. Never throws.
+ * in local dev when SMS_API_KEY is not configured. Never throws — resolves
+ * true when the gateway accepted the message, false otherwise.
  *
  * Not exported. Policy: SMS is reserved for OTP/confirmation codes and doctor
  * invitations — every other notification (to patients, clinic owners, doctors,
@@ -736,14 +737,14 @@ export async function sendEmail(
  * route handlers can't call it even by accident. The only callers are
  * `sendOtpSms`/`sendOtpDual` (OTP) and `sendInviteDual` (doctor invites) below.
  */
-async function sendSms(to: string, body: string): Promise<void> {
+async function sendSms(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.SMS_API_KEY;
   const apiUrl =
     process.env.SMS_API_URL ??
     "https://jido-sms-gateway.onrender.com/api/3rdparty/v1/messages";
   if (!apiKey) {
     console.log(`[sms:stub] to=${to} body=${body}`);
-    return;
+    return true;
   }
   try {
     const res = await fetch(apiUrl, {
@@ -760,9 +761,12 @@ async function sendSms(to: string, body: string): Promise<void> {
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       console.error(`[sms] Gateway rejected send to ${to} (${res.status}): ${detail}`);
+      return false;
     }
+    return true;
   } catch (err) {
     console.error(`[sms] send to ${to} failed:`, err);
+    return false;
   }
 }
 
@@ -885,13 +889,17 @@ async function runWahaSessionRecovery(
   console.error(`[whatsapp] session "${session}" did not recover to WORKING within 2 hours.`);
 }
 
-export async function sendWhatsapp(to: string, body: string): Promise<void> {
+/**
+ * Resolves true when WAHA accepted the message, false otherwise (a background
+ * session-recovery retry may still deliver it later). Never throws.
+ */
+export async function sendWhatsapp(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.WAHA_API_KEY;
   const baseUrl = process.env.WAHA_BASE_URL ?? "http://localhost:3000";
   const session = process.env.WAHA_SESSION ?? "default";
   if (!apiKey) {
     console.log(`[whatsapp:stub] to=${to} body=${body}`);
-    return;
+    return true;
   }
   const chatId = `${to.replace(/\D/g, "")}@c.us`;
   const payload = { session, chatId, text: body };
@@ -905,9 +913,12 @@ export async function sendWhatsapp(to: string, body: string): Promise<void> {
       if (res.status === 404 || res.status === 422) {
         void recoverWahaSessionAndRetry(baseUrl, apiKey, session, "/api/sendText", payload);
       }
+      return false;
     }
+    return true;
   } catch (err) {
     console.error(`[whatsapp] send to ${to} failed:`, err);
+    return false;
   }
 }
 
@@ -977,8 +988,8 @@ export async function sendOtpSms(
   phone: string,
   otp: string,
   expiryMinutes: number,
-): Promise<void> {
-  await sendSms(
+): Promise<boolean> {
+  return sendSms(
     phone,
     `Your Jido Healthcare confirmation code is ${otp}. It expires in ${expiryMinutes} minutes. Do not share this code with anyone.`,
   );
@@ -989,34 +1000,98 @@ export async function sendOtpWhatsapp(
   phone: string,
   otp: string,
   expiryMinutes: number,
-): Promise<void> {
-  await sendWhatsapp(
+): Promise<boolean> {
+  return sendWhatsapp(
     phone,
     `Your Jido Healthcare confirmation code is ${otp}. It expires in ${expiryMinutes} minutes. Do not share this code with anyone.`,
   );
 }
 
+export type OtpChannel = "whatsapp" | "sms" | "email";
+
 /**
- * Sends a one-time code via SMS, email (if an email is on file), and WhatsApp.
- * Failures never reject the caller.
+ * Per-channel OTP delivery status: "sent" (provider accepted it), "failed"
+ * (provider rejected it, errored, or timed out), "pending" (still in flight when
+ * another channel had already succeeded — its final status is logged), or
+ * "skipped" (channel not applicable, e.g. no email on file).
  */
-export async function sendOtpDual(opts: {
+export type OtpChannelStatus = "sent" | "failed" | "pending" | "skipped";
+
+export interface OtpDeliveryResult {
+  /** True when at least one channel delivered the code. */
+  delivered: boolean;
+  delivery: Record<OtpChannel, OtpChannelStatus>;
+}
+
+/** A channel that hasn't answered within this window counts as failed. */
+const OTP_CHANNEL_TIMEOUT_MS = 15_000;
+
+/**
+ * Sends the same one-time code via WhatsApp, SMS, and email (if an email is on
+ * file), all in parallel. Resolves as soon as ANY channel confirms delivery —
+ * it never waits on slower channels once one has succeeded — or once every
+ * channel has failed. Each channel's final outcome is logged independently,
+ * including ones that settle after this has resolved. Never throws.
+ */
+export function sendOtpDual(opts: {
   phone: string;
   email?: string | null;
   otp: string;
   expiryMinutes: number;
-}): Promise<void> {
-  const smsPromise = sendOtpSms(opts.phone, opts.otp, opts.expiryMinutes);
-  const whatsappPromise = sendOtpWhatsapp(opts.phone, opts.otp, opts.expiryMinutes);
-  const emailPromise = opts.email
-    ? sendEmail(
-        opts.email,
+}): Promise<OtpDeliveryResult> {
+  const channels: Partial<Record<OtpChannel, () => Promise<boolean>>> = {
+    whatsapp: () => sendOtpWhatsapp(opts.phone, opts.otp, opts.expiryMinutes),
+    sms: () => sendOtpSms(opts.phone, opts.otp, opts.expiryMinutes),
+  };
+  if (opts.email) {
+    const email = opts.email;
+    channels.email = () =>
+      sendEmail(
+        email,
         "Your Jido Healthcare login code",
         `Your one-time login code is ${opts.otp}. It expires in ${opts.expiryMinutes} minutes. Do not share this code with anyone.`,
         otpEmailHtml(opts.otp, opts.expiryMinutes),
-      )
-    : Promise.resolve();
-  await Promise.allSettled([smsPromise, whatsappPromise, emailPromise]);
+      );
+  }
+
+  const delivery: Record<OtpChannel, OtpChannelStatus> = {
+    whatsapp: "pending",
+    sms: "pending",
+    email: opts.email ? "pending" : "skipped",
+  };
+  const active = Object.keys(channels) as OtpChannel[];
+
+  return new Promise((resolve) => {
+    let settled = 0;
+    let resolved = false;
+    const finish = (delivered: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      console.log(`[otp] to=${opts.phone} delivered=${delivered} ${JSON.stringify(delivery)}`);
+      resolve({ delivered, delivery: { ...delivery } });
+    };
+
+    for (const channel of active) {
+      const started = Date.now();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<"timeout">((r) => {
+        timer = setTimeout(() => r("timeout"), OTP_CHANNEL_TIMEOUT_MS);
+      });
+      Promise.race([channels[channel]!().catch(() => false), timeout])
+        .then((outcome) => {
+          clearTimeout(timer);
+          const ok = outcome === true;
+          const lateNote = resolved ? " (after response)" : "";
+          console.log(
+            `[otp] channel=${channel} to=${opts.phone} status=${ok ? "sent" : outcome === "timeout" ? "timeout" : "failed"} ms=${Date.now() - started}${lateNote}`,
+          );
+          if (!resolved) delivery[channel] = ok ? "sent" : "failed";
+          settled += 1;
+          if (ok) finish(true);
+          else if (settled === active.length) finish(false);
+        });
+    }
+  });
 }
 
 /**

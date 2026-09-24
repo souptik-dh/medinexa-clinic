@@ -174,6 +174,26 @@ Auth: none. Unauthenticated liveness/readiness check — pings the database and 
 > an account without a password reports `requires_password_setup: true` and the user may
 > set one via [`POST /auth/set-password`](#post-authset-password).
 
+### OTP delivery
+
+Every "send OTP" endpoint (patient/clinic-owner/doctor/branch-staff login, `send-otp`,
+`forgot-password`, `verify-phone/send`) generates **one** code and sends that same code over
+WhatsApp, SMS, and email (email only when one is on file / supplied), in parallel. The
+response returns as soon as **any** channel confirms delivery — it does not wait for slower
+channels — and is `503` only when every attempted channel fails. A channel that hasn't
+answered within 15 s counts as failed.
+
+`delivery` reports each channel as:
+
+| Status | Meaning |
+|---|---|
+| `sent` | provider accepted the message |
+| `failed` | provider rejected it, errored, or timed out |
+| `pending` | still in flight when another channel had already succeeded (final result is logged server-side) |
+| `skipped` | not attempted (no email on file) |
+
+Clients should show "OTP sent successfully" whenever `success` is `true`.
+
 ### POST /auth/patient/send-otp
 
 Public. Rate limited 20/min per IP. **Step 1 of the patient two-step flow.** Takes a phone
@@ -193,14 +213,19 @@ patient account). The email is only an OTP delivery channel, not a verification 
 | `email` | string? | optional, additional OTP delivery channel |
 | `name` | string? | optional, 1–255 (used for registration context) |
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
   "ok": true,
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 **Errors:** `400 VALIDATION_ERROR`.
 
@@ -311,13 +336,19 @@ whether the phone is registered. Verify with `POST /auth/patient/verify-otp`.
 { "phone": "+919876543210" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "ok": true,
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 **Errors:** `400 VALIDATION_ERROR`.
 
@@ -369,14 +400,19 @@ details and sends a one-time code (purpose `phone_verification`) to the phone/em
 | `email` | string? | optional, additional OTP delivery channel |
 | `phone` | string | required, normalized to `+91XXXXXXXXXX` |
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
   "ok": true,
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 ### POST /auth/clinic-owner/register
 
@@ -438,13 +474,19 @@ and sends a one-time code (purpose `clinic_owner_login`). Verify with
 { "phone": "+919876543211" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "ok": true,
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 ### POST /auth/clinic-owner/verify-otp
 
@@ -547,13 +589,19 @@ sends a one-time code (purpose `doctor_login`). Verify with
 { "phone": "+919900000001" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "ok": true,
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 **Errors:** `400 VALIDATION_ERROR`.
 
@@ -677,13 +725,19 @@ Public. Rate limited 20/min per IP. Requests a passwordless OTP for an existing 
 { "phone": "+919876543212" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "ok": true,
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 **Errors:** `403 NOT_BRANCH_STAFF` — "Access Denied: If an account exists for this phone number, it is not registered as Branch Staff."
 
@@ -757,10 +811,11 @@ with phone + password, no OTP round-trip. Returns the same `user` shape as
 
 Public. Rate limited 20/min per IP. **Password reset, step 1.** Takes a registered **phone
 number**. If an **active** account with a password exists for it, a one-time code is sent
-(purpose `phone_verification`, SMS + email). Always returns the same message (does not
-reveal whether the phone exists). Works for any role, including `branch_staff` — but only
-once that account has a password set via `POST /auth/set-password`; accounts with no
-password yet are silently skipped (same generic response either way).
+(purpose `phone_verification`, WhatsApp + SMS + email). Works for any role, including
+`branch_staff` — but only once that account has a password set via `POST /auth/set-password`.
+Phones with no matching account (or no password yet) are silently skipped and get
+`200 { "message": "If an account exists for this phone number, an OTP has been sent." }`
+with no `delivery` field.
 
 **Request body**
 
@@ -768,13 +823,19 @@ password yet are silently skipped (same generic response either way).
 { "phone": "+919876543210" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "ok": true,
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 **Errors:** `400 VALIDATION_ERROR`.
 
@@ -846,14 +907,19 @@ doctor's phone before accepting an invite. Una‌uthenticated — the OTP is key
 { "phone": "+919876543210", "email": "aisha@example.com" }
 ```
 
-**Response `200`**
+**Response `200`** — at least one channel delivered the code (see [OTP delivery](#otp-delivery))
 
 ```json
 {
   "ok": true,
-  "message": "If an account exists for this phone number, an OTP has been sent."
+  "success": true,
+  "message": "OTP sent successfully",
+  "delivery": { "whatsapp": "failed", "sms": "sent", "email": "pending" }
 }
 ```
+
+**Response `503`** — every channel failed: same shape with `ok`/`success` `false` and
+`"message": "Unable to send OTP through any available channel"`.
 
 ### POST /auth/verify-phone
 

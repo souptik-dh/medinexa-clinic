@@ -241,7 +241,7 @@ export async function sendOfferToClinic(opts: {
   const whatsappPromise: Promise<ChannelDeliveryStatus> =
     channels.whatsapp && contact.ownerPhone
       ? sendWhatsapp(contact.ownerPhone, renderedMessage)
-          .then(() => "SENT" as const)
+          .then((ok) => (ok ? ("SENT" as const) : ("FAILED" as const)))
           .catch(() => "FAILED" as const)
       : Promise.resolve("SKIPPED" as const);
 
