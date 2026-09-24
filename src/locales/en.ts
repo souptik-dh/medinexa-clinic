@@ -146,6 +146,19 @@ const en = {
     unableToResetPassword: "Unable to reset your password",
     unableToRequestReset: "Unable to request a password reset",
     unableToAcceptInvite: "Unable to accept this invite",
+    checkingInvite: "Checking your invitation…",
+    inviteAcceptedTitle: "Invitation Already Accepted",
+    inviteAcceptedDesc:
+      "This invitation has already been accepted. Sign in with your registered mobile number to continue.",
+    inviteExpiredTitle: "Invitation Expired",
+    inviteExpiredDesc:
+      "This invitation link has expired. Ask the clinic to send you a new invitation.",
+    inviteRevokedTitle: "Invitation Withdrawn",
+    inviteRevokedDesc:
+      "This invitation was withdrawn by the clinic. Contact the clinic if you think this is a mistake.",
+    inviteInvalidTitle: "Invalid Invitation",
+    inviteInvalidDesc:
+      "This invitation link is invalid or incomplete. Use the link from your invitation message, or ask the clinic to resend it.",
     registrationNumber: "Registration number",
     missingInviteEmail:
       "This invite link is missing mandatory details. Use the link from your invitation, or ask the clinic to resend it.",

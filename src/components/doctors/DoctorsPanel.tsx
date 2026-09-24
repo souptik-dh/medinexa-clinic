@@ -42,6 +42,8 @@ import Link from "next/link";
 
 type Tab = "doctors" | "invites" | "search";
 
+const INVITE_POLL_MS = 30_000;
+
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
@@ -166,6 +168,23 @@ export default function DoctorsPanel() {
       document.removeEventListener("visibilitychange", refreshOnReturn);
     };
   }, [branch, tab, load]);
+
+  // While an invite is still pending, poll quietly so an acceptance flips its badge
+  // to "Accepted" (and drops the Revoke action) even if staff never leave the tab.
+  const hasPendingInvite = invites.some((inv) => inv.status === "pending");
+  useEffect(() => {
+    if (tab !== "invites" || !branch || !hasPendingInvite) return;
+    const timer = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await doctorInvitesApi.list(branch.id);
+        setInvites(res.items);
+      } catch {
+        // Background refresh only - keep showing the last good list.
+      }
+    }, INVITE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [tab, branch, hasPendingInvite]);
 
   const runSearch = async () => {
     const q = searchQuery.trim();

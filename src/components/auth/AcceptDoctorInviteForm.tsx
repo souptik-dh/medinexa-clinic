@@ -16,6 +16,43 @@ const DEFAULT_PASSWORD = "12345678";
 
 type RequiredField = "inviteCode" | "phone" | "otp";
 
+// Only "pending" opens the acceptance form; every other state is a dead end with
+// its own message, so a used/expired/withdrawn link can't restart the flow.
+type LinkState = "checking" | "pending" | "accepted" | "expired" | "revoked" | "invalid";
+
+const ERROR_CODE_STATE: Record<string, Exclude<LinkState, "checking" | "pending">> = {
+  INVITE_ALREADY_ACCEPTED: "accepted",
+  INVITE_EXPIRED: "expired",
+  INVITE_REVOKED: "revoked",
+  INVITE_NOT_FOUND: "invalid",
+};
+
+const STATUS_CARD: Record<
+  Exclude<LinkState, "checking" | "pending">,
+  { title: string; desc: string; tone: string }
+> = {
+  accepted: {
+    title: "auth.inviteAcceptedTitle",
+    desc: "auth.inviteAcceptedDesc",
+    tone: "border-success-500/30 bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-500",
+  },
+  expired: {
+    title: "auth.inviteExpiredTitle",
+    desc: "auth.inviteExpiredDesc",
+    tone: "border-warning-500/30 bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400",
+  },
+  revoked: {
+    title: "auth.inviteRevokedTitle",
+    desc: "auth.inviteRevokedDesc",
+    tone: "border-error-500/30 bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400",
+  },
+  invalid: {
+    title: "auth.inviteInvalidTitle",
+    desc: "auth.inviteInvalidDesc",
+    tone: "border-error-500/30 bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-400",
+  },
+};
+
 // Invite links carry the phone in E.164 form (e.g. "+918981284366"); the
 // phone field here only ever holds the bare 10-digit local number, so strip
 // the leading "91" (or any other prefix) rather than truncating from the
@@ -33,7 +70,10 @@ export default function AcceptDoctorInviteForm() {
   const codeFromLink = searchParams.get("code");
   const reg_no = searchParams.get("reg_no");
   const phoneFromLink = searchParams.get("phone");
+  const emailFromLink = searchParams.get("email");
+  const linkIdentifiesInvite = !!codeFromLink && !!(phoneFromLink || emailFromLink);
 
+  const [linkState, setLinkState] = useState<LinkState>(linkIdentifiesInvite ? "checking" : "pending");
   const [inviteCode, setInviteCode] = useState(codeFromLink ?? "");
   const [phone, setPhone] = useState(localPhoneFromLink(phoneFromLink));
   const [regNo, setRegNo] = useState(reg_no ?? "");
@@ -45,6 +85,41 @@ export default function AcceptDoctorInviteForm() {
   const [done, setDone] = useState(false);
   const activationInFlight = useRef(false);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  // Resolve the link's invite status before showing the form, so an already-used
+  // link lands on "already accepted" instead of the OTP flow.
+  useEffect(() => {
+    if (!linkIdentifiesInvite || !codeFromLink) return;
+    let cancelled = false;
+    authApi
+      .getDoctorInviteStatus({
+        code: codeFromLink,
+        phone: phoneFromLink ?? undefined,
+        email: emailFromLink ?? undefined,
+      })
+      .then((res) => {
+        if (!cancelled) setLinkState(res.status);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // Network/rate-limit failures fall back to the form; accept-invite re-validates.
+        const mapped = err instanceof ApiError ? ERROR_CODE_STATE[err.code] : undefined;
+        setLinkState(mapped ?? "pending");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkIdentifiesInvite, codeFromLink, phoneFromLink, emailFromLink]);
+
+  /** Moves to the matching status screen for invite-state errors; returns false otherwise. */
+  const applyInviteError = (err: unknown): boolean => {
+    if (!(err instanceof ApiError)) return false;
+    const mapped = ERROR_CODE_STATE[err.code];
+    // A mistyped code on the manual-entry form stays an inline error, not a dead end.
+    if (!mapped || (mapped === "invalid" && !codeFromLink)) return false;
+    setLinkState(mapped);
+    return true;
+  };
 
   useEffect(() => {
     if (!done) return;
@@ -66,10 +141,22 @@ export default function AcceptDoctorInviteForm() {
     activationInFlight.current = true;
     setSubmitting(true);
     try {
+      // Re-check right before sending an OTP: the invite may have been accepted
+      // (e.g. in another tab) or lapsed since this page loaded.
+      const { status } = await authApi.getDoctorInviteStatus({
+        code: inviteCode.trim(),
+        phone,
+        email: emailFromLink ?? undefined,
+      });
+      if (status !== "pending") {
+        setLinkState(status);
+        return;
+      }
       const res = await authApi.sendVerifyPhoneOtp({ phone });
       setMessage(res.message);
       setStage("verify");
     } catch (err) {
+      if (applyInviteError(err)) return;
       const message = err instanceof ApiError ? err.message : t("auth.unableToRequestOtp");
       setError(message);
       toast.error(message);
@@ -93,7 +180,8 @@ export default function AcceptDoctorInviteForm() {
     try {
       await authApi.acceptDoctorInvite({
         phone,
-        invite_code: inviteCode,
+        invite_code: inviteCode.trim(),
+        email: emailFromLink ?? undefined,
         otp,
         password: DEFAULT_PASSWORD,
         reg_no: regNo.trim() || undefined,
@@ -101,6 +189,10 @@ export default function AcceptDoctorInviteForm() {
       setDone(true);
       toast.success(t("auth.accountActivated"));
     } catch (err) {
+      if (applyInviteError(err)) {
+        activationInFlight.current = false;
+        return;
+      }
       const message = err instanceof ApiError ? err.message : t("auth.unableToAcceptInvite");
       setError(message);
       toast.error(message);
@@ -152,6 +244,23 @@ export default function AcceptDoctorInviteForm() {
                   <Input type="text" value={regNo} disabled />
                 </div>
               )}
+            </div>
+          ) : linkState === "checking" ? (
+            <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              {t("auth.checkingInvite")}
+            </p>
+          ) : linkState !== "pending" ? (
+            <div className="space-y-5">
+              <div
+                role="status"
+                className={`rounded-lg border px-4 py-6 text-center ${STATUS_CARD[linkState].tone}`}
+              >
+                <p className="text-base font-semibold">{t(STATUS_CARD[linkState].title)}</p>
+                <p className="mt-1 text-sm opacity-80">{t(STATUS_CARD[linkState].desc)}</p>
+              </div>
+              <Button className="w-full" size="sm" onClick={() => router.push("/signin")}>
+                {t("auth.goToSignIn")}
+              </Button>
             </div>
           ) : stage === "request" ? (
             <form onSubmit={requestOtp} className="space-y-6">

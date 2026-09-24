@@ -1744,6 +1744,21 @@ export const authApi = {
     });
   },
 
+  // ── Doctor: status of an invite link (only "pending" may be accepted) ──
+  async getDoctorInviteStatus(input: {
+    code: string;
+    phone?: string;
+    email?: string;
+  }): Promise<{ status: DoctorInvite["status"]; expires_at: string }> {
+    const params = new URLSearchParams({ code: input.code });
+    if (input.phone) params.set("phone", input.phone);
+    if (input.email) params.set("email", input.email);
+    return apiFetch<{ status: DoctorInvite["status"]; expires_at: string }>(
+      `/auth/doctor/invite-status?${params.toString()}`,
+      { skipAuth: true },
+    );
+  },
+
   // ── Verify phone (for invite pre-verification) ───────────────────────
   async sendVerifyPhoneOtp(input: {
     phone: string;
