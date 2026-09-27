@@ -2801,6 +2801,202 @@ Every day of the month is included (not just the availability period) so the cli
 
 **Errors:** `400 VALIDATION_ERROR` (missing/invalid `branch_id`, `year`, or `month`), `404 DOCTOR_NOT_FOUND`.
 
+### GET /clinics/:clinicId/doctor-availability
+
+Auth: `clinic_owner` (own clinic), `branch_staff` (own branch only), `sys_admin`. Rate limit `200/min`.
+
+Flat list of every doctor scheduled to work at each active (non-deleted) branch of the clinic on one day — by default **tomorrow**, computed in each branch's own timezone — with their open slots and how many appointments they already have at that branch.
+
+**Query:** `?date=YYYY-MM-DD` (optional; defaults to tomorrow per branch).
+
+```bash
+curl --url 'https://healthcare.jido.co.in/api/v1/clinics/<CLINIC_ID>/doctor-availability' \
+  -H 'accept: application/json' \
+  -H 'authorization: Bearer <ACCESS_TOKEN>'
+```
+
+**Response `200`**
+
+```json
+{
+  "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+  "doctors": [
+    {
+      "doctor_id": "91edecbc-713d-43d2-891e-5affc81986cf",
+      "name": "Dr. Ananya Rao",
+      "degree": "MBBS, MD",
+      "photo_url": null,
+      "specialization": "Cardiology",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "branch_address": "12, SV Road, Andheri West, Mumbai 400058",
+      "branch_city": "Mumbai",
+      "date": "2026-09-28",
+      "day": "Monday",
+      "fee_amount": 500,
+      "currency": "INR",
+      "slot_type": "fixed",
+      "status": "available",
+      "is_bookable": true,
+      "total_slots": 10,
+      "available_slots_count": 6,
+      "available_slots": [
+        { "time": "10:00", "capacity": 1, "remaining": 1 },
+        { "time": "10:20", "capacity": 1, "remaining": 1 }
+      ],
+      "appointments_count": 4,
+      "appointments_by_status": { "confirmed": 3, "pending": 1 }
+    }
+  ]
+}
+```
+
+- One entry per **(doctor, branch)** — a doctor working at two branches that day appears twice, each with that branch's slots and counts. Sorted by doctor name, then branch name.
+- Only doctors actually scheduled that day are listed (`status` is `available` or `fully_booked`); doctors on leave or without a slot template for that weekday are omitted. A branch closed that day (non-operating weekday or active closure) contributes no entries.
+- Slots use the same rules as [`GET /doctors/:id/availability`](#get-doctorsidavailability); `remaining` accounts for the doctor's bookings across all branches (a slot is unique per doctor). The 30-minute patient booking cutoff is **not** applied (staff view).
+- `appointments_count` / `appointments_by_status` count non-cancelled appointments for that doctor **at that branch** on that date.
+
+**Errors:** `400 VALIDATION_ERROR` (bad `date`), `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`.
+
+### GET /clinics/:clinicId/doctor-appointments
+
+Auth: `clinic_owner` (own clinic), `branch_staff` (own branch only), `sys_admin`, `doctor` (own `doctor_id` only). Rate limit `200/min`.
+
+A doctor's non-cancelled appointments at this clinic for one day — by default **tomorrow** per branch timezone — each with full patient details, medical profile, lab reports and the prescriptions the patient uploaded from the app.
+
+**Query:**
+
+| Param | Required | Notes |
+|---|---|---|
+| `doctor_id` | yes | Doctor to list appointments for. |
+| `date` | no | `YYYY-MM-DD`; defaults to tomorrow per branch. |
+| `branch_id` | no | Limit to one branch of the clinic. |
+
+```bash
+curl --url 'https://healthcare.jido.co.in/api/v1/clinics/<CLINIC_ID>/doctor-appointments?doctor_id=91edecbc-713d-43d2-891e-5affc81986cf' \
+  -H 'accept: application/json' \
+  -H 'authorization: Bearer <ACCESS_TOKEN>'
+```
+
+**Response `200`**
+
+```json
+{
+  "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+  "doctor": {
+    "doctor_id": "91edecbc-713d-43d2-891e-5affc81986cf",
+    "name": "Dr. Ananya Rao",
+    "degree": "MBBS, MD",
+    "photo_url": null
+  },
+  "dates": ["2026-09-28"],
+  "total": 1,
+  "appointments": [
+    {
+      "appointment_id": "c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "date": "2026-09-28",
+      "time": "10:00",
+      "duration_minutes": 20,
+      "status": "confirmed",
+      "fee_amount": 500,
+      "currency": "INR",
+      "payment_method": "cash",
+      "booking_source": "PATIENT_APP",
+      "booked_by": { "id": "…", "name": "Rahul Sharma", "phone": "+919876543210" },
+      "patient": {
+        "patient_id": "…",
+        "relationship": "self",
+        "name": "Rahul Sharma",
+        "phone": "+919876543210",
+        "email": "rahul@example.com",
+        "age": 34,
+        "date_of_birth": "1992-03-14",
+        "gender": "male",
+        "height_cm": 175,
+        "weight_kg": 72,
+        "bmi": 23.5,
+        "address": "Flat 4B, Link Road",
+        "city": "Mumbai",
+        "photo_url": null,
+        "medical_profile": {
+          "blood_group": "O+",
+          "allergies": "Penicillin",
+          "medical_conditions": "Hypertension",
+          "current_medications": "Amlodipine 5mg",
+          "previous_surgeries": null,
+          "medical_notes": null,
+          "emergency_contact": { "name": "Priya Sharma", "relationship": "Spouse", "phone": "+919812345678" }
+        }
+      },
+      "lab_reports": {
+        "clinic_issued": [
+          {
+            "id": "…",
+            "document_type": "LAB_REPORT",
+            "title": "CBC Report",
+            "file_name": "cbc.pdf",
+            "mime_type": "application/pdf",
+            "file_url": "https://…/api/v1/patient-documents/<id>/preview?expires=…&sig=…",
+            "branch_name": "Sunrise — Andheri",
+            "uploaded_at": "2026-09-20T10:00:00Z"
+          }
+        ],
+        "patient_uploaded": [
+          {
+            "id": "…",
+            "source": "medical_documents",
+            "file_name": "old-lipid-profile.pdf",
+            "file_url": "https://…",
+            "mime_type": "application/pdf",
+            "size_bytes": 120394,
+            "uploaded_at": "2026-09-10T08:00:00Z",
+            "lab_test_appointment_id": null
+          }
+        ],
+        "lab_tests": [
+          {
+            "id": "…",
+            "appointment_number": "LT-000123",
+            "test_name": "Complete Blood Count",
+            "test_code": "CBC",
+            "test_category": "Hematology",
+            "branch_name": "Sunrise — Andheri",
+            "date": "2026-09-19",
+            "time": "09:00",
+            "service_mode": "CLINIC",
+            "status": "COMPLETED",
+            "payment_status": "PAID",
+            "completed_at": "2026-09-19T09:40:00Z"
+          }
+        ]
+      },
+      "uploaded_prescriptions": [
+        {
+          "id": "…",
+          "source": "medical_documents",
+          "file_name": "rx-aug.jpg",
+          "file_url": "https://…",
+          "mime_type": "image/jpeg",
+          "size_bytes": 88211,
+          "uploaded_at": "2026-08-30T12:00:00Z",
+          "lab_test_appointment_id": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `patient` is who the appointment is **for** — for a family-member booking this is the family member (`relationship` ≠ `self`), while `booked_by` is the account that booked it.
+- `lab_reports.clinic_issued` — `LAB_REPORT` [patient documents](#patient-documents-lab-reports--prescriptions) issued by **this clinic**; `file_url` is a signed preview link valid for 15 minutes.
+- `lab_reports.patient_uploaded` — [medical documents](#medical-documents) the patient uploaded with category `lab_report`.
+- `lab_reports.lab_tests` — lab tests the patient booked at **this clinic**, newest first.
+- `uploaded_prescriptions` — medical documents with category `prescription`, plus prescriptions attached to a lab-test booking (`source: "lab_test_booking"`, with `lab_test_appointment_id`). A file attached to a lab booking from an existing upload is listed once.
+
+**Errors:** `400 VALIDATION_ERROR` (missing `doctor_id`, bad `date`), `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`, `404 DOCTOR_NOT_FOUND` (doctor not actively assigned to a branch of this clinic visible to the caller, or a doctor querying another doctor's id).
+
 ---
 
 ## Reviews & ratings
