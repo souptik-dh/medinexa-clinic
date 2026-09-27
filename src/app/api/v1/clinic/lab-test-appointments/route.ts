@@ -3,7 +3,7 @@ import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { serializeLabTestAppointment, labApptScopeWhere } from "@api/lib/lab-tests";
 import { parsePagination } from "@api/lib/validators";
-import { encodeCursor } from "@api/lib/http";
+import { encodeCursor, decodeCursor } from "@api/lib/http";
 import type { RowDataPacket } from "mysql2/promise";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
@@ -60,10 +60,11 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     conditions.push("a.appointment_date <= ?");
     params.push(dateTo);
   }
-  if (cursor) {
-    conditions.push("a.created_at < ?");
-    params.push(cursor);
-  }
+
+  // Rows are ordered by status/date/time, not created_at, so a created_at
+  // keyset would skip or repeat rows — the cursor carries an offset instead.
+  const rawOffset = Number(decodeCursor(cursor)?.offset);
+  const offset = Number.isInteger(rawOffset) && rawOffset > 0 ? rawOffset : 0;
 
   const where = conditions.join(" AND ");
 
@@ -90,14 +91,14 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
          WHEN 'REJECTED' THEN 3
          WHEN 'CANCELLED' THEN 4
        END ASC,
-       a.appointment_date DESC, a.start_time DESC
-     LIMIT ?`,
-    [...params, limit + 1],
+       a.appointment_date DESC, a.start_time DESC, a.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit + 1, offset],
   );
 
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor = hasMore && items.length > 0 ? encodeCursor({ created_at: items[items.length - 1].created_at }) : null;
+  const nextCursor = hasMore && items.length > 0 ? encodeCursor({ offset: offset + items.length }) : null;
 
   return json({ items: items.map(serializeLabTestAppointment), next_cursor: nextCursor });
 });

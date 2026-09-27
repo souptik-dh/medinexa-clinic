@@ -6,7 +6,7 @@ import { parseBody } from "@api/lib/validators";
 import { serializeLabTest, generateUniqueLabTestCode, auditLabAction } from "@api/lib/lab-tests";
 import { getOwnedClinic } from "@api/lib/scope";
 import { parsePagination } from "@api/lib/validators";
-import { encodeCursor } from "@api/lib/http";
+import { encodeCursor, decodeCursor } from "@api/lib/http";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -47,9 +47,10 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     const q = `%${search}%`;
     params.push(q, q);
   }
-  if (cursor) {
-    conditions.push("lt.created_at < ?");
-    params.push(cursor);
+  const after = decodeCursor(cursor);
+  if (after?.created_at && after.id) {
+    conditions.push("(lt.created_at < ? OR (lt.created_at = ? AND lt.id < ?))");
+    params.push(after.created_at, after.created_at, after.id);
   }
 
   const where = conditions.join(" AND ");
@@ -61,14 +62,14 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
             (SELECT blt.currency FROM branch_lab_tests blt WHERE blt.test_id = lt.id AND blt.status = 'active' LIMIT 1) AS price_currency
      FROM lab_tests lt
      WHERE ${where}
-     ORDER BY lt.created_at DESC
+     ORDER BY lt.created_at DESC, lt.id DESC
      LIMIT ?`,
     [...params, limit + 1],
   );
 
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor = hasMore && items.length > 0 ? encodeCursor({ created_at: items[items.length - 1].created_at }) : null;
+  const nextCursor = hasMore && items.length > 0 ? encodeCursor({ created_at: items[items.length - 1].created_at, id: items[items.length - 1].id }) : null;
 
   return json({ items: items.map(serializeLabTest), next_cursor: nextCursor });
 });
