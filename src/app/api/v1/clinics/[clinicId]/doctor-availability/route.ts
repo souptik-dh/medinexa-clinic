@@ -19,10 +19,10 @@ import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/sp
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Per-branch view of one day (default: tomorrow in each branch's timezone): every
-// active branch of the clinic, the doctors scheduled to work there that day, their
-// open slots, and how many non-cancelled appointments each already has at that
-// branch. Availability comes from computeDateAvailability so it agrees with booking;
+// Flat doctor list for one day (default: tomorrow in each branch's timezone): one
+// entry per doctor per active branch they're scheduled to work at that day, tagged
+// with the branch name, their open slots, and how many non-cancelled appointments
+// they already have at that branch. Availability comes from computeDateAvailability so it agrees with booking;
 // the patient booking cutoff is not applied since this is a staff view.
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
@@ -109,7 +109,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     countMap.set(key, entry);
   }
 
-  const result = [];
+  const doctors = [];
   for (const b of branches) {
     const branchId = String(b.id);
     const date = dateByBranch.get(branchId)!;
@@ -119,7 +119,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     const closure = findCoveringLeave(date, branchSchedule.closures);
     const isOpen = !closure && isWeekdayOpen(branchSchedule, weekdayInTz(date, b.timezone));
 
-    const doctors = [];
+    // A closed branch (weekday off or active closure) contributes no doctors.
     for (const a of isOpen ? assignments.filter((x) => String(x.branch_id) === branchId) : []) {
       const info = await computeDateAvailability(
         pool,
@@ -144,6 +144,12 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         degree: a.doctor_degree,
         photo_url: a.photo_url,
         specialization: specializationDisplayName(specializations.get(String(a.doctor_id))),
+        branch_id: branchId,
+        branch_name: b.name,
+        branch_address: b.address,
+        branch_city: b.city,
+        date,
+        day: weekdayNameInTz(date, b.timezone, "long"),
         fee_amount: Number(a.fee_amount),
         currency: a.currency,
         slot_type: a.slot_type,
@@ -160,23 +166,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         appointments_by_status: appts.by_status,
       });
     }
-
-    result.push({
-      branch_id: branchId,
-      name: b.name,
-      address: b.address,
-      city: b.city,
-      phone: b.phone,
-      timezone: b.timezone,
-      date,
-      day: weekdayNameInTz(date, b.timezone, "long"),
-      is_open: isOpen,
-      closure: closure
-        ? { start_date: closure.start_date, end_date: closure.end_date, reason: closure.reason }
-        : null,
-      doctors,
-    });
   }
 
-  return json({ clinic_id: clinicId, branches: result });
+  // Group each doctor's branches together.
+  doctors.sort((x, y) => String(x.name).localeCompare(String(y.name)) || x.branch_name.localeCompare(y.branch_name));
+
+  return json({ clinic_id: clinicId, doctors });
 });
