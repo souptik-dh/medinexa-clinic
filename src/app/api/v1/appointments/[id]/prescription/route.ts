@@ -6,7 +6,7 @@ import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { requireAssignedDoctor, serializePrescription } from "@api/lib/prescriptions";
 import { getAppointmentInScope, getAppointmentNames } from "@api/lib/appointments";
-import { createPatientNotification } from "@api/lib/notifications";
+import { createPatientNotification, emailPatient } from "@api/lib/notifications";
 import { newId } from "@api/lib/ids";
 
 const schema = z.object({
@@ -21,6 +21,7 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
 
   const id = newId();
   const finalizedAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const pendingEmails: Array<() => Promise<void>> = [];
   await withTransaction(async (conn) => {
     await conn.query(
       `INSERT INTO prescriptions (id, appointment_id, doctor_id, scan_url, digitized_text, finalized_at)
@@ -39,13 +40,17 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
       ],
     );
     const names = await getAppointmentNames(conn, appointment.id);
-    await createPatientNotification(conn, appointment.patient_id, "prescription_ready", {
+    const payload = {
       appointment_id: appointment.id,
       doctor_id: appointment.doctor_id,
       doctor_name: names.doctor_name,
       prescription_text: body.text,
-    });
+    };
+    await createPatientNotification(conn, appointment.patient_id, "prescription_ready", payload);
+    pendingEmails.push(() => emailPatient(pool, appointment.patient_id, "prescription_ready", payload));
   });
+
+  await Promise.all(pendingEmails.map((send) => send()));
 
   const [rows] = await pool.query<Row[]>(
     `SELECT * FROM prescriptions WHERE appointment_id = ?`,

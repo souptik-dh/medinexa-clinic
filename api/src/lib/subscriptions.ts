@@ -3,7 +3,7 @@ import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { ApiError, conflict, notFound } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
 import { getActiveOfferForClinic, computeDiscountedAmount, redeemOfferOnPayment } from "@api/lib/offers";
-import { createClinicUserNotification } from "@api/lib/notifications";
+import { createClinicUserNotification, emailClinicUser } from "@api/lib/notifications";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -785,6 +785,7 @@ async function notifyClinicOwner(
   const ownerId = rows[0]?.owner_user_id;
   if (!ownerId) return;
   await createClinicUserNotification(conn, ownerId, type, payload);
+  await emailClinicUser(conn, ownerId, type, payload);
 }
 
 /**

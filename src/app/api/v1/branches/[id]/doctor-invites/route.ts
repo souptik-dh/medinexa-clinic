@@ -6,7 +6,7 @@ import { requireRoles } from "@api/lib/auth";
 import { badRequest, conflict, isUniqueViolation, notFound, unprocessable } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
 import { generateInviteCode, hashToken } from "@api/lib/auth";
-import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteDual, sendWhatsapp } from "@api/lib/notifications";
+import { sendEmail, inviteEmailHtml, branchAccessEmailHtml, sendInviteWhatsapp } from "@api/lib/notifications";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { getInviteSpecializations } from "@api/lib/specializations";
 import { slotTemplateSchema } from "@api/lib/slot-template";
@@ -138,12 +138,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           branchName: branch.name,
           clinicName,
         }),
-      );
-    }
-    if (doctorPhone) {
-      await sendWhatsapp(
-        doctorPhone,
-        `Dr. ${doctorName}, you have been added to ${branch.name} under ${clinicName}. You can now manage your schedule and appointments using your existing MediBook account.`,
       );
     }
 
@@ -358,10 +352,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       [clinicId],
     );
     const clinicName = String(clinicNameRow[0]?.name ?? "a clinic");
-    // Doctor invitations are the one non-OTP notification allowed to use SMS (in addition
-    // to WhatsApp here and email above) — push isn't possible yet since an invited doctor
-    // has no account/device to push to until they accept.
-    await sendInviteDual({
+    // Doctor invitations are the one non-OTP message doctors receive on WhatsApp (email
+    // is sent above) — push isn't possible yet since an invited doctor has no
+    // account/device to push to until they accept.
+    await sendInviteWhatsapp({
       phone: body.phone,
       doctorName: body.name,
       clinicName,

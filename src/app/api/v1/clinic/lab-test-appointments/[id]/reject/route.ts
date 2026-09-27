@@ -8,7 +8,7 @@ import {
   auditLabAction,
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { createPatientNotification, sendEmail, detailsEmailHtml } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest } from "@api/lib/errors";
@@ -51,15 +51,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     reason: body.reason,
   });
 
-  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-  if (patientPhone) {
-    const rejectText = personalizeForPatient(
-      `Your lab test booking ${appointment.appointment_number} (${appointment.test_name}) has been rejected. Reason: ${body.reason}`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
-    await sendWhatsapp(patientPhone, rejectText);
-  }
   if (appointment.patient_email) {
     await sendEmail(
       appointment.patient_email,

@@ -423,6 +423,64 @@ export async function notifyClinicSide(
 }
 
 /**
+ * Email counterparts of the in-app notifications above: each sends the same
+ * title/body the recipient sees in-app (pushContentFor for patients,
+ * pushContentForClinic for clinic users), so every notification also reaches
+ * the recipient's inbox. Call them after the triggering transaction commits.
+ * Silently skip recipients with no email on file. Never throw.
+ */
+export async function emailPatient(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const [rows] = await db.query<RowDataPacket[]>(`SELECT email FROM users WHERE id = ?`, [userId]);
+    const email = asString(rows[0]?.email);
+    if (!email) return;
+    const { title, body } = pushContentFor(type, payload);
+    await sendEmail(email, title, body, patientEmailHtml(body));
+  } catch (err) {
+    console.error(`[email] ${type} to patient ${userId} failed:`, err);
+  }
+}
+
+export async function emailClinicUser(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const [rows] = await db.query<RowDataPacket[]>(`SELECT email FROM users WHERE id = ?`, [userId]);
+    const email = asString(rows[0]?.email);
+    if (!email) return;
+    const { title, body } = pushContentForClinic(type, payload);
+    await sendEmail(email, title, body, emailHtml(body));
+  } catch (err) {
+    console.error(`[email] ${type} to clinic user ${userId} failed:`, err);
+  }
+}
+
+/** Emails every branch staff member plus the clinic owner (see branchContactEmails). */
+export async function emailBranchContacts(
+  db: Pick<PoolConnection, "query">,
+  branchId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const emails = (await branchContactEmails(db, branchId)).filter(Boolean);
+    const { title, body } = pushContentForClinic(type, payload);
+    const html = emailHtml(body);
+    await Promise.all(emails.map((email) => sendEmail(email, title, body, html)));
+  } catch (err) {
+    console.error(`[email] ${type} to branch ${branchId} contacts failed:`, err);
+  }
+}
+
+/**
  * Emails for everyone tied to a branch: its staff and the owning clinic's
  * owner. The UNION dedupes in case the same address appears in both roles.
  */
@@ -437,19 +495,6 @@ export async function branchContactEmails(
     [branchId, branchId],
   );
   return rows.map((r) => r.email as string);
-}
-
-export async function branchContactPhones(
-  db: Pick<PoolConnection, "query">,
-  branchId: string,
-): Promise<string[]> {
-  const [rows] = await db.query<RowDataPacket[]>(
-    `SELECT u.phone FROM branch_staff bs JOIN users u ON u.id = bs.user_id WHERE bs.branch_id = ? AND u.phone IS NOT NULL
-     UNION
-     SELECT co.phone FROM branches b JOIN clinics c ON c.id = b.clinic_id JOIN users co ON co.id = c.owner_user_id WHERE b.id = ? AND co.phone IS NOT NULL`,
-    [branchId, branchId],
-  );
-  return rows.map((r) => r.phone as string);
 }
 
 export async function clinicOwnerContact(
@@ -729,13 +774,12 @@ export async function sendEmail(
  * in local dev when SMS_API_KEY is not configured. Never throws — resolves
  * true when the gateway accepted the message, false otherwise.
  *
- * Not exported. Policy: SMS is reserved for OTP/confirmation codes and doctor
- * invitations — every other notification (to patients, clinic owners, doctors,
- * and branch staff alike) goes out over WhatsApp + email + push only, with no
- * SMS fallback if those fail. This is the one place that can reach the SMS
- * gateway, so keeping it unexported is what actually enforces the policy —
- * route handlers can't call it even by accident. The only callers are
- * `sendOtpSms`/`sendOtpDual` (OTP) and `sendInviteDual` (doctor invites) below.
+ * Not exported. Policy: SMS is reserved for OTP/confirmation codes only —
+ * every other notification goes out over email + push (plus WhatsApp for the
+ * few messages sendWhatsapp allows), with no SMS fallback. This is the one
+ * place that can reach the SMS gateway, so keeping it unexported is what
+ * actually enforces the policy — route handlers can't call it even by
+ * accident. The only caller is `sendOtpSms` (used by `sendOtpDual`) below.
  */
 async function sendSms(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.SMS_API_KEY;
@@ -892,8 +936,14 @@ async function runWahaSessionRecovery(
 /**
  * Resolves true when WAHA accepted the message, false otherwise (a background
  * session-recovery retry may still deliver it later). Never throws.
+ *
+ * Not exported. Policy: WhatsApp carries only OTP/confirmation codes (clinic
+ * and patient), the patient's booking confirmation, and doctor invitations —
+ * everything else goes by email + push. Keeping this unexported means routes
+ * can only reach WhatsApp through `sendOtpWhatsapp`,
+ * `sendBookingConfirmationWhatsapp`, and `sendInviteWhatsapp` below.
  */
-export async function sendWhatsapp(to: string, body: string): Promise<boolean> {
+async function sendWhatsapp(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.WAHA_API_KEY;
   const baseUrl = process.env.WAHA_BASE_URL ?? "http://localhost:3000";
   const session = process.env.WAHA_SESSION ?? "default";
@@ -920,49 +970,6 @@ export async function sendWhatsapp(to: string, body: string): Promise<boolean> {
     console.error(`[whatsapp] send to ${to} failed:`, err);
     return false;
   }
-}
-
-/**
- * Sends a document (e.g. a receipt PDF) as a WhatsApp file attachment through WAHA's
- * /api/sendFile. `data` is the raw file bytes — base64-encoded here, not by the caller.
- * Same config/stub/recovery behavior as sendWhatsapp. Never throws.
- */
-export async function sendWhatsappFile(
-  to: string,
-  file: { filename: string; mimetype: string; data: Buffer },
-  caption?: string,
-): Promise<void> {
-  const apiKey = process.env.WAHA_API_KEY;
-  const baseUrl = process.env.WAHA_BASE_URL ?? "http://localhost:3000";
-  const session = process.env.WAHA_SESSION ?? "default";
-  if (!apiKey) {
-    console.log(`[whatsapp:stub] to=${to} file=${file.filename}`);
-    return;
-  }
-  const chatId = `${to.replace(/\D/g, "")}@c.us`;
-  const payload = {
-    session,
-    chatId,
-    file: { mimetype: file.mimetype, filename: file.filename, data: file.data.toString("base64") },
-    caption,
-  };
-  try {
-    const res = await wahaPost(baseUrl, apiKey, "/api/sendFile", payload);
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error(`[whatsapp] WAHA rejected file send to ${to} (${res.status}): ${detail}`);
-      if (res.status === 404 || res.status === 422) {
-        void recoverWahaSessionAndRetry(baseUrl, apiKey, session, "/api/sendFile", payload);
-      }
-    }
-  } catch (err) {
-    console.error(`[whatsapp] file send to ${to} failed:`, err);
-  }
-}
-
-/** Sends the same message to every phone number over WhatsApp. */
-export async function notifyPhonesWhatsapp(phones: string[], text: string): Promise<void> {
-  await Promise.all(phones.map((phone) => sendWhatsapp(phone, text)));
 }
 
 /**
@@ -1095,16 +1102,24 @@ export function sendOtpDual(opts: {
 }
 
 /**
- * Sends a doctor invitation link via SMS + WhatsApp (email is sent separately by the
- * caller, since it also carries the branded invite card). Doctor invitations are the
- * one non-OTP flow allowed to use SMS.
+ * Sends a patient's booking confirmation (appointment confirmed / lab test
+ * approved) via WhatsApp. `text` is the full message, typically built with
+ * personalizeForPatient. Never throws.
  */
-export async function sendInviteDual(opts: {
+export async function sendBookingConfirmationWhatsapp(phone: string, text: string): Promise<boolean> {
+  return sendWhatsapp(phone, text);
+}
+
+/**
+ * Sends a doctor invitation link via WhatsApp (email is sent separately by the
+ * caller, since it also carries the branded invite card). Never throws.
+ */
+export async function sendInviteWhatsapp(opts: {
   phone: string;
   doctorName: string;
   clinicName: string;
   inviteUrl: string;
-}): Promise<void> {
+}): Promise<boolean> {
   const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`;
-  await Promise.allSettled([sendSms(opts.phone, text), sendWhatsapp(opts.phone, text)]);
+  return sendWhatsapp(opts.phone, text);
 }

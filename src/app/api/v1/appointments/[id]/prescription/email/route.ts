@@ -3,7 +3,7 @@ import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { requireAssignedDoctor } from "@api/lib/prescriptions";
 import { getAppointmentInScope } from "@api/lib/appointments";
-import { sendEmail, sendWhatsapp, patientEmailHtml } from "@api/lib/notifications";
+import { sendEmail, patientEmailHtml } from "@api/lib/notifications";
 import { notFound } from "@api/lib/errors";
 
 export const POST = api({ rateLimit: 200 }, async (ctx) => {
@@ -17,7 +17,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT u.email, u.phone, u.name FROM users u WHERE u.id = ?`,
+    `SELECT u.email, u.name FROM users u WHERE u.id = ?`,
     [appointment.patient_id],
   );
   const patient = rows[0];
@@ -26,12 +26,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const rxBody = `Your prescription for appointment ${appointment.id} is ready. Download it from the app.`;
-  if (patient.phone) {
-    await sendWhatsapp(
-      patient.phone,
-      `Jido Healthcare: Your prescription for appointment ${appointment.id} is ready. Download it from the app.`,
-    );
-  }
   if (patient.email) {
     await sendEmail(
       patient.email,

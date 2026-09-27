@@ -13,11 +13,9 @@ import {
   notifyBranchStaff,
   createClinicUserNotification,
   branchContactEmails,
-  branchContactPhones,
   sendEmail,
   detailsEmailHtml,
-  notifyPhonesWhatsapp,
-  personalizeForPatient,
+  emailPatient,
 } from "@api/lib/notifications";
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
@@ -284,7 +282,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const isForSelf = patientDetails.relationship === "self";
 
     const staffEmails = await branchContactEmails(pool, body.branch_id);
-    const staffPhones = await branchContactPhones(pool, body.branch_id);
 
     const emailSubject = `New Lab Test Booking — ${appointmentNumber}`;
     const emailBody = detailsEmailHtml({
@@ -311,19 +308,13 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     for (const email of staffEmails) {
       await sendEmail(email, emailSubject, "", emailBody);
     }
-
-    const staffWhatsappText = `Jido Healthcare: New lab test booking ${appointmentNumber} (${blt.test_name}) for ${patientDetails.name} at ${branch.name} on ${body.appointment_date} at ${body.start_time} — please review and approve/reject.`;
-    void notifyPhonesWhatsapp(staffPhones, staffWhatsappText);
-
-    const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-    if (patientPhone) {
-      const bookedText = personalizeForPatient(
-        `Your lab test booking ${appointmentNumber} (${blt.test_name}) at ${branch.name} on ${body.appointment_date} at ${body.start_time} has been submitted and is awaiting approval.`,
-        patientDetails.name,
-        patientDetails.relationship,
-      );
-      void notifyPhonesWhatsapp([patientPhone], bookedText);
-    }
+    await emailPatient(pool, appointment.patient_id, "lab_test_booked", {
+      appointment_number: appointmentNumber,
+      test_name: blt.test_name,
+      branch_name: branch.name,
+      date: body.appointment_date,
+      time: body.start_time,
+    });
 
     return { status: 201, body: serializeLabTestAppointment(appointment) };
   });

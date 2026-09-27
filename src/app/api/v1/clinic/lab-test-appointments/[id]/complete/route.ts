@@ -8,7 +8,7 @@ import {
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
 import { hasSlotPassedInTz } from "@api/lib/availability";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { createPatientNotification, sendEmail, detailsEmailHtml } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest, conflict } from "@api/lib/errors";
@@ -52,15 +52,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     time: appointment.start_time,
   });
 
-  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-  if (patientPhone) {
-    const completeText = personalizeForPatient(
-      `Your lab test (${appointment.test_name}) for ${appointment.appointment_number} has been completed. Your report is now available.`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
-    await sendWhatsapp(patientPhone, completeText);
-  }
   if (appointment.patient_email) {
     await sendEmail(
       appointment.patient_email,

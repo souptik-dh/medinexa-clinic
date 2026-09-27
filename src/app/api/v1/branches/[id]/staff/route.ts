@@ -6,7 +6,7 @@ import { requireRoles } from "@api/lib/auth";
 import { getOwnedBranch } from "@api/lib/scope";
 import { conflict, isUniqueViolation } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
-import { sendWhatsapp, sendEmail, emailHtml } from "@api/lib/notifications";
+import { sendEmail, emailHtml } from "@api/lib/notifications";
 import {
   BRANCH_STAFF_PERMISSIONS,
   DEFAULT_BRANCH_STAFF_PERMISSIONS,
@@ -110,7 +110,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     `Jido Healthcare: Hi ${body.name}, you have been added as a staff member of ` +
     `${branchInfo?.clinic_name ?? "your clinic"}, ${branchInfo?.branch_name ?? "your branch"}. ` +
     `Welcome to Jido Healthcare! You can log in with this phone number using OTP.`;
-  await sendWhatsapp(body.phone, welcomeText);
   // Email is optional — only attempted when the form actually collected one.
   if (body.email) {
     await sendEmail(body.email, "Welcome to Jido Healthcare", welcomeText, emailHtml(welcomeText));

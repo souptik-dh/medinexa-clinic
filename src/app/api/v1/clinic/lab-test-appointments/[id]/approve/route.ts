@@ -14,7 +14,7 @@ import {
   sendEmail,
   detailsEmailHtml,
   patientEmailHtml,
-  sendWhatsapp,
+  sendBookingConfirmationWhatsapp,
   personalizeForPatient,
 } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
@@ -109,6 +109,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   if (appointment.patient_email) {
     await sendEmail(appointment.patient_email, `Lab Test Confirmed — ${appointment.appointment_number}`, "", emailHtml);
   }
+  // Lab booking confirmation is the only non-OTP lab message patients receive on WhatsApp.
   const patientPhone = appointment.visitor_phone || appointment.patient_phone;
   if (patientPhone) {
     const confirmText = personalizeForPatient(
@@ -116,7 +117,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       appointment.visitor_name,
       appointment.visitor_relationship,
     );
-    await sendWhatsapp(patientPhone, confirmText);
+    await sendBookingConfirmationWhatsapp(patientPhone, confirmText);
   }
 
   const updated = await getLabTestAppointmentInScope(pool, id, auth);

@@ -6,17 +6,13 @@ import {
   createPatientNotification,
   sendEmail,
   detailsEmailHtml,
-  sendWhatsapp,
-  sendWhatsappFile,
-  notifyPhonesWhatsapp,
-  branchContactPhones,
+  sendBookingConfirmationWhatsapp,
   personalizeForPatient,
 } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { notFound } from "@api/lib/errors";
 import { issueReceipt } from "@api/lib/receipts";
-import { buildReceiptPdf } from "@api/lib/pdf";
 
 export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["branch_staff", "clinic_owner"]);
@@ -85,7 +81,6 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const confirmBody = `Your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
   const confirmText = personalizeForPatient(confirmBody, info?.visitor_name, info?.visitor_relationship);
   const whatsappConfirmText = `${confirmText}${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`;
-  const whatsappConfirm = () => sendWhatsapp(patientPhone, whatsappConfirmText);
   if (info?.patient_email) {
     const confirmBody = `Hi ${info.patient_name ?? "there"},\n\nYour appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
     const confirmHtml = detailsEmailHtml({
@@ -105,36 +100,10 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
       confirmHtml,
     );
   }
+  // Booking confirmation is the only non-OTP message patients receive on WhatsApp.
   if (patientPhone) {
-    await whatsappConfirm();
-    if (receipt) {
-      const pdf = buildReceiptPdf({
-        title: "Booking Confirmation Receipt",
-        receiptNumber: receipt.receiptNumber,
-        issuedAt: new Date().toISOString(),
-        clinicName: info.clinic_name ?? "Clinic",
-        branchName: info.branch_name,
-        branchAddress: info.branch_address ?? null,
-        branchPhone: info.branch_phone ?? null,
-        patientName: info.patient_name ?? "Patient",
-        rows: [
-          { label: "Doctor", value: `Dr. ${info.doctor_name}` },
-          { label: "Date & Time", value: `${appointment.scheduled_date} at ${appointment.scheduled_time}` },
-        ],
-        amount: { label: "Amount Due", value: `${Number(appointment.fee_amount)} ${appointment.currency}`, due: true },
-        copy: "patient",
-      });
-      void sendWhatsappFile(
-        patientPhone,
-        { filename: `receipt-${receipt.receiptNumber}.pdf`, mimetype: "application/pdf", data: pdf },
-        "Your booking confirmation receipt",
-      );
-    }
+    await sendBookingConfirmationWhatsapp(patientPhone, whatsappConfirmText);
   }
-
-  const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-  const clinicConfirmText = `Jido Healthcare: Appointment with Dr. ${info.doctor_name} for ${info.patient_name ?? "a patient"} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
-  void notifyPhonesWhatsapp(clinicPhones, clinicConfirmText);
 
   return json(serializeAppointment(appointment));
 });

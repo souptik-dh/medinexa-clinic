@@ -3,7 +3,7 @@ import { requireRoles } from "@api/lib/auth";
 import { pool, withTransaction } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { getLabTestAppointmentInScope, auditLabAction, serializeLabTestPayment } from "@api/lib/lab-tests";
-import { createPatientNotification, notifyClinicSide, notifyPhonesWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { createPatientNotification, notifyClinicSide, emailPatient, emailBranchContacts } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest, conflict, notFound } from "@api/lib/errors";
@@ -77,16 +77,18 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     });
   });
 
-  await createPatientNotification(pool, appointment.patient_id, "lab_test_payment_success", {
+  const patientPayload = {
     appointment_id: id,
     appointment_number: appointment.appointment_number,
     test_name: appointment.test_name,
     date: appointment.appointment_date,
     amount: appointment.price,
     currency: appointment.currency,
-  });
+  };
+  await createPatientNotification(pool, appointment.patient_id, "lab_test_payment_success", patientPayload);
+  await emailPatient(pool, appointment.patient_id, "lab_test_payment_success", patientPayload);
 
-  await notifyClinicSide(pool, appointment.branch_id, appointment.clinic_id, "lab_test_payment_success", {
+  const clinicPayload = {
     appointment_id: id,
     appointment_number: appointment.appointment_number,
     patient_id: appointment.patient_id,
@@ -95,14 +97,16 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     currency: appointment.currency,
     visitor_name: appointment.visitor_name ?? appointment.patient_name,
     branch_name: appointment.branch_name,
-  });
+  };
+  await notifyClinicSide(pool, appointment.branch_id, appointment.clinic_id, "lab_test_payment_success", clinicPayload);
+  await emailBranchContacts(pool, appointment.branch_id, "lab_test_payment_success", clinicPayload);
 
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT * FROM lab_test_payments WHERE appointment_id = ? ORDER BY updated_at DESC LIMIT 1`,
     [id],
   );
 
-  const receipt = await issueReceipt(pool, {
+  await issueReceipt(pool, {
     sourceType: "lab_test_appointment",
     sourceId: appointment.id,
     eventType: "payment_received",
@@ -132,16 +136,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       paid: true,
     },
   });
-
-  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-  if (patientPhone) {
-    const paymentText = personalizeForPatient(
-      `Payment of ${appointment.price} ${appointment.currency} received for your lab test ${appointment.appointment_number} (${appointment.test_name}).${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
-    void notifyPhonesWhatsapp([patientPhone], paymentText);
-  }
 
   return json(serializeLabTestPayment(rows[0]));
 });

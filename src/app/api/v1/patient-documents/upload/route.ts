@@ -6,7 +6,7 @@ import { badRequest } from "@api/lib/errors";
 import { uploadDocumentToCloudinary } from "@api/lib/cloudinary";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
-import { createPatientNotification } from "@api/lib/notifications";
+import { createPatientNotification, emailPatient } from "@api/lib/notifications";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_MIMES,
@@ -115,12 +115,14 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     });
   });
 
-  await createPatientNotification(pool, patientId, "patient_document_uploaded", {
+  const notifyPayload = {
     document_id: id,
     title,
     document_type: documentType,
     description,
-  });
+  };
+  await createPatientNotification(pool, patientId, "patient_document_uploaded", notifyPayload);
+  await emailPatient(pool, patientId, "patient_document_uploaded", notifyPayload);
 
   const [rows] = await pool.query<RowDataPacket[]>(`${DOCUMENT_SELECT_JOIN} WHERE pd.id = ?`, [id]);
   return json(serializeDocument(rows[0], requestOrigin(ctx.request)), 201);

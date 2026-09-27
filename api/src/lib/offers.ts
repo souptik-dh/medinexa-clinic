@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { pool } from "@api/lib/db";
 import { idSchema, currencySchema } from "@api/lib/validators";
-import { sendWhatsapp, sendEmail, detailsEmailHtml, createClinicUserNotification } from "@api/lib/notifications";
+import { sendEmail, detailsEmailHtml, createClinicUserNotification } from "@api/lib/notifications";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -108,9 +108,9 @@ export function planChannelDelivery(
   contact: Pick<ResolvedRecipient, "ownerEmail" | "ownerPhone">,
 ): { sms: ChannelPlan; whatsapp: ChannelPlan; email: ChannelPlan; portal: ChannelPlan } {
   return {
-    // Always "disabled" — SMS is never sent for offers, regardless of channels.sms.
+    // Always "disabled" — SMS/WhatsApp are never sent for offers, regardless of channels.
     sms: "disabled",
-    whatsapp: !channels.whatsapp ? "disabled" : contact.ownerPhone ? "will_send" : "skipped_no_phone",
+    whatsapp: "disabled",
     email: !channels.email ? "disabled" : contact.ownerEmail ? "will_send" : "skipped_no_email",
     portal: channels.portal ? "will_send" : "disabled",
   };
@@ -234,16 +234,11 @@ export async function sendOfferToClinic(opts: {
 }): Promise<OfferDeliveryResult> {
   const { channels, contact, renderedMessage, offer, regularAmount } = opts;
 
-  // SMS is reserved for OTP and doctor invitations — never dispatched here, regardless
-  // of channels.sms (kept in the schema only for API back-compat with existing callers).
+  // SMS is reserved for OTP and WhatsApp for OTP / booking confirmations / doctor
+  // invitations — neither is dispatched here, regardless of channels.sms/channels.whatsapp
+  // (kept in the schema only for API back-compat with existing callers).
   const sms: ChannelDeliveryStatus = "SKIPPED";
-
-  const whatsappPromise: Promise<ChannelDeliveryStatus> =
-    channels.whatsapp && contact.ownerPhone
-      ? sendWhatsapp(contact.ownerPhone, renderedMessage)
-          .then((ok) => (ok ? ("SENT" as const) : ("FAILED" as const)))
-          .catch(() => "FAILED" as const)
-      : Promise.resolve("SKIPPED" as const);
+  const whatsapp: ChannelDeliveryStatus = "SKIPPED";
 
   const emailPromise: Promise<ChannelDeliveryStatus> =
     channels.email && contact.ownerEmail
@@ -269,7 +264,7 @@ export async function sendOfferToClinic(opts: {
           .catch(() => "FAILED" as const)
       : Promise.resolve("SKIPPED" as const);
 
-  const [whatsapp, email] = await Promise.all([whatsappPromise, emailPromise]);
+  const email = await emailPromise;
 
   let portalNotificationId: string | null = null;
   if (channels.portal) {

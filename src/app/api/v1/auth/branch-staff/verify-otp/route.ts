@@ -6,7 +6,7 @@ import { hashToken, issueTokens } from "@api/lib/auth";
 import { loadRoleBindings } from "@api/lib/auth-flows";
 import { loadStaffPermissions } from "@api/lib/permissions";
 import { ApiError, forbidden, unauthorized } from "@api/lib/errors";
-import { createClinicUserNotification } from "@api/lib/notifications";
+import { createClinicUserNotification, emailClinicUser } from "@api/lib/notifications";
 import type { ResultSetHeader } from "mysql2/promise";
 
 const MAX_ATTEMPTS = 5;
@@ -80,13 +80,15 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
         // Best-effort: a notification failure must never block the staff member's
         // login, which is the actual critical path here.
         try {
-          await createClinicUserNotification(pool, owner.owner_user_id, "staff_joined", {
+          const payload = {
             staff_user_id: user.id,
             staff_name: user.name,
             branch_id: branchId,
             branch_name: owner.branch_name,
             clinic_name: owner.clinic_name,
-          }, branchId);
+          };
+          await createClinicUserNotification(pool, owner.owner_user_id, "staff_joined", payload, branchId);
+          await emailClinicUser(pool, owner.owner_user_id, "staff_joined", payload);
         } catch (err) {
           console.error("[staff_joined] failed to notify clinic owner:", err);
         }

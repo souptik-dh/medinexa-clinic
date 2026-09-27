@@ -5,7 +5,7 @@ import { pool, withTransaction, parseDbTimestamp, type Row } from "@api/lib/db";
 import { hashPassword, hashToken, issueTokens } from "@api/lib/auth";
 import { newId } from "@api/lib/ids";
 import { ApiError, conflict, notFound, isUniqueViolation, badRequest } from "@api/lib/errors";
-import { createClinicUserNotification, sendEmail, emailHtml, sendWhatsapp } from "@api/lib/notifications";
+import { createClinicUserNotification, sendEmail, emailHtml, emailClinicUser } from "@api/lib/notifications";
 import { getInviteSpecializations } from "@api/lib/specializations";
 import { assertClinicOperational, resolveClinicIdByBranch } from "@api/lib/subscriptions";
 import { effectiveInviteStatus, findInviteByCode } from "@api/lib/doctor-invites";
@@ -92,7 +92,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const slotTemplates = invite.slot_template as Array<Record<string, unknown>>;
 
   const [ownerRows] = await pool.query<Row[]>(
-    `SELECT c.owner_user_id, co.email AS owner_email, co.phone AS owner_phone,
+    `SELECT c.owner_user_id, co.email AS owner_email,
             b.name AS branch_name, c.name AS clinic_name
        FROM branches b
        JOIN clinics c ON c.id = b.clinic_id
@@ -105,6 +105,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   const smcName = invite.smc_name ?? body.smc_name ?? null;
   const doctorDegree = invite.doctor_degree ?? body.doctor_degree ?? null;
 
+  const pendingEmails: Array<() => Promise<void>> = [];
   await withTransaction(async (conn) => {
     const [claim] = await conn.query<ResultSetHeader>(
       `UPDATE doctor_invites SET status = 'accepted', reg_no = ?, smc_name = ?, doctor_degree = ?, phone = ?
@@ -174,6 +175,10 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       phone: body.phone,
     };
     await createClinicUserNotification(conn, invite.invited_by, "doctor_invite_accepted", acceptedPayload);
+    // The owner gets the hand-written email below; a staff inviter gets this one.
+    if (!owner || owner.owner_user_id !== invite.invited_by) {
+      pendingEmails.push(() => emailClinicUser(pool, invite.invited_by, "doctor_invite_accepted", acceptedPayload));
+    }
     if (owner && owner.owner_user_id !== invite.invited_by) {
       await createClinicUserNotification(conn, owner.owner_user_id, "doctor_invite_accepted", acceptedPayload);
     }
@@ -191,6 +196,8 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
     throw err;
   });
 
+  await Promise.all(pendingEmails.map((send) => send()));
+
   if (owner) {
     const acceptedBody = `Dr. ${invite.name} (${body.phone}) has accepted your invitation and joined your branch.`;
     await sendEmail(
@@ -199,9 +206,6 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       acceptedBody,
       emailHtml(acceptedBody),
     );
-    if (owner.owner_phone) {
-      await sendWhatsapp(owner.owner_phone as string, acceptedBody);
-    }
   }
 
   const { access_token, refresh_token } = await issueTokens({
