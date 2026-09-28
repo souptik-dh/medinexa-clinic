@@ -23,7 +23,7 @@ Every endpoint below states its **required role(s)** and **scope rule**. Scope i
 
 ## 2. API Design Standards
 
-- **Base URL:** `https://api.medibook.app/api/v1`
+- **Base URL:** `https://healthcare.jido.co.in/api/v1`
 - **Format:** JSON only. `Content-Type: application/json`, except file upload endpoints which use `multipart/form-data`.
 - **Auth:** `Authorization: Bearer <access_token>` (JWT, 15 min TTL) on all non-public endpoints. Refresh via `/auth/refresh` (refresh token, 30 day TTL, rotated on use).
 - **Versioning:** URI-versioned (`/v1`). Breaking changes ship as `/v2`; additive changes (new optional fields) do not bump version.

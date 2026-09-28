@@ -42,6 +42,22 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     whereParts.push("a.clinic_id = ?");
     params.push(clinicId);
   }
+  const doctorId = sp.get("doctor_id");
+  if (doctorId) {
+    if (!idSchema.safeParse(doctorId).success) {
+      throw badRequest("VALIDATION_ERROR", "Invalid doctor_id filter.");
+    }
+    whereParts.push("a.doctor_id = ?");
+    params.push(doctorId);
+  }
+  const branchId = sp.get("branch_id");
+  if (branchId) {
+    if (!idSchema.safeParse(branchId).success) {
+      throw badRequest("VALIDATION_ERROR", "Invalid branch_id filter.");
+    }
+    whereParts.push("a.branch_id = ?");
+    params.push(branchId);
+  }
   const status = sp.get("status");
   if (status) {
     if (!(APPT_STATUSES as readonly string[]).includes(status)) {

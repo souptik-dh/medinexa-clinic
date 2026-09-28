@@ -2,7 +2,7 @@
 
 Live implementation reference for the MediBook API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
 
-- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://api.medibook.app/api/v1` (prod)
+- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://healthcare.jido.co.in/api/v1` (prod)
 - **Format:** JSON only (`Content-Type: application/json`), except legacy upload endpoints (certificates, prescription scans, medical documents) and clinic/branch license uploads which use `multipart/form-data`, and photo uploads which use a two-step Cloudinary flow (see [File uploads](#file-uploads)).
 - **Auth:** `Authorization: Bearer <access_token>` (JWT, 15 min TTL). Refresh via `POST /auth/refresh`.
 - **IDs:** all resource IDs are UUIDs (v4), generated server-side.
@@ -3588,7 +3588,7 @@ The server never trusts the client's disabled-calendar rendering — every check
 
 Auth: any authenticated role. Scope auto-applied: `patient` → own; `branch_staff` → own branch; `doctor` → own; `clinic_owner` → own clinics. Paginated.
 
-**Query:** `?clinic_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, on top of whatever scope already applies.
+**Query:** `?clinic_id=&doctor_id=&branch_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, `doctor_id` to one doctor and `branch_id` to one branch, on top of whatever scope already applies.
 
 **Response `200`**
 
@@ -4518,7 +4518,7 @@ Auth: `doctor` (assigned). Upserts the prescription and sets `finalized_at`.
 ```json
 {
   "text": "Tab. Aspirin 75mg OD x 30 days\nTab. Atorvastatin 10mg HS x 30 days",
-  "scan_url": "https://api.medibook.app/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
+  "scan_url": "https://healthcare.jido.co.in/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
 }
 ```
 
@@ -4645,7 +4645,7 @@ Auth: same as list. Rate limited 200/min.
   "id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e",
   "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "category": "lab_report",
-  "file_url": "https://api.medibook.app/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
+  "file_url": "https://healthcare.jido.co.in/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
   "file_name": "blood-report.pdf",
   "mime_type": "application/pdf",
   "size_bytes": 245760,
