@@ -26,12 +26,14 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
             ap.gender AS visitor_gender,
             ap.patient_id AS visitor_patient_id,
             ap.booking_source AS visitor_booking_source,
-            ap.booked_by AS visitor_booked_by
+            ap.booked_by AS visitor_booked_by,
+            vu.photo_url AS visitor_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
        JOIN users u ON u.id = a.patient_id
        LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
+       LEFT JOIN users vu ON vu.id = ap.patient_id
       WHERE a.id = ? AND ${where}`,
     [ctx.params.id, ...params],
   );

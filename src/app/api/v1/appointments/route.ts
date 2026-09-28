@@ -94,7 +94,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
                ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-               ap.booked_by AS visitor_booked_by
+               ap.booked_by AS visitor_booked_by,
+               (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url
           FROM appointments a
           LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
          WHERE ${whereParts.join(" AND ")}

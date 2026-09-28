@@ -3479,14 +3479,16 @@ deduped by identity across both sources. `visit_count` is the combined total acr
     "name": "Aisha Verma",
     "phone": "+919876543210",
     "age": null,
-    "gender": null
+    "gender": null,
+    "photo_url": null
   },
   "relationship": "self",
   "booking_source": "PATIENT_APP",
   "patient": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Aisha Verma",
-    "mobile": "+919876543210"
+    "mobile": "+919876543210",
+    "photo_url": null
   },
   "booked_by": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
@@ -3526,6 +3528,11 @@ List and detail responses enrich this base object:
 
 - `GET /appointments` items additionally include `doctor_name`, `doctor_photo_url`, `branch_name`, and `branch_phone`.
 - `GET /appointments/:id` additionally includes `doctor_name`, `doctor_photo_url`, `branch_name`, and `branch_phone`.
+- Both also add `photo_url` to `patient_details` and `patient`: the **visiting** patient's profile
+  photo (from the `users` row `patient_details.patient_id` points at — never the booking account's,
+  so a family-member booking doesn't show the account holder's face). `null` when that patient has
+  no photo or `patient_details.patient_id` is `null`. Other endpoints returning an appointment
+  (e.g. `POST /appointments`, status changes) omit the field.
 
 ### POST /appointments
 

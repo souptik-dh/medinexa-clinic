@@ -87,19 +87,25 @@ export async function sendFcmToUser(userId: string, msg: FcmMessage, pushApp: Pu
     return;
   }
 
-  const [rows] = await pool.query<Row[]>(
-    `SELECT token FROM device_tokens WHERE user_id = ? AND app = ?`,
-    [userId, pushApp],
-  );
-  const tokens = rows.map((r) => r.token as string);
-  if (tokens.length === 0) return;
-
   try {
+    // Inside the try: callers await this from within DB transactions, so even a
+    // token-lookup failure must not propagate and roll back the triggering request.
+    const [rows] = await pool.query<Row[]>(
+      `SELECT token FROM device_tokens WHERE user_id = ? AND app = ?`,
+      [userId, pushApp],
+    );
+    const tokens = rows.map((r) => r.token as string);
+    if (tokens.length === 0) {
+      console.log(`[push:${pushApp}] ${msg.data?.type ?? "push"} for user ${userId} skipped — no registered devices.`);
+      return;
+    }
+
     const response = await getMessaging(firebaseApp).sendEachForMulticast({
       tokens,
       notification: { title: msg.title, body: msg.body },
       data: msg.data,
     });
+    console.log(`[push:${pushApp}] ${msg.data?.type ?? "push"} for user ${userId}: ${response.successCount}/${tokens.length} delivered to FCM.`);
     if (response.failureCount > 0) {
       response.responses.forEach((r, i) => {
         if (!r.success) console.error(`[push:${pushApp}] send to token ${tokens[i]} failed:`, r.error?.code, r.error?.message);
