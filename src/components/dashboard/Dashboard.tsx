@@ -16,19 +16,24 @@ import {
   Appointment,
   ApiError,
   Clinic,
+  ClinicDoctorAvailability,
   appointmentsApi,
   clinicsApi,
+  doctorsApi,
 } from "@/lib/api";
 import {
   appointmentStatusColor,
+  addDays,
   formatCurrency,
   today,
 } from "@/lib/utils";
 import { BoxIconLine, BoxCubeIcon, CalenderIcon, DollarLineIcon } from "@/icons";
+import { useClinicId } from "@/hooks/useClinicId";
 
 interface DashboardData {
   clinics: Clinic[];
   appointments: Appointment[];
+  availability: ClinicDoctorAvailability[];
 }
 
 const STATUS_KEY: Record<string, string> = { no_show: "noShow" };
@@ -38,26 +43,36 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const isBranchStaff = user?.role === "branch_staff";
   const statusLabel = (status: string) => t(`status.${STATUS_KEY[status] ?? status}`);
+  const clinicId = useClinicId();
 
   const fetchDashboard = useCallback(async (): Promise<DashboardData> => {
     // branch_staff has no reason to fetch the full clinics directory -
     // their view is scoped to the single clinic/branch on their session
     // (see staffClinic/staffBranch from GET /branch-staff/me).
-    const [clinicRes, apptRes] = await Promise.all([
+    const [clinicRes, apptRes, availabilityRes] = await Promise.all([
       isBranchStaff ? Promise.resolve({ items: [] as Clinic[] }) : clinicsApi.list({ limit: 50 }),
       appointmentsApi.list({ limit: 100 }),
+      // The card is about what's coming up, so it starts tomorrow. Failing to
+      // load it must not take the whole dashboard down with it.
+      clinicId
+        ? doctorsApi
+            .clinicAvailability(clinicId, { dateFrom: addDays(today(), 1), limit: 20 })
+            .then((r) => r.doctors ?? [])
+            .catch(() => [] as ClinicDoctorAvailability[])
+        : Promise.resolve([] as ClinicDoctorAvailability[]),
     ]);
     return {
       clinics: clinicRes.items,
       appointments: apptRes.items,
+      availability: availabilityRes,
     };
-  }, [isBranchStaff]);
+  }, [isBranchStaff, clinicId]);
 
   // Cached by SWR under this key, so returning to the dashboard after
   // visiting another page renders the previous result instantly while a
   // fresh copy revalidates in the background instead of a full skeleton.
   const { data, error, isLoading, mutate } = useSWR(
-    user ? ["dashboard", isBranchStaff] : null,
+    user ? ["dashboard", isBranchStaff, clinicId] : null,
     fetchDashboard
   );
 
@@ -98,6 +113,8 @@ export default function Dashboard() {
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 8);
 
+  const upcomingDoctors = dedupeAvailability(data?.availability ?? []).slice(0, 8);
+
   return (
     <div className="grid grid-cols-12 gap-4 md:gap-6">
       {/* Metrics */}
@@ -137,6 +154,67 @@ export default function Dashboard() {
           label={t("dashboard.collected")}
           value={formatCurrency(collected, currency)}
         />
+      </div>
+
+      {/* Upcoming doctors */}
+      <div className="col-span-12 overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-3 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            {t("dashboard.upcomingDoctors")}
+          </h3>
+          <Link
+            href="/doctors"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-theme-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200"
+          >
+            {t("dashboard.viewAll")}
+          </Link>
+        </div>
+
+        {upcomingDoctors.length === 0 ? (
+          <EmptyState message={t("dashboard.noUpcomingDoctors")} />
+        ) : (
+          <ul className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
+            {upcomingDoctors.map((d) => (
+              <li
+                key={d.key}
+                className="flex flex-col gap-2 rounded-xl border border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-gray-800 text-theme-sm dark:text-white/90">
+                    {d.name}
+                  </p>
+                  <p className="mt-0.5 truncate text-theme-xs text-gray-500 dark:text-gray-400">
+                    {[d.specialization, d.branch_name].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {d.slotWindow && (
+                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-theme-xs font-medium text-brand-500 dark:bg-brand-500/15 dark:text-brand-400">
+                      {d.slotWindow}
+                    </span>
+                  )}
+                  <span className="rounded-full bg-gray-100 px-2.5 py-1 text-theme-xs font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                    {t("dashboard.patientsCount", { count: d.appointments_count })}
+                  </span>
+                  <Link
+                    href={`/doctor-patients?doctor_id=${encodeURIComponent(
+                      d.doctor_id
+                    )}&branch_id=${encodeURIComponent(
+                      d.branch_id
+                    )}&name=${encodeURIComponent(
+                      d.name
+                    )}&branch=${encodeURIComponent(
+                      d.branch_name ?? ""
+                    )}&date=${encodeURIComponent(d.date)}`}
+                    className="rounded-lg bg-brand-500 px-3 py-1.5 text-theme-xs font-medium text-white hover:bg-brand-600"
+                  >
+                    {t("common.view")}
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Recent appointments */}
@@ -245,6 +323,50 @@ function EmptyState({ message }: { message: string }) {
 
 function shortId(id: string): string {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id;
+}
+
+interface UpcomingDoctorRow {
+  key: string;
+  doctor_id: string;
+  branch_id: string;
+  name: string;
+  specialization: string | null;
+  branch_name: string | null;
+  date: string;
+  slotWindow: string;
+  appointments_count: number;
+}
+
+/**
+ * The availability endpoint repeats doctor-branch-days, so identical rows are
+ * collapsed. The signature deliberately includes the slot count: the same
+ * doctor at the same branch on the same day is a distinct row when the number
+ * of free slots differs.
+ */
+function dedupeAvailability(rows: ClinicDoctorAvailability[]): UpcomingDoctorRow[] {
+  const seen = new Set<string>();
+  const out: UpcomingDoctorRow[] = [];
+
+  for (const r of rows) {
+    const slots = r.available_slots ?? [];
+    const times = slots.map((s) => s.time).filter(Boolean);
+    const total = r.total_slots ?? times.length;
+    const signature = `${r.doctor_id}|${r.branch_id}|${r.date}|${total}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    out.push({
+      key: signature,
+      doctor_id: r.doctor_id,
+      branch_id: r.branch_id,
+      name: r.name,
+      specialization: r.specialization ?? null,
+      branch_name: r.branch_name ?? null,
+      date: r.date,
+      slotWindow: times.length ? `${times[0]} – ${times[times.length - 1]}` : "",
+      appointments_count: r.appointments_count ?? 0,
+    });
+  }
+  return out;
 }
 
 function DashboardSkeleton() {

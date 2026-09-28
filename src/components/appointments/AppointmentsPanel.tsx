@@ -24,7 +24,9 @@ import {
   ApiError,
   StatusHistoryEntry,
   appointmentsApi,
+  doctorsApi,
 } from "@/lib/api";
+import DoctorFilterSelect, { DoctorFilterOption } from "@/components/appointments/DoctorFilterSelect";
 import {
   appointmentStatusColor,
   appointmentStatusLabel,
@@ -49,11 +51,25 @@ const STATUS_FILTERS: (AppointmentStatus | "")[] = [
 
 export default function AppointmentsPanel() {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, user, clinic, staffClinic, staffBranch } = useAuth();
   const [items, setItems] = useState<Appointment[]>([]);
   const [status, setStatus] = useState<AppointmentStatus | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [doctorId, setDoctorId] = useState("");
+
+  // Filters the user is editing. These do NOT fetch - the Search button copies
+  // them into `applied`, which is the only thing that triggers a reload.
+  const [applied, setApplied] = useState({
+    status: "" as AppointmentStatus | "",
+    dateFrom: "",
+    dateTo: "",
+    doctorId: "",
+  });
+
+  const [doctorOptions, setDoctorOptions] = useState<DoctorFilterOption[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,17 +95,57 @@ export default function AppointmentsPanel() {
 
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
-    resetKey: `${status}-${dateFrom}-${dateTo}`,
+    resetKey: `${applied.status}-${applied.dateFrom}-${applied.dateTo}-${applied.doctorId}`,
   });
+
+  // Doctor options are scoped to what the signed-in role can actually see:
+  // branch staff only get their own branch, a clinic owner gets the whole
+  // clinic. A failed lookup must not block the list, so it degrades to "no
+  // doctor filter" rather than an error.
+  const isBranchStaff = user?.role === "branch_staff";
+  const doctorScopeBranchId = staffBranch?.id ?? "";
+  const doctorScopeClinicId = (isBranchStaff ? staffClinic?.id : clinic?.id) ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!doctorScopeBranchId && !doctorScopeClinicId) {
+      setDoctorOptions([]);
+      return;
+    }
+    setLoadingDoctors(true);
+    const request = doctorScopeBranchId
+      ? doctorsApi.listByBranch(doctorScopeBranchId)
+      : doctorsApi.listByClinic(doctorScopeClinicId);
+    request
+      .then((res) => {
+        if (cancelled) return;
+        setDoctorOptions(
+          (res.items ?? [])
+            .map((d) => ({ id: d.id, name: d.name }))
+            .filter((d) => !!d.id && !!d.name)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        );
+        setLoadingDoctors(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDoctorOptions([]);
+        setLoadingDoctors(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doctorScopeBranchId, doctorScopeClinicId]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await appointmentsApi.list({
-        status: status || undefined,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        status: applied.status || undefined,
+        date_from: applied.dateFrom || undefined,
+        date_to: applied.dateTo || undefined,
+        doctor_id: applied.doctorId || undefined,
         limit: 50,
       });
       setItems(res.items);
@@ -98,11 +154,16 @@ export default function AppointmentsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [status, dateFrom, dateTo, t]);
+  }, [applied, t]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /** The Search button: commit the edited filters and reload. */
+  const applyFilters = () => {
+    setApplied({ status, dateFrom, dateTo, doctorId });
+  };
 
   const openAction = (appt: Appointment, a: Action) => {
     setActive(appt);
@@ -266,9 +327,34 @@ export default function AppointmentsPanel() {
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </FilterField>
+        <DoctorFilterSelect
+          options={doctorOptions}
+          value={doctorId}
+          onChange={setDoctorId}
+          loading={loadingDoctors}
+        />
         <button
+          type="button"
+          onClick={applyFilters}
+          disabled={loading}
+          className="flex h-11 items-center gap-2 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-4.35-4.35M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+          </svg>
+          {t("appointments.search")}
+        </button>
+        <button
+          type="button"
           onClick={load}
-          className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
+          disabled={loading}
+          className="h-11 rounded-lg border border-gray-300 px-5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/[0.03]"
         >
           {t("appointments.refresh")}
         </button>
@@ -505,10 +591,12 @@ export default function AppointmentsPanel() {
               className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-4 py-3 dark:border-gray-800"
             >
               <div>
-                <p className="text-theme-sm font-medium text-gray-800 dark:text-white/90">
-                  {h.from_status ?? "—"} → {h.to_status}
-                </p>
-                <p className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+                {/* One row per status change. The transition itself is not
+                    shown - only the status the appointment moved into. */}
+                <Badge size="sm" color={appointmentStatusColor(h.to_status as AppointmentStatus)}>
+                  {appointmentStatusLabel(h.to_status as AppointmentStatus, t)}
+                </Badge>
+                <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                   {new Date(h.changed_at).toLocaleString()}
                 </p>
                 {h.note && (

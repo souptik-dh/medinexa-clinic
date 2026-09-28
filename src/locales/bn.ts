@@ -166,6 +166,9 @@ const bn = {
     "collected": "সংগৃহীত",
     "appointmentsByStatus": "স্থিতি অনুযায়ী অ্যাপয়েন্টমেন্ট",
     "recentAppointments": "সাম্প্রতিক অ্যাপয়েন্টমেন্ট",
+    "upcomingDoctors": "আসন্ন চিকিৎসক",
+    "noUpcomingDoctors": "কোনো আসন্ন চিকিৎসক নেই।",
+    "patientsCount": "{count} জন রোগী",
     "seeAll": "সব দেখুন",
     "viewAll": "সব দেখুন",
     "total": "মোট {count}টি",
@@ -267,6 +270,8 @@ const bn = {
     "female": "নারী",
     "otherGender": "অন্যান্য",
     "selectDoctor": "চিকিৎসক নির্বাচন করুন",
+    "allDoctors": "সব চিকিৎসক",
+    "search": "অনুসন্ধান",
     "searchDoctors": "চিকিৎসক অনুসন্ধান...",
     "selectBranch": "শাখা নির্বাচন করুন",
     "searchBranches": "শাখা অনুসন্ধান...",
@@ -971,6 +976,7 @@ const bn = {
     "refresh": "পুনরায় লোড",
     "loading": "লোড করা হচ্ছে...",
     "noData": "কোনো তথ্য পাওয়া যায়নি",
+    "loadMore": "আরও লোড করুন",
     "confirm": "নিশ্চিত করুন",
     "yes": "হ্যাঁ",
     "no": "না",
@@ -1702,6 +1708,16 @@ const bn = {
     "noReviews": "এই শাখার চিকিৎসকদের জন্য এখনো কোনো পর্যালোচনা নেই।",
     "failedToLoad": "পর্যালোচনা লোড করা যায়নি হয়েছে",
     "noRatingsYet": "এখনো কোনো মূল্যায়ন নেই"
+  },
+
+  // ─── Upcoming doctor-day patient list ───
+  "doctorPatients": {
+    "title": "চিকিৎসকের রোগী",
+    "searchPlaceholder": "নাম বা মোবাইল অনুসন্ধান...",
+    "noPatients": "এই তারিখে এই চিকিৎসকের কোনো রোগী নির্ধারিত নেই।",
+    "missingDoctor": "কোনো চিকিৎসক নির্বাচন করা হয়নি।",
+    "time": "সময়",
+    "contact": "যোগাযোগ"
   }
 };
 

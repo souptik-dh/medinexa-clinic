@@ -625,6 +625,31 @@ export interface ClinicDoctorSummary {
   }[];
 }
 
+export interface ClinicDoctorAvailabilitySlot {
+  time: string;
+  status?: string | null;
+}
+
+export interface ClinicDoctorAvailability {
+  doctor_id: string;
+  branch_id: string;
+  date: string;
+  day?: string | null;
+  name: string;
+  specialization: string | null;
+  branch_name: string | null;
+  /** Appointments already booked against this doctor-day. */
+  appointments_count: number;
+  /** Free slots for the day. The window is first → last time. */
+  available_slots: ClinicDoctorAvailabilitySlot[] | null;
+  total_slots?: number;
+}
+
+export interface ClinicDoctorAvailabilityResponse {
+  clinic_id: string;
+  doctors: ClinicDoctorAvailability[];
+}
+
 export interface DoctorInvite {
   type: "invite";
   id: string;
@@ -2293,6 +2318,23 @@ export const doctorsApi = {
     );
   },
 
+  /**
+   * Powers the dashboard "Upcoming Doctors" card. Returns one entry per
+   * doctor-branch-day that still has free slots.
+   */
+  async clinicAvailability(
+    clinicId: string,
+    params: { dateFrom?: string; dateTo?: string; limit?: number }
+  ): Promise<ClinicDoctorAvailabilityResponse> {
+    return apiFetch<ClinicDoctorAvailabilityResponse>(
+      `/clinics/${clinicId}/doctor-availability${query({
+        date_from: params.dateFrom,
+        date_to: params.dateTo,
+        limit: params.limit,
+      })}`
+    );
+  },
+
   async me(): Promise<DoctorProfile> {
     return apiFetch<DoctorProfile>("/doctors/me");
   },
@@ -2476,6 +2518,10 @@ export interface AppointmentListParams {
   date_to?: string;
   limit?: number;
   cursor?: string;
+  /** Narrow to a single doctor (doctor filter / doctor-patients page). */
+  doctor_id?: string;
+  /** Narrow to a single branch (doctor-patients page). */
+  branch_id?: string;
 }
 
 export const appointmentsApi = {
@@ -2496,6 +2542,8 @@ export const appointmentsApi = {
         date_to: params.date_to,
         limit: params.limit,
         cursor: params.cursor,
+        doctor_id: params.doctor_id,
+        branch_id: params.branch_id,
       })}`
     );
   },

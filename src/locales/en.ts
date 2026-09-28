@@ -185,6 +185,9 @@ const en = {
     collected: "Collected",
     appointmentsByStatus: "Appointments by status",
     recentAppointments: "Recent Appointments",
+    upcomingDoctors: "Upcoming Doctors",
+    noUpcomingDoctors: "No upcoming doctors.",
+    patientsCount: "{count} patients",
     seeAll: "See all",
     viewAll: "View all",
     total: "{count} total",
@@ -294,6 +297,8 @@ const en = {
     female: "Female",
     otherGender: "Other",
     selectDoctor: "Select doctor",
+    allDoctors: "All doctors",
+    search: "Search",
     searchDoctors: "Search doctors...",
     selectBranch: "Select branch",
     searchBranches: "Search branches...",
@@ -1060,6 +1065,7 @@ const en = {
     refresh: "Refresh",
     loading: "Loading...",
     noData: "No data available",
+    loadMore: "Load more",
     confirm: "Confirm",
     yes: "Yes",
     no: "No",
@@ -1891,6 +1897,16 @@ const en = {
     noReviews: "No reviews yet for doctors at this branch.",
     failedToLoad: "Failed to load reviews",
     noRatingsYet: "No ratings yet",
+  },
+
+  // ─── Upcoming doctor-day patient list ───
+  doctorPatients: {
+    title: "Doctor Patients",
+    searchPlaceholder: "Search name or mobile...",
+    noPatients: "No patients scheduled for this doctor on this date.",
+    missingDoctor: "No doctor was selected.",
+    time: "Time",
+    contact: "Contact",
   },
 };
 
