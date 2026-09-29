@@ -11,7 +11,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT b.id AS branch_id, b.name AS branch_name, b.address, b.phone, b.timezone,
+    `SELECT b.id AS branch_id, b.name AS branch_name, b.address, b.phone, b.timezone, b.photo_url,
             c.id AS clinic_id, c.name AS clinic_name
        FROM branches b
        JOIN clinics c ON c.id = b.clinic_id AND c.deleted_at IS NULL
@@ -33,6 +33,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       address: row.address,
       phone: row.phone,
       timezone: row.timezone,
+      photo_url: row.photo_url ?? null,
     },
     permissions,
   });

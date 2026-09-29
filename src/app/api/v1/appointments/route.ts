@@ -90,7 +90,9 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
                (SELECT d.name FROM doctors d WHERE d.id = a.doctor_id) AS doctor_name,
                (SELECT d.photo_url FROM doctors d WHERE d.id = a.doctor_id) AS doctor_photo_url,
                (SELECT b.name FROM branches b WHERE b.id = a.branch_id) AS branch_name,
+               (SELECT b.photo_url FROM branches b WHERE b.id = a.branch_id) AS branch_photo_url,
                (SELECT b.phone FROM branches b WHERE b.id = a.branch_id) AS branch_phone,
+               (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url,
                ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
@@ -404,7 +406,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         `SELECT a.*, ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                 ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                 ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-                ap.booked_by AS visitor_booked_by
+                ap.booked_by AS visitor_booked_by,
+                (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url,
+                (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url
            FROM appointments a
            LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
           WHERE a.id = ?`,

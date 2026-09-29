@@ -61,6 +61,7 @@ export function serializeAppointment(r: Row) {
             phone: r.visitor_phone ?? null,
             age: r.visitor_age !== null && r.visitor_age !== undefined ? Number(r.visitor_age) : null,
             gender: r.visitor_gender ?? null,
+            photo_url: r.visitor_photo_url ?? null,
           },
           relationship: r.visitor_relationship ?? "self",
           booking_source: r.visitor_booking_source ?? null,
@@ -70,6 +71,7 @@ export function serializeAppointment(r: Row) {
             id: r.visitor_patient_id ?? null,
             name: r.visitor_name,
             mobile: r.visitor_phone ?? null,
+            photo_url: r.visitor_photo_url ?? null,
           },
           // The account that created the booking — the patient themselves, or clinic
           // staff booking on behalf of a walk-in/family member.
@@ -78,6 +80,7 @@ export function serializeAppointment(r: Row) {
             ...(r.patient_name !== undefined
               ? { name: r.patient_name ?? null, email: r.patient_email ?? null, phone: r.patient_phone ?? null }
               : {}),
+            photo_url: r.patient_photo_url ?? null,
           },
         }
       : {}),
@@ -88,6 +91,7 @@ export function serializeAppointment(r: Row) {
     doctor_name: r.doctor_name ?? null,
     doctor_photo_url: r.doctor_photo_url ?? null,
     branch_name: r.branch_name ?? null,
+    branch_photo_url: r.branch_photo_url ?? null,
     branch_phone: r.branch_phone ?? null,
   };
 }

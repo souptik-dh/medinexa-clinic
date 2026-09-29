@@ -49,7 +49,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     branchParams.push(auth.branchId ?? "__none__");
   }
   const [branches] = await pool.query<Row[]>(
-    `SELECT id, name, address, city, phone, timezone
+    `SELECT id, name, address, city, phone, timezone, photo_url
        FROM branches
       WHERE clinic_id = ? AND deleted_at IS NULL ${branchFilter}
       ORDER BY name ASC`,
@@ -146,6 +146,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         specialization: specializationDisplayName(specializations.get(String(a.doctor_id))),
         branch_id: branchId,
         branch_name: b.name,
+        branch_photo_url: b.photo_url ?? null,
         branch_address: b.address,
         branch_city: b.city,
         date,

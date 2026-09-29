@@ -86,7 +86,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const ids = rows.map((r) => r.id);
   const [deliveryRows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM patient_document_deliveries WHERE document_id IN (${ids.map(() => "?").join(",")}) ORDER BY created_at ASC`,
+    `SELECT pdd.*, (SELECT u.photo_url FROM users u WHERE u.id = pdd.attempted_by) AS attempted_by_photo_url
+       FROM patient_document_deliveries pdd WHERE pdd.document_id IN (${ids.map(() => "?").join(",")}) ORDER BY pdd.created_at ASC`,
     ids,
   );
   const byDocument = new Map<string, RowDataPacket[]>();

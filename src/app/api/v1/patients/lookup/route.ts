@@ -14,6 +14,7 @@ function serializeCandidate(r: Row) {
     name: r.name,
     email: r.email,
     phone: r.phone,
+    photo_url: r.photo_url ?? null,
     is_registered: Boolean(r.is_registered),
   };
 }
@@ -47,7 +48,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT id, name, email, phone, (password_hash IS NOT NULL) AS is_registered
+    `SELECT id, name, email, phone, photo_url, (password_hash IS NOT NULL) AS is_registered
        FROM users
       WHERE ${whereParts.join(" AND ")}
       ORDER BY name ASC

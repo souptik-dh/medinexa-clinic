@@ -13,6 +13,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
             d.name AS doctor_name,
             d.photo_url AS doctor_photo_url,
             b.name AS branch_name,
+            b.photo_url AS branch_photo_url,
             b.phone AS branch_phone,
             u.name AS patient_name,
             u.email AS patient_email,

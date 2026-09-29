@@ -11,7 +11,7 @@ const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function loadProfile(userId: string) {
   const [rows] = await pool.query<Row[]>(
-    `SELECT id, name, email, phone, phone_verified, created_at, updated_at
+    `SELECT id, name, email, phone, phone_verified, photo_url, created_at, updated_at
        FROM users WHERE id = ? AND role = 'clinic_owner'`,
     [userId],
   );
@@ -27,6 +27,7 @@ async function loadProfile(userId: string) {
     email: u.email,
     phone: u.phone,
     phone_verified: u.phone_verified === 1 || u.phone_verified === true,
+    photo_url: u.photo_url ?? null,
     clinics: clinics.map((c) => ({ id: c.id, name: c.name })),
     created_at: u.created_at,
     updated_at: u.updated_at,

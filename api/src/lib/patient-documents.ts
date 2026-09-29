@@ -23,8 +23,9 @@ export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 
 /** Joined SELECT used everywhere a document is returned with display-friendly names. */
 export const DOCUMENT_SELECT_JOIN = `
-  SELECT pd.*, c.name AS clinic_name, b.name AS branch_name,
-         p.name AS patient_name, u.name AS uploaded_by_name
+  SELECT pd.*, c.name AS clinic_name, b.name AS branch_name, b.photo_url AS branch_photo_url,
+         p.name AS patient_name, p.photo_url AS patient_photo_url,
+         u.name AS uploaded_by_name, u.photo_url AS uploaded_by_photo_url
     FROM patient_documents pd
     JOIN clinics c ON c.id = pd.clinic_id
     JOIN branches b ON b.id = pd.branch_id
@@ -158,8 +159,11 @@ export function serializeDocument(r: Row, origin: string): Record<string, unknow
     branch_id: r.branch_id,
     clinic_name: r.clinic_name ?? undefined,
     branch_name: r.branch_name ?? undefined,
+    branch_photo_url: r.branch_photo_url ?? null,
     patient_name: r.patient_name ?? undefined,
+    patient_photo_url: r.patient_photo_url ?? null,
     uploaded_by_name: r.uploaded_by_name ?? undefined,
+    uploaded_by_photo_url: r.uploaded_by_photo_url ?? null,
     document_type: r.document_type,
     title: r.title,
     description: r.description ?? null,
@@ -185,6 +189,7 @@ export function serializeDelivery(r: Row): Record<string, unknown> {
     delivered_at: r.delivered_at ?? null,
     attempted_by: r.attempted_by ?? null,
     attempted_by_name: r.attempted_by_name ?? undefined,
+    attempted_by_photo_url: r.attempted_by_photo_url ?? null,
     attempted_at: r.attempted_at,
     error_message: r.error_message ?? null,
     created_at: r.created_at,

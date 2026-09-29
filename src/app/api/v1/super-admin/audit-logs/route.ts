@@ -52,7 +52,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const { rows, nextCursor } = await fetchPage({
     db: pool,
-    select: `SELECT al.*, u.email AS actor_email`,
+    select: `SELECT al.*, u.email AS actor_email, u.photo_url AS actor_photo_url`,
     from: `FROM audit_logs al LEFT JOIN users u ON u.id = al.actor_user_id`,
     where: whereParts.length > 0 ? whereParts.join(" AND ") : undefined,
     params,
@@ -64,7 +64,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   return json({
     items: rows.map((r) => ({
       id: r.id,
-      actor: r.actor_email ? { user_id: r.actor_user_id, email: r.actor_email } : null,
+      actor: r.actor_email ? { user_id: r.actor_user_id, email: r.actor_email, photo_url: r.actor_photo_url ?? null } : null,
       action: r.action,
       resource_type: r.resource_type,
       resource_id: r.resource_id,

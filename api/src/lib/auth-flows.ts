@@ -52,6 +52,7 @@ export interface PublicUser {
   pin_code?: string | null;
   state?: string | null;
   post_office?: string | null;
+  photo_url: string | null;
   role: Role;
 }
 
@@ -199,6 +200,7 @@ export async function verifyPhoneOtpAndLogin(opts: {
     name: user.name,
     email: user.email ?? null,
     phone: user.phone ?? null,
+    photo_url: user.photo_url ?? null,
     role: user.role,
   };
   return {
@@ -367,6 +369,7 @@ export async function registerUser(input: RegisterInput, verified: boolean) {
     pin_code: input.pin_code ?? null,
     state: input.state ?? null,
     post_office: input.post_office ?? null,
+    photo_url: null,
     role: input.role,
   };
 
@@ -452,6 +455,7 @@ export async function loginWithPassword(
     name: user.name,
     email: user.email ?? null,
     phone: user.phone ?? null,
+    photo_url: user.photo_url ?? null,
     role: user.role,
   };
   return { user: pub, access_token, refresh_token };

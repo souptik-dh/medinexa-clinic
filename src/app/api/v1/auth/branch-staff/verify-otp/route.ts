@@ -110,6 +110,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
       name: user.name,
       phone: user.phone,
       email: user.email ?? null,
+      photo_url: user.photo_url ?? null,
       role: user.role,
       branch_id: branchId,
       permissions,

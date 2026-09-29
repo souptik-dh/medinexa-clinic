@@ -16,7 +16,7 @@ function serializePatient(r: Row) {
     email: r.email,
     phone: r.phone,
     address: r.address,
-    photo_url: r.photo_url,
+    photo_url: r.photo_url ?? null,
     visit_count: visitCount,
     is_new_patient: visitCount <= 1,
     first_visit_date: r.first_visit_date,

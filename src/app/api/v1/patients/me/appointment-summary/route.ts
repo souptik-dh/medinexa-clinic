@@ -18,8 +18,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [nextRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name,
-            b.id AS branch_id, b.name AS branch_name
+            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
@@ -32,8 +32,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [previousRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name,
-            b.id AS branch_id, b.name AS branch_name
+            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
@@ -53,8 +53,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       status: r.status,
       doctor_id: r.doctor_id,
       doctor_name: r.doctor_name,
+      doctor_photo_url: r.doctor_photo_url ?? null,
       branch_id: r.branch_id,
       branch_name: r.branch_name,
+      branch_photo_url: r.branch_photo_url ?? null,
     };
   }
 

@@ -45,6 +45,9 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT a.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
             b.name AS branch_name, c.name AS clinic_name,
+            b.photo_url AS branch_photo_url,
+            (SELECT bu.photo_url FROM users bu WHERE bu.id = a.patient_id) AS patient_photo_url,
+            (SELECT vu.photo_url FROM users vu WHERE vu.id = ltap.patient_id) AS visitor_photo_url,
             ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
             ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
             ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,

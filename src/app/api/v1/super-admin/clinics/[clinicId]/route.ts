@@ -21,7 +21,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const { clinicId } = ctx.params;
 
   const [clinics] = await pool.query<Row[]>(
-    `SELECT c.*, u.email AS owner_email, u.name AS owner_name, u.phone AS owner_phone, u.status AS owner_status
+    `SELECT c.*, u.email AS owner_email, u.name AS owner_name, u.phone AS owner_phone, u.status AS owner_status, u.photo_url AS owner_photo_url
        FROM clinics c JOIN users u ON u.id = c.owner_user_id
       WHERE c.id = ? AND c.deleted_at IS NULL`,
     [clinicId],
@@ -30,13 +30,13 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   if (!clinic) throw notFound("CLINIC_NOT_FOUND", "Clinic not found.");
 
   const [branches] = await pool.query<Row[]>(
-    `SELECT id, name, address, city, district, pin_code, state, phone, timezone,
+    `SELECT id, name, address, city, district, pin_code, state, phone, timezone, photo_url,
             trade_license_validation_status, created_at
        FROM branches WHERE clinic_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
     [clinicId],
   );
   const [staff] = await pool.query<Row[]>(
-    `SELECT u.id, u.name, u.email, u.phone, u.status, bs.branch_id, b.name AS branch_name, bs.created_at
+    `SELECT u.id, u.name, u.email, u.phone, u.status, u.photo_url, bs.branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, bs.created_at
        FROM branch_staff bs
        JOIN users u ON u.id = bs.user_id
        JOIN branches b ON b.id = bs.branch_id
@@ -45,7 +45,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     [clinicId],
   );
   const [doctors] = await pool.query<Row[]>(
-    `SELECT DISTINCT d.id, d.name, d.reg_no, d.smc_name, d.doctor_degree, dba.branch_id, dba.fee_amount, dba.currency
+    `SELECT DISTINCT d.id, d.name, d.photo_url, d.reg_no, d.smc_name, d.doctor_degree, dba.branch_id, dba.fee_amount, dba.currency
        FROM doctor_branch_assignments dba
        JOIN branches b ON b.id = dba.branch_id
        JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
@@ -103,6 +103,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       email: clinic.owner_email,
       phone: clinic.owner_phone,
       account_status: clinic.owner_status,
+      photo_url: clinic.owner_photo_url ?? null,
       created_at: clinic.owner_created_at ?? null,
     },
     licenses: {
@@ -122,6 +123,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       state: b.state,
       phone: b.phone,
       timezone: b.timezone,
+      photo_url: b.photo_url ?? null,
       trade_license_validation_status: b.trade_license_validation_status,
       created_at: b.created_at,
     })),
@@ -131,8 +133,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       email: s.email,
       phone: s.phone,
       account_status: s.status,
+      photo_url: s.photo_url ?? null,
       branch_id: s.branch_id,
       branch_name: s.branch_name,
+      branch_photo_url: s.branch_photo_url ?? null,
       added_at: s.created_at,
     })),
     doctors: doctors.map((d) => {
@@ -140,6 +144,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       return {
         id: d.id,
         name: d.name,
+        photo_url: d.photo_url ?? null,
         specialization: specializationDisplayName(specializations),
         specializations,
         reg_no: d.reg_no,

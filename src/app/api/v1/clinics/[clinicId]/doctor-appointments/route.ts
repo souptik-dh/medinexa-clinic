@@ -73,14 +73,15 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   }));
 
   const [appts] = await pool.query<Row[]>(
-    `SELECT a.id, a.branch_id, b.name AS branch_name, a.scheduled_date, a.scheduled_time,
+    `SELECT a.id, a.branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, a.scheduled_date, a.scheduled_time,
             a.duration_minutes, a.status, a.fee_amount, a.currency, a.payment_method, a.created_at,
             COALESCE(ap.patient_id, a.patient_id) AS subject_id,
             ap.relationship, ap.name AS ap_name, ap.phone AS ap_phone, ap.age AS ap_age,
             ap.gender AS ap_gender, ap.booking_source,
             u.name AS u_name, u.email AS u_email, u.phone AS u_phone, u.date_of_birth, u.gender AS u_gender,
             u.height_cm, u.weight_kg, u.bmi, u.address, u.city, u.photo_url,
-            bu.id AS booked_by_id, bu.name AS booked_by_name, bu.phone AS booked_by_phone
+            bu.id AS booked_by_id, bu.name AS booked_by_name, bu.phone AS booked_by_phone,
+            bu.photo_url AS booked_by_photo_url
        FROM appointments a
        JOIN branches b ON b.id = a.branch_id
        JOIN users bu ON bu.id = a.patient_id
@@ -137,7 +138,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         `SELECT lta.id, lta.patient_id, lta.appointment_number, lta.appointment_date, lta.start_time,
                 lta.status, lta.service_mode, lta.payment_status, lta.completed_at,
                 lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
-                b.name AS branch_name
+                b.name AS branch_name, b.photo_url AS branch_photo_url
            FROM lab_test_appointments lta
            JOIN lab_tests lt ON lt.id = lta.test_id
            JOIN branches b ON b.id = lta.branch_id
@@ -182,6 +183,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       appointment_id: a.id,
       branch_id: a.branch_id,
       branch_name: a.branch_name,
+      branch_photo_url: a.branch_photo_url ?? null,
       date: String(a.scheduled_date).slice(0, 10),
       time: a.scheduled_time,
       duration_minutes: Number(a.duration_minutes),
@@ -190,7 +192,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       currency: a.currency,
       payment_method: a.payment_method,
       booking_source: a.booking_source ?? null,
-      booked_by: { id: a.booked_by_id, name: a.booked_by_name, phone: a.booked_by_phone },
+      booked_by: { id: a.booked_by_id, name: a.booked_by_name, phone: a.booked_by_phone, photo_url: a.booked_by_photo_url ?? null },
       patient: {
         patient_id: a.subject_id,
         relationship: a.relationship ?? "self",
@@ -232,6 +234,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
           test_code: t.test_code,
           test_category: t.test_category,
           branch_name: t.branch_name,
+          branch_photo_url: t.branch_photo_url ?? null,
           date: String(t.appointment_date).slice(0, 10),
           time: t.start_time,
           service_mode: t.service_mode,
@@ -246,7 +249,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   return json({
     clinic_id: clinicId,
-    doctor: { doctor_id: doctor.id, name: doctor.name, degree: doctor.doctor_degree, photo_url: doctor.photo_url },
+    doctor: { doctor_id: doctor.id, name: doctor.name, degree: doctor.doctor_degree, photo_url: doctor.photo_url ?? null },
     dates: [...new Set(pairs.map((p) => p.date))],
     total: items.length,
     appointments: items,

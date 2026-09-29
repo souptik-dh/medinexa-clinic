@@ -19,7 +19,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const params = month ? [clinic.id, month] : [clinic.id];
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT l.id, l.branch_id, b.name AS branch_name, l.period_month, l.currency,
+    `SELECT l.id, l.branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, l.period_month, l.currency,
             l.total_amount, l.payment_count, l.updated_at
        FROM clinic_payment_ledger l
        JOIN branches b ON b.id = l.branch_id
@@ -33,6 +33,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       id: r.id,
       branch_id: r.branch_id,
       branch_name: r.branch_name,
+      branch_photo_url: r.branch_photo_url ?? null,
       period_month: r.period_month,
       currency: r.currency,
       total_amount: Number(r.total_amount),

@@ -25,7 +25,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
 
   const { doctorId } = await loadRoleBindings(result.user.id, "doctor");
   const [doctors] = await pool.query<Row[]>(
-    `SELECT id, name, phone, certificate_url, bio FROM doctors WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, name, phone, certificate_url, photo_url, bio FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [doctorId],
   );
   const doc = doctors[0];
@@ -43,6 +43,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
           specializations: specializationsByDoctor?.get(String(doc.id)) ?? [],
           phone: doc.phone,
           certificate_url: doc.certificate_url,
+          photo_url: doc.photo_url ?? null,
           bio: doc.bio,
         }
       : {
@@ -51,6 +52,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
           specializations: [],
           phone: null,
           certificate_url: null,
+          photo_url: result.user.photo_url ?? null,
           bio: null,
         },
   });

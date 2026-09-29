@@ -45,7 +45,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const { rows, nextCursor } = await fetchPage({
     db: pool,
     select: `SELECT c.id, c.name, c.city, c.district, c.created_at,
-                    u.id AS owner_id, u.email AS owner_email, u.name AS owner_name, u.phone AS owner_phone,
+                    u.id AS owner_id, u.email AS owner_email, u.name AS owner_name, u.phone AS owner_phone, u.photo_url AS owner_photo_url,
                     cs.status AS status, cs.is_trial, cs.monthly_amount, cs.currency,
                     cs.period_start, cs.period_end, cs.trial_started_at, cs.trial_ends_at,
                     cs.deactivated_at, cs.deactivation_reason,
@@ -72,7 +72,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       name: r.name,
       city: r.city,
       district: r.district,
-      owner: { id: r.owner_id, email: r.owner_email, name: r.owner_name, phone: r.owner_phone },
+      owner: { id: r.owner_id, email: r.owner_email, name: r.owner_name, phone: r.owner_phone, photo_url: r.owner_photo_url ?? null },
       branch_count: Number(r.branch_count),
       subscription: sub,
       created_at: r.created_at,

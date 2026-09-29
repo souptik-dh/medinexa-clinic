@@ -263,7 +263,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const [saved] = await pool.query<RowDataPacket[]>(
       `SELECT a.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
               b.name AS branch_name, c.name AS clinic_name,
-              u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+              u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone, u.photo_url AS patient_photo_url,
+              b.photo_url AS branch_photo_url,
+              (SELECT vu.photo_url FROM users vu WHERE vu.id = ltap.patient_id) AS visitor_photo_url,
               ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
               ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
               ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
