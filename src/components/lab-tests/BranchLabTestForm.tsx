@@ -10,8 +10,9 @@ import {
 } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { SelectSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 interface ConfigForm {
   test_id: string;
@@ -46,7 +47,11 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
   const [allTests, setAllTests] = useState<LabTest[]>([]);
   const [configuredTestIds, setConfiguredTestIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [optionsFailed, setOptionsFailed] = useState(false);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
+  // Stays set after success so the form can't be re-submitted while the
+  // redirect back to the list is still in progress.
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<ConfigForm>(
@@ -67,6 +72,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
+    setOptionsFailed(false);
     try {
       const [testsRes, configuredRes] = await Promise.all([
         labTestsApi.list({ clinic_id: clinicId, status: "active", limit: 100 }),
@@ -76,6 +82,7 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       setConfiguredTestIds(new Set(configuredRes.items.map((i) => i.test_id)));
     } catch (err) {
       setError(getErrorMessage(err, t("labTests.failedToLoad")));
+      setOptionsFailed(true);
     } finally {
       setLoading(false);
     }
@@ -112,41 +119,36 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
       setError(t("branchLabTestForm.invalidDuration"));
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        price: Number(config.price),
-        currency: config.currency,
-        duration_minutes: duration,
-        clinic_available: config.clinic_available,
-        home_collection_available: config.home_collection_available,
-        prescription_required: config.prescription_required,
-      };
-      if (editItem) {
-        await branchLabTestsApi.update(branchId, editItem.id, payload);
-        toast.success(t("branchLabTestForm.updatedSuccess"));
-      } else {
-        await branchLabTestsApi.configure(branchId, { ...payload, test_id: config.test_id });
-        toast.success(t("branchLabTestForm.configuredSuccess"));
+    if (saved) return;
+    // Locked: a repeated Enter/click while saving is a no-op.
+    await runSave(async () => {
+      setError(null);
+      try {
+        const payload = {
+          price: Number(config.price),
+          currency: config.currency,
+          duration_minutes: duration,
+          clinic_available: config.clinic_available,
+          home_collection_available: config.home_collection_available,
+          prescription_required: config.prescription_required,
+        };
+        if (editItem) {
+          await branchLabTestsApi.update(branchId, editItem.id, payload);
+          toast.success(t("branchLabTestForm.updatedSuccess"));
+        } else {
+          await branchLabTestsApi.configure(branchId, { ...payload, test_id: config.test_id });
+          toast.success(t("branchLabTestForm.configuredSuccess"));
+        }
+        setSaved(true);
+        router.push(cancelHref);
+      } catch (err) {
+        // Form values are kept so the user can correct and retry.
+        const msg = getErrorMessage(err, t("branchLabTestForm.failedToSave"));
+        setError(msg);
+        toast.error(msg);
       }
-      router.push(cancelHref);
-    } catch (err) {
-      const msg = getErrorMessage(err, t("branchLabTestForm.failedToSave"));
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
-
-  if (loading) {
-    return (
-      <div className="max-w-[500px] rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
-        <DetailSkeleton rows={5} />
-      </div>
-    );
-  }
 
   return (
     <form
@@ -163,6 +165,11 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
           <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
             {t("branchLabTestForm.labTestLabel")}
           </label>
+          {/* Only the test dropdown depends on the loaded options - the rest
+             of the form stays usable while they load. */}
+          {loading ? (
+            <SelectSkeleton />
+          ) : (
           <select
             value={config.test_id}
             onChange={(e) => updateField("test_id", e.target.value)}
@@ -176,6 +183,19 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
               </option>
             ))}
           </select>
+          )}
+          {optionsFailed && !loading && (
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                loadOptions();
+              }}
+              className="mt-1.5 rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -253,16 +273,17 @@ export default function BranchLabTestForm({ editItem }: BranchLabTestFormProps) 
         <button
           type="button"
           onClick={() => router.push(cancelHref)}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          disabled={isSaving}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("common.cancel")}
         </button>
         <button
           type="submit"
-          disabled={busy}
-          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          disabled={isSaving || saved}
+          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
-          {busy ? t("auth.saving") : editItem ? t("labTestsPage.update") : t("branchLabTestForm.configure")}
+          {isSaving || saved ? t("auth.saving") : editItem ? t("labTestsPage.update") : t("branchLabTestForm.configure")}
         </button>
       </div>
     </form>

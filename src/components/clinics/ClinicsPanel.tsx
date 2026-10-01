@@ -9,6 +9,7 @@ import { canCreateClinic } from "@/lib/permissions";
 import Pagination from "@/components/tables/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { useTranslation } from "@/hooks/useTranslation";
+import { CardGridSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 type ClinicRow = Clinic & { doctorCount: number | null };
 
@@ -26,6 +27,8 @@ export default function ClinicsPanel() {
     data: clinicsRes,
     error: swrError,
     isLoading: loading,
+    isValidating: retrying,
+    mutate: retry,
   } = useSWR(isAdmin ? "clinics" : null, () => clinicsApi.list({ limit: 50 }));
   const error = swrError
     ? getErrorMessage(swrError, t("clinicsPage.failedToLoad"))
@@ -142,19 +145,20 @@ export default function ClinicsPanel() {
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          <button
+            type="button"
+            onClick={() => retry()}
+            disabled={retrying}
+            className="ml-3 font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("common.retry")}
+          </button>
         </div>
       )}
 
       {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-48 animate-pulse rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-white/[0.02]"
-            />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
+        <CardGridSkeleton count={3} />
+      ) : error && clinics.length === 0 ? null : filtered.length === 0 ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
             <svg

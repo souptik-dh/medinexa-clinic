@@ -14,7 +14,8 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
-import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
@@ -36,6 +37,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
 
 type Action = "confirm" | "pay" | "complete" | "cancel";
+const ACTIONS: Action[] = ["confirm", "pay", "complete", "cancel"];
 
 const STATUS_FILTERS: (AppointmentStatus | "")[] = [
   "",
@@ -56,7 +58,11 @@ export default function AppointmentsPanel() {
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Per-row action state, keyed `${appointmentId}:${action}` (also `:history`),
+  // so one appointment's in-flight action never disables any other row.
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
+  const detailRequest = useLatestRequest();
 
   const [active, setActive] = useState<Appointment | null>(null);
   const [action, setAction] = useState<Action | null>(null);
@@ -82,8 +88,14 @@ export default function AppointmentsPanel() {
     resetKey: `${status}-${dateFrom}-${dateTo}`,
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = begin();
+    if (!opts?.silent) {
+      setLoading(true);
+      // Don't let the previous filter's rows pose as this query's results.
+      setItems([]);
+    }
     setError(null);
     try {
       const res = await appointmentsApi.list({
@@ -92,13 +104,15 @@ export default function AppointmentsPanel() {
         date_to: dateTo || undefined,
         limit: 50,
       });
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("appointments.failedToLoadAppointments")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [status, dateFrom, dateTo, t]);
+  }, [status, dateFrom, dateTo, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -130,57 +144,73 @@ export default function AppointmentsPanel() {
     cancel: t("appointments.cancelSuccess"),
   };
 
+  const ACTION_PENDING_LABEL: Record<Action, string> = {
+    confirm: t("common.confirmingEllipsis"),
+    pay: t("common.processingEllipsis"),
+    complete: t("common.completingEllipsis"),
+    cancel: t("common.cancellingEllipsis"),
+  };
+
+  const isRowBusy = (id: string) => ACTIONS.some((a) => rowAction.isPending(`${id}:${a}`));
+
   const runAction = async () => {
     if (!active || !action) return;
     if (!can(ACTION_PERMISSION[action])) {
       toast.error(t("appointments.noPermission"));
       return;
     }
-    if (busy) return;
-    setBusy(true);
+    // Captured so the in-flight request keeps its own target/action.
+    const appt = active;
+    const act = action;
+    if (isRowBusy(appt.id)) return;
     setError(null);
-    try {
-      if (action === "confirm") {
-        await appointmentsApi.confirm(active.id);
-      } else if (action === "complete") {
-        await appointmentsApi.complete(active.id);
-      } else if (action === "pay") {
-        const amount = Number(feeAmount);
-        if (!amount || amount <= 0) {
-          throw new ApiError(t("appointments.invalidFeeAmount"), "VALIDATION_ERROR", 400);
+    await rowAction.run(`${appt.id}:${act}`, async () => {
+      try {
+        if (act === "confirm") {
+          await appointmentsApi.confirm(appt.id);
+        } else if (act === "complete") {
+          await appointmentsApi.complete(appt.id);
+        } else if (act === "pay") {
+          const amount = Number(feeAmount);
+          if (!amount || amount <= 0) {
+            throw new ApiError(t("appointments.invalidFeeAmount"), "VALIDATION_ERROR", 400);
+          }
+          await appointmentsApi.pay(
+            appt.id,
+            { fee_amount: amount, method, reference_no: referenceNo || null },
+            crypto.randomUUID()
+          );
+        } else if (act === "cancel") {
+          await appointmentsApi.cancel(appt.id, reason || "Cancelled from dashboard");
         }
-        await appointmentsApi.pay(
-          active.id,
-          { fee_amount: amount, method, reference_no: referenceNo || null },
-          crypto.randomUUID()
-        );
-      } else if (action === "cancel") {
-        await appointmentsApi.cancel(active.id, reason || "Cancelled from dashboard");
+        closeModal();
+        toast.success(ACTION_SUCCESS_MESSAGE[act]);
+        // Status changes can move the row out of the current filter, so
+        // refresh the list - silently, keeping rows on screen.
+        await load({ silent: true });
+      } catch (err) {
+        // Modal stays open with the entered payment/cancel fields intact.
+        const message = getErrorMessage(err, t("appointments.actionFailed"));
+        setError(message);
+        toast.error(message);
       }
-      closeModal();
-      await load();
-      toast.success(ACTION_SUCCESS_MESSAGE[action]);
-    } catch (err) {
-      const message = getErrorMessage(err, t("appointments.actionFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   const showHistory = async (appt: Appointment) => {
-    try {
-      const res = await appointmentsApi.statusHistory(appt.id);
-      setActive(appt);
-      setAction(null);
-      setDetail(null);
-      setShowDetail(false);
-      setHistory(res.items);
-      openModal();
-    } catch {
-      // ignore
-    }
+    await rowAction.run(`${appt.id}:history`, async () => {
+      try {
+        const res = await appointmentsApi.statusHistory(appt.id);
+        setActive(appt);
+        setAction(null);
+        setDetail(null);
+        setShowDetail(false);
+        setHistory(res.items);
+        openModal();
+      } catch {
+        // ignore
+      }
+    });
   };
 
   const viewDetail = async (appt: Appointment) => {
@@ -192,15 +222,21 @@ export default function AppointmentsPanel() {
     setDetailError(null);
     setDetailLoading(true);
     openModal();
+    // Opening another appointment's details drops this response if it's late.
+    const token = detailRequest.begin();
     try {
       const full = await appointmentsApi.get(appt.id);
+      if (!detailRequest.isLatest(token)) return;
       setDetail(full);
     } catch (err) {
+      if (!detailRequest.isLatest(token)) return;
       setDetailError(getErrorMessage(err, t("appointments.failedToLoadAppointment")));
     } finally {
-      setDetailLoading(false);
+      if (detailRequest.isLatest(token)) setDetailLoading(false);
     }
   };
+
+  const actionPending = !!active && !!action && rowAction.isPending(`${active.id}:${action}`);
 
   const canConfirm = (a: Appointment) => a.status === "pending";
   // Paid/completed only makes sense once the appointment has actually happened —
@@ -218,6 +254,7 @@ export default function AppointmentsPanel() {
       {can("appointments:create") && (
         <div className="mb-4 flex justify-end">
           <button
+            type="button"
             onClick={() => setShowBookModal(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
           >
@@ -267,7 +304,8 @@ export default function AppointmentsPanel() {
           />
         </FilterField>
         <button
-          onClick={load}
+          type="button"
+          onClick={() => load()}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
           {t("appointments.refresh")}
@@ -281,9 +319,7 @@ export default function AppointmentsPanel() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-        {loading ? (
-          <TableSkeleton rows={5} cols={7} />
-        ) : items.length === 0 ? (
+        {!loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("appointments.noAppointmentsMatch")}
           </p>
@@ -316,7 +352,16 @@ export default function AppointmentsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {pageItems.map((appt) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={7} actions cellClassName="py-3" />
+                ) : pageItems.map((appt) => {
+                  const rowBusy = isRowBusy(appt.id);
+                  const actionProps = (a: Action) => ({
+                    disabled: rowBusy,
+                    pendingLabel: rowAction.isPending(`${appt.id}:${a}`) ? ACTION_PENDING_LABEL[a] : undefined,
+                    onClick: () => openAction(appt, a),
+                  });
+                  return (
                   <TableRow key={appt.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -353,6 +398,7 @@ export default function AppointmentsPanel() {
                     <TableCell className="py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
+                          type="button"
                           onClick={() => viewDetail(appt)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                           title={t("appointments.view")}
@@ -360,19 +406,20 @@ export default function AppointmentsPanel() {
                           {t("appointments.view")}
                         </button>
                         {canConfirm(appt) && can("appointments:confirm") && (
-                          <ActionButton label={t("appointments.confirm")} color="brand" onClick={() => openAction(appt, "confirm")} />
+                          <ActionButton label={t("appointments.confirm")} color="brand" {...actionProps("confirm")} />
                         )}
                         {canPay(appt) && can("appointments:payment") && (
-                          <ActionButton label={t("appointments.pay")} color="brand" onClick={() => openAction(appt, "pay")} />
+                          <ActionButton label={t("appointments.pay")} color="brand" {...actionProps("pay")} />
                         )}
                         {canComplete(appt) && can("appointments:complete") && (
-                          <ActionButton label={t("appointments.complete")} color="success" onClick={() => openAction(appt, "complete")} />
+                          <ActionButton label={t("appointments.complete")} color="success" {...actionProps("complete")} />
                         )}
                         {canCancel(appt) && can("appointments:cancel") && (
-                          <ActionButton label={t("appointments.cancel")} color="error" onClick={() => openAction(appt, "cancel")} />
+                          <ActionButton label={t("appointments.cancel")} color="error" {...actionProps("cancel")} />
                         )}
                         {canViewReceipts(appt) && (
                           <button
+                            type="button"
                             onClick={() => setReceiptsFor(appt)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                           >
@@ -380,8 +427,10 @@ export default function AppointmentsPanel() {
                           </button>
                         )}
                         <button
+                          type="button"
                           onClick={() => showHistory(appt)}
-                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                          disabled={rowAction.isPending(`${appt.id}:history`)}
+                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                           title={t("appointments.statusHistory")}
                         >
                           {t("appointments.history")}
@@ -389,12 +438,13 @@ export default function AppointmentsPanel() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         )}
-        {items.length > 10 && (
+        {!loading && items.length > 10 && (
           <div className="mt-4 flex justify-center">
             <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
@@ -402,7 +452,7 @@ export default function AppointmentsPanel() {
       </div>
 
       {/* Action modal */}
-      <Modal isOpen={isOpen && !!action} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">
+      <Modal isOpen={isOpen && !!action} onClose={closeModal} closeDisabled={actionPending} className="max-w-[500px] p-6 lg:p-8">
         {active && action && (
           <div>
             <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -476,17 +526,20 @@ export default function AppointmentsPanel() {
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
+                type="button"
                 onClick={closeModal}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                disabled={actionPending}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
                 {t("appointments.close")}
               </button>
               <button
+                type="button"
                 onClick={runAction}
-                disabled={busy}
-                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                disabled={actionPending}
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
-                {busy ? t("appointments.working") : t(`appointments.${action}`)}
+                {actionPending ? ACTION_PENDING_LABEL[action] : t(`appointments.${action}`)}
               </button>
             </div>
           </div>
@@ -525,6 +578,7 @@ export default function AppointmentsPanel() {
         </div>
         <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
@@ -624,6 +678,7 @@ export default function AppointmentsPanel() {
 
         <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
@@ -636,7 +691,7 @@ export default function AppointmentsPanel() {
       <BookAppointmentModal
         isOpen={showBookModal}
         onClose={() => setShowBookModal(false)}
-        onBooked={load}
+        onBooked={() => load({ silent: true })}
       />
 
       <ReceiptsModal
@@ -664,10 +719,15 @@ function ActionButton({
   label,
   color,
   onClick,
+  disabled = false,
+  pendingLabel,
 }: {
   label: string;
   color: "brand" | "success" | "error";
   onClick: () => void;
+  disabled?: boolean;
+  /** Shown instead of `label` while this button's own action is in flight. */
+  pendingLabel?: string;
 }) {
   const colorClass = {
     brand: "text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10",
@@ -676,10 +736,12 @@ function ActionButton({
   }[color];
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`rounded-lg px-2 py-1.5 text-xs font-medium ${colorClass}`}
+      disabled={disabled}
+      className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${colorClass}`}
     >
-      {label}
+      {pendingLabel ?? label}
     </button>
   );
 }

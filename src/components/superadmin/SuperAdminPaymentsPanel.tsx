@@ -12,6 +12,8 @@ import { ApiError, superAdminApi } from "@/lib/api";
 import type { SubscriptionPayment } from "@/lib/api";
 import { formatCurrency, formatDateTime, subscriptionPaymentStatusColor } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useLatestRequest } from "@/hooks/useAsyncAction";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 const PAYMENT_STATUS_KEY: Record<string, string> = {
   PENDING: "billing.pending",
@@ -27,11 +29,24 @@ export default function SuperAdminPaymentsPanel() {
   const [items, setItems] = useState<SubscriptionPayment[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { begin, isLatest } = useLatestRequest();
 
   const load = useCallback(
     async (nextCursor?: string, append = false) => {
-      setLoading(true);
+      // Every filter change or "Load more" supersedes the previous request,
+      // so a slow older response can never overwrite newer results.
+      const token = begin();
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setLoadingMore(false);
+        // Old results must not pose as the new filter's results.
+        setItems([]);
+        setCursor(undefined);
+      }
       setError(null);
       try {
         const res = await superAdminApi.payments({
@@ -41,16 +56,21 @@ export default function SuperAdminPaymentsPanel() {
           limit: nextCursor ? undefined : 20,
           cursor: nextCursor,
         });
+        if (!isLatest(token)) return;
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setCursor(res.next_cursor ?? undefined);
       } catch (err) {
+        if (!isLatest(token)) return;
         if (!append) setItems([]);
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadPayments"));
       } finally {
-        setLoading(false);
+        if (isLatest(token)) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [status, from, to, t]
+    [status, from, to, t, begin, isLatest]
   );
 
   useEffect(() => {
@@ -91,13 +111,26 @@ export default function SuperAdminPaymentsPanel() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        {error && <p className="p-6 text-sm text-error-500">{error}</p>}
+        {error && (
+          <p className="p-6 text-sm text-error-500">
+            {error}
+            {items.length === 0 && (
+              <button
+                type="button"
+                onClick={() => load()}
+                className="ml-3 font-medium underline hover:no-underline"
+              >
+                {t("common.retry")}
+              </button>
+            )}
+          </p>
+        )}
         {!error && items.length === 0 && !loading && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("superAdminPayments.noPaymentsFound")}
           </p>
         )}
-        {items.length > 0 && (
+        {(loading || items.length > 0) && (
           <div className="overflow-x-auto p-4 sm:p-6">
             <Table>
               <TableHeader>
@@ -111,7 +144,9 @@ export default function SuperAdminPaymentsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((p) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={6} cellClassName="px-4 py-3" />
+                ) : items.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">
                       {(p as SubscriptionPayment & { clinic_name?: string | null }).clinic_name || p.clinic_id.slice(0, 8) + "…"}
@@ -133,23 +168,22 @@ export default function SuperAdminPaymentsPanel() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {loadingMore && <TableRowsSkeleton rows={3} cols={6} cellClassName="px-4 py-3" />}
               </TableBody>
             </Table>
-            {cursor && (
+            {!loading && cursor && (
               <div className="mt-3 text-center">
                 <button
+                  type="button"
                   onClick={() => load(cursor, true)}
-                  disabled={loading}
-                  className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
+                  disabled={loadingMore}
+                  className="text-sm font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? t("common.loading") : t("patients.loadMore")}
+                  {loadingMore ? t("common.loading") : t("patients.loadMore")}
                 </button>
               </div>
             )}
           </div>
-        )}
-        {loading && items.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

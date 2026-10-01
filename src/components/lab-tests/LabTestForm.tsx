@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { LabTestCategory, labTestsApi } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 // Fixed-category legacy values, kept as starting suggestions for a clinic
 // with no lab tests yet. Category itself is free text (see labTestsApi.categories()).
@@ -69,14 +70,31 @@ interface LabTestFormProps {
     instructions: string | null;
     default_precautions: string[];
   }) => Promise<void>;
+  /** Lets an embedding drawer block closing while a save is in flight. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
-export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit }: LabTestFormProps) {
+export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit, onPendingChange }: LabTestFormProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [form, setForm] = useState<LabTestFormValues>(initial);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
+  // Stays set after a successful save (as before) so the host can close or
+  // navigate away without the submit button re-enabling in between.
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onPendingChange?.(isSaving);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSaving]);
+  // The host may unmount the form from onSubmit while the save is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
   const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORY_SUGGESTIONS);
 
   useEffect(() => {
@@ -123,19 +141,23 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       setError(t("labTestForm.precautionTooLong"));
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      await onSubmit({
-        ...(mode === "edit" ? { name: form.name.trim(), code: form.code.trim() } : {}),
-        description: form.description.trim() || null,
-        category: form.category.trim(),
-        instructions: form.instructions.trim() || null,
-        default_precautions: precautions,
-      });
-    } catch {
-      setBusy(false);
-    }
+    if (saved) return;
+    // Locked: a repeated Enter/click while saving is a no-op.
+    await runSave(async () => {
+      setError(null);
+      try {
+        await onSubmit({
+          ...(mode === "edit" ? { name: form.name.trim(), code: form.code.trim() } : {}),
+          description: form.description.trim() || null,
+          category: form.category.trim(),
+          instructions: form.instructions.trim() || null,
+          default_precautions: precautions,
+        });
+        setSaved(true);
+      } catch {
+        // The host already showed the error; fields are kept for a retry.
+      }
+    });
   };
 
   return (
@@ -264,16 +286,17 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
         <button
           type="button"
           onClick={() => (onCancel ? onCancel() : cancelHref && router.push(cancelHref))}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          disabled={isSaving}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("common.cancel")}
         </button>
         <button
           type="submit"
-          disabled={busy}
-          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          disabled={isSaving || saved}
+          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
-          {busy ? t("auth.saving") : submitLabel}
+          {isSaving || saved ? t("auth.saving") : submitLabel}
         </button>
       </div>
     </form>

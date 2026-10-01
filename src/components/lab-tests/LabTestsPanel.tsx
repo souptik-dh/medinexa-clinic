@@ -10,7 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import {
   LabTest,
   LabTestStatus,
@@ -40,9 +41,13 @@ export default function LabTestsPanel() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  // Per-row status toggle, so toggling one test never disables another.
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createPending, setCreatePending] = useState(false);
   const [editingTest, setEditingTest] = useState<LabTest | null>(null);
+  const [editPending, setEditPending] = useState(false);
 
   // Category is clinic-defined free text now, so the filter options come from
   // what this clinic has actually used rather than a fixed list.
@@ -50,8 +55,15 @@ export default function LabTestsPanel() {
     labTestsApi.categories(clinicId).then((res) => setCategoryOptions(res.items)).catch(() => {});
   }, [clinicId]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Filters/search fire a request per change: only the newest response may
+  // land. `silent` refreshes after a mutation without flashing the skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = begin();
+    if (!opts?.silent) {
+      setLoading(true);
+      // Don't let the previous filter's rows pose as the new results.
+      setItems([]);
+    }
     setError(null);
     try {
       const res = await labTestsApi.list({
@@ -61,29 +73,31 @@ export default function LabTestsPanel() {
         search: search || undefined,
         limit: 50,
       });
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("labTests.failedToLoad")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [clinicId, statusFilter, categoryFilter, search, t]);
+  }, [clinicId, statusFilter, categoryFilter, search, t, begin, isLatest]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const handleToggleStatus = async (item: LabTest) => {
-    setTogglingId(item.id);
-    try {
-      await labTestsApi.toggleStatus(item.id, item.status === "active" ? "inactive" : "active");
-      await load();
-      toast.success(t("labTestsPage.statusUpdated"));
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdateStatus")));
-    } finally {
-      setTogglingId(null);
-    }
+    await rowAction.run(item.id, async () => {
+      try {
+        await labTestsApi.toggleStatus(item.id, item.status === "active" ? "inactive" : "active");
+        // The row may leave the current status filter, so refresh - silently.
+        await load({ silent: true });
+        toast.success(t("labTestsPage.statusUpdated"));
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdateStatus")));
+      }
+    });
   };
 
   return (
@@ -127,12 +141,14 @@ export default function LabTestsPanel() {
           />
         </FilterField>
         <button
-          onClick={load}
+          type="button"
+          onClick={() => load()}
           className="h-11 rounded-lg border border-gray-300 bg-white px-5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("appointments.refresh")}
         </button>
         <button
+          type="button"
           onClick={() => setCreateOpen(true)}
           className="flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
@@ -147,9 +163,7 @@ export default function LabTestsPanel() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-        {loading ? (
-          <TableSkeleton rows={5} cols={5} />
-        ) : items.length === 0 ? (
+        {!loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("labTests.noLabTests")}
           </p>
@@ -176,7 +190,11 @@ export default function LabTestsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((item) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={5} actions cellClassName="py-3" />
+                ) : items.map((item) => {
+                  const toggling = rowAction.isPending(item.id);
+                  return (
                   <TableRow key={item.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -207,26 +225,32 @@ export default function LabTestsPanel() {
                     <TableCell className="py-3">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
+                          type="button"
                           onClick={() => setEditingTest(item)}
-                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                          disabled={toggling}
+                          className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
                         >
                           {t("common.edit")}
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleToggleStatus(item)}
-                          disabled={togglingId === item.id}
-                          className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                          disabled={toggling}
+                          className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                             item.status === "active"
                               ? "text-error-600 hover:bg-error-50 dark:hover:bg-error-500/10"
                               : "text-success-600 hover:bg-success-50 dark:hover:bg-success-500/10"
                           }`}
                         >
-                          {item.status === "active" ? t("labTestsPage.deactivate") : t("labTestsPage.activate")}
+                          {toggling
+                            ? t("common.updatingEllipsis")
+                            : item.status === "active" ? t("labTestsPage.deactivate") : t("labTestsPage.activate")}
                         </button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -237,6 +261,7 @@ export default function LabTestsPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+        closeDisabled={createPending}
         title={t("labTests.addLabTest")}
       >
         <LabTestForm
@@ -244,12 +269,13 @@ export default function LabTestsPanel() {
           initial={EMPTY_LAB_TEST_FORM}
           submitLabel={t("labTestsPage.create")}
           onCancel={() => setCreateOpen(false)}
+          onPendingChange={setCreatePending}
           onSubmit={async (payload) => {
             try {
               await labTestsApi.create({ ...payload, clinic_id: clinicId });
               toast.success(t("labTestsPage.createdSuccess"));
               setCreateOpen(false);
-              await load();
+              await load({ silent: true });
             } catch (err) {
               toast.error(getErrorMessage(err, t("labTestsPage.failedToCreate")));
               throw err;
@@ -261,6 +287,7 @@ export default function LabTestsPanel() {
       <FormDrawer
         isOpen={editingTest !== null}
         onClose={() => setEditingTest(null)}
+        closeDisabled={editPending}
         title={t("labTests.editLabTest")}
         description={editingTest?.name}
       >
@@ -278,12 +305,15 @@ export default function LabTestsPanel() {
             }}
             submitLabel={t("labTestsPage.update")}
             onCancel={() => setEditingTest(null)}
+            onPendingChange={setEditPending}
             onSubmit={async (payload) => {
               try {
                 await labTestsApi.update(editingTest.id, payload);
                 toast.success(t("labTestsPage.updatedSuccess"));
                 setEditingTest(null);
-                await load();
+                // Name/category edits can move the row out of the current
+                // search/category filter, so refresh - silently.
+                await load({ silent: true });
               } catch (err) {
                 toast.error(getErrorMessage(err, t("labTestsPage.failedToUpdate")));
                 throw err;

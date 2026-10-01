@@ -3,7 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Modal } from "@/components/ui/modal";
-import { ListSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { SelectSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import DatePicker from "@/components/form/date-picker";
 import {
@@ -60,12 +61,16 @@ export default function BookAppointmentModal({
   const [doctors, setDoctors] = useState<BranchDoctor[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [doctorsError, setDoctorsError] = useState<string | null>(null);
+  // Bumped by the Retry button to re-run the doctor fetch for the same branch.
+  const [doctorsReloadKey, setDoctorsReloadKey] = useState(0);
+  const [doctorsFailed, setDoctorsFailed] = useState(false);
   const [doctorId, setDoctorId] = useState("");
 
   const [date, setDate] = useState(today());
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
+  const availRequest = useLatestRequest();
   const [selectedTime, setSelectedTime] = useState("");
   // Day-level availability for the chosen doctor, used to grey out
   // non-bookable dates directly in the calendar popup.
@@ -79,7 +84,8 @@ export default function BookAppointmentModal({
   const [gender, setGender] = useState("");
 
   const [formError, setFormError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Ref-locked so a double click / repeated Enter can never book twice.
+  const { pending: isBooking, run: runBooking } = useAsyncAction();
 
   const doctor = doctors.find((d) => d.id === doctorId) ?? null;
 
@@ -117,6 +123,7 @@ export default function BookAppointmentModal({
     let active = true;
     setDoctorsLoading(true);
     setDoctorsError(null);
+    setDoctorsFailed(false);
     doctorsApi
       .listByBranch(branch.id)
       .then((res) => {
@@ -125,7 +132,9 @@ export default function BookAppointmentModal({
         if (res.items.length === 0) setDoctorsError(t("doctors.noDoctorsAssignedToBranch"));
       })
       .catch((err) => {
-        if (active) setDoctorsError(getErrorMessage(err, t("doctors.failedToLoad")));
+        if (!active) return;
+        setDoctorsError(getErrorMessage(err, t("doctors.failedToLoad")));
+        setDoctorsFailed(true);
       })
       .finally(() => {
         if (active) setDoctorsLoading(false);
@@ -133,11 +142,15 @@ export default function BookAppointmentModal({
     return () => {
       active = false;
     };
-  }, [branch]);
+  }, [branch, doctorsReloadKey]);
 
+  const { begin: beginAvail, isLatest: isLatestAvail } = availRequest;
   const loadAvailability = useCallback(async () => {
+    // Quick date/doctor switches: only the newest slot list may land.
+    const token = beginAvail();
     if (!branch || !doctorId || !date || doctor?.slot_type !== "fixed") {
       setAvailability(null);
+      setAvailLoading(false);
       return;
     }
     setAvailLoading(true);
@@ -145,14 +158,16 @@ export default function BookAppointmentModal({
     setSelectedTime("");
     try {
       const res = await doctorsApi.availability(doctorId, date, branch.id);
+      if (!isLatestAvail(token)) return;
       setAvailability(res);
     } catch (err) {
+      if (!isLatestAvail(token)) return;
       setAvailability(null);
       setAvailError(getErrorMessage(err, t("doctorProfile.failedToLoadAvailability")));
     } finally {
-      setAvailLoading(false);
+      if (isLatestAvail(token)) setAvailLoading(false);
     }
-  }, [branch, doctorId, date, doctor?.slot_type]);
+  }, [branch, doctorId, date, doctor?.slot_type, beginAvail, isLatestAvail]);
 
   useEffect(() => {
     loadAvailability();
@@ -252,48 +267,48 @@ export default function BookAppointmentModal({
       setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
       return;
     }
-    if (busy) return;
-    setBusy(true);
+    if (isBooking) return;
     setFormError(null);
-    try {
-      const created = await appointmentsApi.create(
-        {
-          doctor_id: doctorId,
-          branch_id: branch.id,
-          date,
-          ...(doctor && doctor.slot_type === "fixed" ? { time: selectedTime } : {}),
-          patient_details: {
-            relationship,
-            name: patientName.trim(),
-            phone: phone.trim() || null,
-            age: age.trim() === "" ? null : Number(age),
-            gender: gender || null,
+    await runBooking(async () => {
+      try {
+        const created = await appointmentsApi.create(
+          {
+            doctor_id: doctorId,
+            branch_id: branch.id,
+            date,
+            ...(doctor && doctor.slot_type === "fixed" ? { time: selectedTime } : {}),
+            patient_details: {
+              relationship,
+              name: patientName.trim(),
+              phone: phone.trim() || null,
+              age: age.trim() === "" ? null : Number(age),
+              gender: gender || null,
+            },
           },
-        },
-        crypto.randomUUID()
-      );
-      toast.success(
-        t("bookAppointmentModal.appointmentBookedFor", { name: created.patient_details?.name ?? patientName.trim() }) +
-          (created.scheduled_time ? t("bookAppointmentModal.atTime", { time: created.scheduled_time }) : "")
-      );
-      onBooked?.(created);
-      onClose();
-    } catch (err) {
-      const message =
-        err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
-          ? t("bookAppointmentModal.slotJustTaken")
-          : getErrorMessage(err, t("bookAppointmentModal.unableToBook"));
-      setFormError(message);
-      toast.error(message);
-      // Refresh slots so a just-taken slot no longer looks available.
-      loadAvailability();
-    } finally {
-      setBusy(false);
-    }
+          crypto.randomUUID()
+        );
+        toast.success(
+          t("bookAppointmentModal.appointmentBookedFor", { name: created.patient_details?.name ?? patientName.trim() }) +
+            (created.scheduled_time ? t("bookAppointmentModal.atTime", { time: created.scheduled_time }) : "")
+        );
+        onBooked?.(created);
+        onClose();
+      } catch (err) {
+        // Patient details are kept so the user can pick another slot and retry.
+        const message =
+          err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
+            ? t("bookAppointmentModal.slotJustTaken")
+            : getErrorMessage(err, t("bookAppointmentModal.unableToBook"));
+        setFormError(message);
+        toast.error(message);
+        // Refresh slots so a just-taken slot no longer looks available.
+        loadAvailability();
+      }
+    });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[900px] p-6 lg:p-8">
+    <Modal isOpen={isOpen} onClose={onClose} closeDisabled={isBooking} className="max-w-[900px] p-6 lg:p-8">
       <div>
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           {t("bookAppointmentModal.title")}
@@ -327,9 +342,20 @@ export default function BookAppointmentModal({
                 {t("dashboard.doctor")}
               </label>
               {doctorsLoading ? (
-                <ListSkeleton rows={3} />
+                <SelectSkeleton />
               ) : doctorsError ? (
-                <p className="text-sm text-error-600 dark:text-error-400">{doctorsError}</p>
+                <p className="text-sm text-error-600 dark:text-error-400">
+                  {doctorsError}
+                  {doctorsFailed && (
+                    <button
+                      type="button"
+                      onClick={() => setDoctorsReloadKey((k) => k + 1)}
+                      className="ml-2 font-medium text-brand-500 hover:text-brand-600"
+                    >
+                      {t("common.retry")}
+                    </button>
+                  )}
+                </p>
               ) : (
                 <select
                   value={doctorId}
@@ -418,7 +444,16 @@ export default function BookAppointmentModal({
                     ))}
                   </div>
                 ) : availError ? (
-                  <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
+                  <p className="text-sm text-error-600 dark:text-error-400">
+                    {availError}
+                    <button
+                      type="button"
+                      onClick={() => loadAvailability()}
+                      className="ml-2 font-medium text-brand-500 hover:text-brand-600"
+                    >
+                      {t("common.retry")}
+                    </button>
+                  </p>
                 ) : !availability || availability.slots.length === 0 ? (
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {t("bookAppointmentModal.noBookableSlots")}
@@ -546,17 +581,20 @@ export default function BookAppointmentModal({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            disabled={isBooking}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("common.cancel")}
           </button>
           <button
+            type="button"
             onClick={submit}
-            disabled={busy || !branch || !doctorId}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isBooking || !branch || !doctorId}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("appointments.booking") : t("appointments.bookAppointmentBtn")}
+            {isBooking ? t("appointments.booking") : t("appointments.bookAppointmentBtn")}
           </button>
         </div>
       </div>

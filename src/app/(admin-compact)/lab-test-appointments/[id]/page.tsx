@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Badge from "@/components/ui/badge/Badge";
@@ -13,7 +13,8 @@ import {
   formatCurrency,
 } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { useTranslation } from "@/hooks/useTranslation";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
@@ -25,21 +26,70 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Mirrors the loaded layout: header (number/date + status badge), label/value
+// rows, a titled section and the action bar - so nothing jumps on load.
+function DetailPageSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="space-y-5">
+      <span className="sr-only">Loading</span>
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3.5 w-48" />
+        </div>
+        <Skeleton className="h-5 w-20 rounded-full" />
+      </div>
+      <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        {["w-32", "w-28", "w-20", "w-16"].map((w, i) => (
+          <div key={i} className="flex items-center justify-between gap-3">
+            <Skeleton className="h-3.5 w-16" />
+            <Skeleton className={`h-3.5 ${w}`} />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <Skeleton className="h-4 w-20" />
+        {["w-28", "w-24"].map((w, i) => (
+          <div key={i} className="flex items-center justify-between gap-3">
+            <Skeleton className="h-3.5 w-14" />
+            <Skeleton className={`h-3.5 ${w}`} />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+        <Skeleton className="h-10 w-20 rounded-lg" />
+        <Skeleton className="h-10 w-24 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
 export default function LabTestAppointmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { can } = useAuth();
+  const { t } = useTranslation();
   const [detail, setDetail] = useState<LabTestAppointmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReceipts, setShowReceipts] = useState(false);
 
-  useEffect(() => {
+  const fetchDetail = useCallback(() => {
     labTestAppointmentsApi
       .get(id)
       .then(setDetail)
       .catch((err) => setError(getErrorMessage(err, "Failed to load appointment details")))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    fetchDetail();
+  }, [fetchDetail]);
+
+  const retry = () => {
+    setLoading(true);
+    setError(null);
+    fetchDetail();
+  };
 
   const canApprove = detail?.status === "PENDING" && can("lab_appointments:approve");
   const canReject = detail?.status === "PENDING" && can("lab_appointments:reject");
@@ -63,10 +113,17 @@ export default function LabTestAppointmentDetailPage() {
       />
       <div className="max-w-[600px] rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
         {loading ? (
-          <DetailSkeleton rows={4} />
+          <DetailPageSkeleton />
         ) : error ? (
-          <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-            {error}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={retry}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-100 dark:text-error-400 dark:hover:bg-error-500/20"
+            >
+              {t("common.retry")}
+            </button>
           </div>
         ) : detail ? (
           <div className="space-y-5">
@@ -245,6 +302,7 @@ export default function LabTestAppointmentDetailPage() {
               )}
               {canViewReceipts && (
                 <button
+                  type="button"
                   onClick={() => setShowReceipts(true)}
                   className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >

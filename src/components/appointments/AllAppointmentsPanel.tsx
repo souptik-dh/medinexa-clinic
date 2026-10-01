@@ -16,7 +16,8 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
-import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton, DetailSkeleton, SelectSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
 import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
@@ -48,6 +49,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
 
 type DoctorAction = "confirm" | "pay" | "complete" | "cancel";
+const DOCTOR_ACTIONS: DoctorAction[] = ["confirm", "pay", "complete", "cancel"];
 
 const DOCTOR_STATUS_FILTERS: (AppointmentStatus | "")[] = [
   "",
@@ -75,6 +77,9 @@ export default function AllAppointmentsPanel() {
   const { can } = useAuth();
   const [activeTab, setActiveTab] = useState<"doctor" | "lab">("doctor");
   const [branches, setBranches] = useState<Branch[]>([]);
+  // Clinic whose branch list has settled; the filter shows a skeleton until then.
+  const [branchesLoadedFor, setBranchesLoadedFor] = useState<string | null>(null);
+  const branchesLoading = !!clinicId && branchesLoadedFor !== clinicId;
 
   // Doctor appointments state
   const [docItems, setDocItems] = useState<Appointment[]>([]);
@@ -83,11 +88,15 @@ export default function AllAppointmentsPanel() {
   const [docDateTo, setDocDateTo] = useState("");
   const [docLoading, setDocLoading] = useState(true);
   const [docError, setDocError] = useState<string | null>(null);
+  const docRequest = useLatestRequest();
 
   // Doctor action modal state
   const [activeDoc, setActiveDoc] = useState<Appointment | null>(null);
   const [docAction, setDocAction] = useState<DoctorAction | null>(null);
-  const [docBusy, setDocBusy] = useState(false);
+  // Per-row action state, keyed `${appointmentId}:${action}` (also `:history`),
+  // so one appointment's in-flight action never disables any other row.
+  const docRowAction = useKeyedAction<string>();
+  const detailRequest = useLatestRequest();
   const [feeAmount, setFeeAmount] = useState("");
   const [method, setMethod] = useState<"cash" | "upi">("cash");
   const [referenceNo, setReferenceNo] = useState("");
@@ -116,7 +125,8 @@ export default function AllAppointmentsPanel() {
   const [labDateTo, setLabDateTo] = useState("");
   const [labLoading, setLabLoading] = useState(false);
   const [labError, setLabError] = useState<string | null>(null);
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  const labRequest = useLatestRequest();
+  const labRowAction = useKeyedAction<string>();
   const {
     page: labPage,
     setPage: setLabPage,
@@ -129,13 +139,24 @@ export default function AllAppointmentsPanel() {
   // Load branches for filters
   useEffect(() => {
     if (clinicId) {
-      branchesApi.list(clinicId).then((res) => setBranches(res.items)).catch(() => {});
+      branchesApi
+        .list(clinicId)
+        .then((res) => setBranches(res.items))
+        .catch(() => {})
+        .finally(() => setBranchesLoadedFor(clinicId));
     }
   }, [clinicId]);
 
   // ---- Doctor Appointments ----
-  const loadDoctor = useCallback(async () => {
-    setDocLoading(true);
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const { begin: beginDoc, isLatest: isLatestDoc } = docRequest;
+  const loadDoctor = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = beginDoc();
+    if (!opts?.silent) {
+      setDocLoading(true);
+      // Don't let the previous filter's rows pose as this query's results.
+      setDocItems([]);
+    }
     setDocError(null);
     try {
       const res = await appointmentsApi.list({
@@ -145,13 +166,15 @@ export default function AllAppointmentsPanel() {
         date_to: docDateTo || undefined,
         limit: 50,
       });
+      if (!isLatestDoc(token)) return;
       setDocItems(res.items);
     } catch (err) {
+      if (!isLatestDoc(token)) return;
       setDocError(getErrorMessage(err, t("appointments.failedToLoadAppointments")));
     } finally {
-      setDocLoading(false);
+      if (isLatestDoc(token)) setDocLoading(false);
     }
-  }, [clinicId, docStatus, docDateFrom, docDateTo, t]);
+  }, [clinicId, docStatus, docDateFrom, docDateTo, t, beginDoc, isLatestDoc]);
 
   useEffect(() => {
     if (activeTab === "doctor") loadDoctor();
@@ -183,55 +206,72 @@ export default function AllAppointmentsPanel() {
     cancel: t("appointments.cancelSuccessShort"),
   };
 
+  const ACTION_PENDING_LABEL: Record<DoctorAction, string> = {
+    confirm: t("common.confirmingEllipsis"),
+    pay: t("common.processingEllipsis"),
+    complete: t("common.completingEllipsis"),
+    cancel: t("common.cancellingEllipsis"),
+  };
+
+  const isDocRowBusy = (id: string) =>
+    DOCTOR_ACTIONS.some((a) => docRowAction.isPending(`${id}:${a}`));
+
   const runDocAction = async () => {
     if (!activeDoc || !docAction) return;
     if (!can(ACTION_PERMISSION[docAction])) {
       toast.error(t("appointments.noPermission"));
       return;
     }
-    if (docBusy) return;
-    setDocBusy(true);
+    // Captured so the in-flight request keeps its own target/action.
+    const appt = activeDoc;
+    const act = docAction;
+    if (isDocRowBusy(appt.id)) return;
     setDocError(null);
-    try {
-      if (docAction === "confirm") {
-        await appointmentsApi.confirm(activeDoc.id);
-      } else if (docAction === "complete") {
-        await appointmentsApi.complete(activeDoc.id);
-      } else if (docAction === "pay") {
-        const amount = Number(feeAmount);
-        if (!amount || amount <= 0) {
-          throw new ApiError(t("appointments.invalidFeeAmount"), "VALIDATION_ERROR", 400);
+    await docRowAction.run(`${appt.id}:${act}`, async () => {
+      try {
+        if (act === "confirm") {
+          await appointmentsApi.confirm(appt.id);
+        } else if (act === "complete") {
+          await appointmentsApi.complete(appt.id);
+        } else if (act === "pay") {
+          const amount = Number(feeAmount);
+          if (!amount || amount <= 0) {
+            throw new ApiError(t("appointments.invalidFeeAmount"), "VALIDATION_ERROR", 400);
+          }
+          await appointmentsApi.pay(
+            appt.id,
+            { fee_amount: amount, method, reference_no: referenceNo || null },
+            crypto.randomUUID()
+          );
+        } else if (act === "cancel") {
+          await appointmentsApi.cancel(appt.id, reason || "Cancelled from dashboard");
         }
-        await appointmentsApi.pay(
-          activeDoc.id,
-          { fee_amount: amount, method, reference_no: referenceNo || null },
-          crypto.randomUUID()
-        );
-      } else if (docAction === "cancel") {
-        await appointmentsApi.cancel(activeDoc.id, reason || "Cancelled from dashboard");
+        closeModal();
+        toast.success(ACTION_SUCCESS[act]);
+        // Status changes can move the row out of the current filter, so
+        // refresh the list - silently, keeping rows on screen.
+        await loadDoctor({ silent: true });
+      } catch (err) {
+        // Modal stays open with the entered payment/cancel fields intact.
+        const message = getErrorMessage(err, t("appointments.actionFailed"));
+        setDocError(message);
+        toast.error(message);
       }
-      closeModal();
-      await loadDoctor();
-      toast.success(ACTION_SUCCESS[docAction]);
-    } catch (err) {
-      const message = getErrorMessage(err, t("appointments.actionFailed"));
-      setDocError(message);
-      toast.error(message);
-    } finally {
-      setDocBusy(false);
-    }
+    });
   };
 
   const showDocHistory = async (appt: Appointment) => {
-    try {
-      const res = await appointmentsApi.statusHistory(appt.id);
-      setActiveDoc(appt);
-      setDocAction(null);
-      setDetail(null);
-      setShowDetail(false);
-      setHistory(res.items);
-      openModal();
-    } catch { /* ignore */ }
+    await docRowAction.run(`${appt.id}:history`, async () => {
+      try {
+        const res = await appointmentsApi.statusHistory(appt.id);
+        setActiveDoc(appt);
+        setDocAction(null);
+        setDetail(null);
+        setShowDetail(false);
+        setHistory(res.items);
+        openModal();
+      } catch { /* ignore */ }
+    });
   };
 
   const viewDocDetail = async (appt: Appointment) => {
@@ -243,15 +283,22 @@ export default function AllAppointmentsPanel() {
     setDetailError(null);
     setDetailLoading(true);
     openModal();
+    // Opening another appointment's details drops this response if it's late.
+    const token = detailRequest.begin();
     try {
       const full = await appointmentsApi.get(appt.id);
+      if (!detailRequest.isLatest(token)) return;
       setDetail(full);
     } catch (err) {
+      if (!detailRequest.isLatest(token)) return;
       setDetailError(getErrorMessage(err, t("appointments.failedToLoadAppointment")));
     } finally {
-      setDetailLoading(false);
+      if (detailRequest.isLatest(token)) setDetailLoading(false);
     }
   };
+
+  const docActionPending =
+    !!activeDoc && !!docAction && docRowAction.isPending(`${activeDoc.id}:${docAction}`);
 
   const canConfirm = (a: Appointment) => a.status === "pending";
   const canPay = (a: Appointment) => a.status === "confirmed" && a.scheduled_date <= today();
@@ -262,8 +309,15 @@ export default function AllAppointmentsPanel() {
     a.status === "confirmed" || a.status === "paid" || a.status === "completed";
 
   // ---- Lab Appointments ----
-  const loadLab = useCallback(async () => {
-    setLabLoading(true);
+  // Fires per keystroke of the patient search, so only the newest response
+  // may land; `silent` refreshes after a mutation without a skeleton flash.
+  const { begin: beginLab, isLatest: isLatestLab } = labRequest;
+  const loadLab = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = beginLab();
+    if (!opts?.silent) {
+      setLabLoading(true);
+      setLabItems([]);
+    }
     setLabError(null);
     try {
       const res = await labTestAppointmentsApi.list({
@@ -274,29 +328,30 @@ export default function AllAppointmentsPanel() {
         date_to: labDateTo || undefined,
         limit: 50,
       });
+      if (!isLatestLab(token)) return;
       setLabItems(res.items);
     } catch (err) {
+      if (!isLatestLab(token)) return;
       setLabError(getErrorMessage(err, t("appointments.failedToLoadLabAppointments")));
     } finally {
-      setLabLoading(false);
+      if (isLatestLab(token)) setLabLoading(false);
     }
-  }, [labBranch, labStatus, labSearch, labDateFrom, labDateTo, t]);
+  }, [labBranch, labStatus, labSearch, labDateFrom, labDateTo, t, beginLab, isLatestLab]);
 
   useEffect(() => {
     if (activeTab === "lab") loadLab();
   }, [activeTab, loadLab]);
 
   const handleLabComplete = async (id: string) => {
-    setCompletingId(id);
-    try {
-      await labTestAppointmentsApi.complete(id);
-      toast.success(t("appointments.labAppointmentCompleted"));
-      await loadLab();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("appointments.failedToCompleteAppointment")));
-    } finally {
-      setCompletingId(null);
-    }
+    await labRowAction.run(`${id}:complete`, async () => {
+      try {
+        await labTestAppointmentsApi.complete(id);
+        toast.success(t("appointments.labAppointmentCompleted"));
+        await loadLab({ silent: true });
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("appointments.failedToCompleteAppointment")));
+      }
+    });
   };
 
   const canLabApprove = (a: LabTestAppointment) => a.status === "PENDING";
@@ -315,6 +370,7 @@ export default function AllAppointmentsPanel() {
       {(activeTab === "doctor" ? can("appointments:create") : can("lab_appointments:create")) && (
         <div className="mb-4 flex justify-end">
           <button
+            type="button"
             onClick={() => setShowBookModal(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
           >
@@ -335,6 +391,7 @@ export default function AllAppointmentsPanel() {
       {/* Tabs */}
       <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-white/[0.03] no-scrollbar">
         <button
+          type="button"
           onClick={() => setActiveTab("doctor")}
           className={`flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition ${
             activeTab === "doctor"
@@ -345,6 +402,7 @@ export default function AllAppointmentsPanel() {
           {t("appointments.doctorAppointments")}
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("lab")}
           className={`flex-1 whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium transition ${
             activeTab === "lab"
@@ -390,7 +448,8 @@ export default function AllAppointmentsPanel() {
               />
             </FilterField>
             <button
-              onClick={loadDoctor}
+              type="button"
+              onClick={() => loadDoctor()}
               className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
             >
               {t("appointments.refresh")}
@@ -404,9 +463,7 @@ export default function AllAppointmentsPanel() {
           )}
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-            {docLoading ? (
-              <TableSkeleton rows={5} cols={7} />
-            ) : docItems.length === 0 ? (
+            {!docLoading && docItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t("appointments.noAppointmentsMatch")}
               </p>
@@ -439,7 +496,16 @@ export default function AllAppointmentsPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {docPageItems.map((appt) => (
+                    {docLoading ? (
+                      <TableRowsSkeleton rows={5} cols={7} actions cellClassName="py-3" />
+                    ) : docPageItems.map((appt) => {
+                      const rowBusy = isDocRowBusy(appt.id);
+                      const actionProps = (a: DoctorAction) => ({
+                        disabled: rowBusy,
+                        pendingLabel: docRowAction.isPending(`${appt.id}:${a}`) ? ACTION_PENDING_LABEL[a] : undefined,
+                        onClick: () => openDocAction(appt, a),
+                      });
+                      return (
                       <TableRow key={appt.id}>
                         <TableCell className="py-3">
                           <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -476,25 +542,27 @@ export default function AllAppointmentsPanel() {
                         <TableCell className="py-3">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              type="button"
                               onClick={() => viewDocDetail(appt)}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                             >
                               {t("appointments.view")}
                             </button>
                             {canConfirm(appt) && can("appointments:confirm") && (
-                              <DocActionBtn label={t("appointments.confirm")} color="brand" onClick={() => openDocAction(appt, "confirm")} />
+                              <DocActionBtn label={t("appointments.confirm")} color="brand" {...actionProps("confirm")} />
                             )}
                             {canPay(appt) && can("appointments:payment") && (
-                              <DocActionBtn label={t("appointments.pay")} color="brand" onClick={() => openDocAction(appt, "pay")} />
+                              <DocActionBtn label={t("appointments.pay")} color="brand" {...actionProps("pay")} />
                             )}
                             {canComplete(appt) && can("appointments:complete") && (
-                              <DocActionBtn label={t("appointments.complete")} color="success" onClick={() => openDocAction(appt, "complete")} />
+                              <DocActionBtn label={t("appointments.complete")} color="success" {...actionProps("complete")} />
                             )}
                             {canCancel(appt) && can("appointments:cancel") && (
-                              <DocActionBtn label={t("appointments.cancel")} color="error" onClick={() => openDocAction(appt, "cancel")} />
+                              <DocActionBtn label={t("appointments.cancel")} color="error" {...actionProps("cancel")} />
                             )}
                             {canViewReceipts(appt) && (
                               <button
+                                type="button"
                                 onClick={() => setReceiptsFor(appt)}
                                 className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                               >
@@ -502,8 +570,10 @@ export default function AllAppointmentsPanel() {
                               </button>
                             )}
                             <button
+                              type="button"
                               onClick={() => showDocHistory(appt)}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                              disabled={docRowAction.isPending(`${appt.id}:history`)}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                               title={t("appointments.statusHistory")}
                             >
                               {t("appointments.history")}
@@ -511,12 +581,13 @@ export default function AllAppointmentsPanel() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
             )}
-            {docItems.length > 10 && (
+            {!docLoading && docItems.length > 10 && (
               <div className="mt-4 flex justify-center">
                 <Pagination currentPage={docPage} totalPages={docTotalPages} onPageChange={setDocPage} />
               </div>
@@ -530,6 +601,9 @@ export default function AllAppointmentsPanel() {
         <div>
           <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:flex-row sm:items-end">
             <FilterField label={t("appointments.branch")}>
+              {branchesLoading ? (
+                <SelectSkeleton />
+              ) : (
               <select
                 value={labBranch}
                 onChange={(e) => setLabBranch(e.target.value)}
@@ -540,6 +614,7 @@ export default function AllAppointmentsPanel() {
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
+              )}
             </FilterField>
             <FilterField label={t("dashboard.status")}>
               <select
@@ -580,7 +655,8 @@ export default function AllAppointmentsPanel() {
               />
             </FilterField>
             <button
-              onClick={loadLab}
+              type="button"
+              onClick={() => loadLab()}
               className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
             >
               {t("appointments.refresh")}
@@ -594,9 +670,7 @@ export default function AllAppointmentsPanel() {
           )}
 
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-            {labLoading ? (
-              <TableSkeleton rows={5} cols={8} />
-            ) : labItems.length === 0 ? (
+            {!labLoading && labItems.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t("appointments.noLabAppointmentsMatch")}
               </p>
@@ -632,7 +706,11 @@ export default function AllAppointmentsPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {labPageItems.map((appt) => (
+                    {labLoading ? (
+                      <TableRowsSkeleton rows={5} cols={8} actions cellClassName="py-3" />
+                    ) : labPageItems.map((appt) => {
+                      const completing = labRowAction.isPending(`${appt.id}:complete`);
+                      return (
                       <TableRow key={appt.id}>
                         <TableCell className="py-3">
                           <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -685,11 +763,12 @@ export default function AllAppointmentsPanel() {
                             )}
                             {canLabComplete(appt) && can("lab_appointments:complete") && (
                               <button
+                                type="button"
                                 onClick={() => handleLabComplete(appt.id)}
-                                disabled={completingId === appt.id}
-                                className="rounded-lg px-2 py-1.5 text-xs font-medium text-success-600 hover:bg-success-50 disabled:opacity-50 dark:hover:bg-success-500/10"
+                                disabled={completing}
+                                className="rounded-lg px-2 py-1.5 text-xs font-medium text-success-600 hover:bg-success-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-success-500/10"
                               >
-                                {t("appointments.complete")}
+                                {completing ? t("common.completingEllipsis") : t("appointments.complete")}
                               </button>
                             )}
                             {canLabPay(appt) && can("lab_payments:collect") && (
@@ -701,12 +780,13 @@ export default function AllAppointmentsPanel() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
             )}
-            {labItems.length > 10 && (
+            {!labLoading && labItems.length > 10 && (
               <div className="mt-4 flex justify-center">
                 <Pagination currentPage={labPage} totalPages={labTotalPages} onPageChange={setLabPage} />
               </div>
@@ -716,7 +796,7 @@ export default function AllAppointmentsPanel() {
       )}
 
       {/* Doctor appointment action modal */}
-      <Modal isOpen={isOpen && !!docAction} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">
+      <Modal isOpen={isOpen && !!docAction} onClose={closeModal} closeDisabled={docActionPending} className="max-w-[500px] p-6 lg:p-8">
         {activeDoc && docAction && (
           <div>
             <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -782,17 +862,20 @@ export default function AllAppointmentsPanel() {
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
+                type="button"
                 onClick={closeModal}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                disabled={docActionPending}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
                 {t("appointments.close")}
               </button>
               <button
+                type="button"
                 onClick={runDocAction}
-                disabled={docBusy}
-                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                disabled={docActionPending}
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
-                {docBusy ? t("appointments.working") : t(`appointments.${docAction}`)}
+                {docActionPending ? ACTION_PENDING_LABEL[docAction] : t(`appointments.${docAction}`)}
               </button>
             </div>
           </div>
@@ -824,6 +907,7 @@ export default function AllAppointmentsPanel() {
         </div>
         <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
@@ -899,6 +983,7 @@ export default function AllAppointmentsPanel() {
         ) : null}
         <div className="mt-6 flex justify-end">
           <button
+            type="button"
             onClick={closeModal}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
@@ -912,13 +997,13 @@ export default function AllAppointmentsPanel() {
         isOpen={showBookModal && activeTab === "doctor"}
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId}
-        onBooked={loadDoctor}
+        onBooked={() => loadDoctor({ silent: true })}
       />
       <BookLabTestModal
         isOpen={showBookModal && activeTab === "lab"}
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId}
-        onBooked={loadLab}
+        onBooked={() => loadLab({ silent: true })}
       />
 
       <ReceiptsModal
@@ -946,10 +1031,15 @@ function DocActionBtn({
   label,
   color,
   onClick,
+  disabled = false,
+  pendingLabel,
 }: {
   label: string;
   color: "brand" | "success" | "error";
   onClick: () => void;
+  disabled?: boolean;
+  /** Shown instead of `label` while this button's own action is in flight. */
+  pendingLabel?: string;
 }) {
   const colorClass = {
     brand: "text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10",
@@ -957,8 +1047,13 @@ function DocActionBtn({
     error: "text-error-600 hover:bg-error-50 dark:hover:bg-error-500/10",
   }[color];
   return (
-    <button onClick={onClick} className={`rounded-lg px-2 py-1.5 text-xs font-medium ${colorClass}`}>
-      {label}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${colorClass}`}
+    >
+      {pendingLabel ?? label}
     </button>
   );
 }

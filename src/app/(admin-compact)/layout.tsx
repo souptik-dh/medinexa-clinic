@@ -8,6 +8,7 @@ import Backdrop from "@/layout/Backdrop";
 import SubscriptionGateBanner from "@/components/subscription/SubscriptionGateBanner";
 import SubscriptionTrialBanner from "@/components/subscription/SubscriptionTrialBanner";
 import ClinicTabs from "@/components/clinics/ClinicTabs";
+import { AppShellSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useRouter } from "next/navigation";
 import React, { Suspense, useEffect } from "react";
 import { usePathname } from "next/navigation";
@@ -29,7 +30,10 @@ export default function AdminCompactLayout({
   }, [isAuthReady, user, router]);
 
   if (!user) {
-    return null;
+    // While the stored session is still being read, show the app chrome as
+    // a skeleton instead of a blank screen; once it's confirmed there is no
+    // user, render nothing while the redirect above takes over.
+    return isAuthReady ? null : <AppShellSkeleton />;
   }
 
   // Dynamic class for main content margin based on sidebar state

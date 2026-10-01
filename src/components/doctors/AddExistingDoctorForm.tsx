@@ -25,6 +25,8 @@ import { getInputClass } from "@/components/form/fieldStyles";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 type RequiredField =
   | "branch"
@@ -47,11 +49,14 @@ interface AddExistingDoctorFormProps {
    * cancel hand control back to the host instead of navigating away. */
   onDone?: () => void;
   onCancel?: () => void;
+  /** Reports when the submit is in flight, so a host drawer can block closing. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 export default function AddExistingDoctorForm({
   onDone,
   onCancel,
+  onPendingChange,
 }: AddExistingDoctorFormProps = {}) {
   const router = useRouter();
   const { can } = useAuth();
@@ -62,6 +67,8 @@ export default function AddExistingDoctorForm({
   const [roster, setRoster] = useState<ClinicDoctorSummary[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  // Bumped by Retry to re-run the roster load for the same branch.
+  const [rosterReloadKey, setRosterReloadKey] = useState(0);
   const [selectedDoctor, setSelectedDoctor] = useState<ClinicDoctorSummary | null>(null);
   const [doctorSearch, setDoctorSearch] = useState("");
 
@@ -72,18 +79,38 @@ export default function AddExistingDoctorForm({
   const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
   const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSubmitting, run: runSubmit } = useAsyncAction();
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    onPendingChange?.(isSubmitting);
+  }, [isSubmitting, onPendingChange]);
+  // The host may unmount the form from onDone while the request is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     if (!branch) {
       setOperatingDays(null);
       return;
     }
+    // Ignore a slower response for a previously selected branch.
+    let active = true;
     branchScheduleApi
       .get(branch.id)
-      .then((res) => setOperatingDays(res.operating_days))
-      .catch(() => setOperatingDays(null));
+      .then((res) => {
+        if (active) setOperatingDays(res.operating_days);
+      })
+      .catch(() => {
+        if (active) setOperatingDays(null);
+      });
+    return () => {
+      active = false;
+    };
   }, [branch]);
 
   useEffect(() => {
@@ -112,7 +139,7 @@ export default function AddExistingDoctorForm({
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branch]);
+  }, [branch, rosterReloadKey]);
 
   const filteredRoster = roster.filter((d) => {
     if (!doctorSearch.trim()) return true;
@@ -161,31 +188,30 @@ export default function AddExistingDoctorForm({
       setError(slotError);
       return;
     }
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await doctorInvitesApi.create(branch.id, {
-        doctor_id: selectedDoctor.id,
-        specialization_ids: specializations.map((s) => s.id),
-        fee_amount: amount,
-        currency,
-        slot_type: slotType,
-        slot_template: slots,
-      });
-      toast.success(t("doctors.doctorAddedSuccess"));
-      if (onDone) {
-        onDone();
-      } else {
-        router.push("/doctors");
+    await runSubmit(async () => {
+      setError(null);
+      try {
+        await doctorInvitesApi.create(branch.id, {
+          doctor_id: selectedDoctor.id,
+          specialization_ids: specializations.map((s) => s.id),
+          fee_amount: amount,
+          currency,
+          slot_type: slotType,
+          slot_template: slots,
+        });
+        toast.success(t("doctors.doctorAddedSuccess"));
+        if (onDone) {
+          onDone();
+        } else {
+          router.push("/doctors");
+        }
+      } catch (err) {
+        // Form fields are kept so the user can correct and retry.
+        const message = getErrorMessage(err, t("doctors.unableToAddDoctor"));
+        setError(message);
+        toast.error(message);
       }
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctors.unableToAddDoctor"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!canManage) {
@@ -226,13 +252,22 @@ export default function AddExistingDoctorForm({
             {t("appointments.doctor")} *
           </label>
           {rosterError && (
-            <p className="mb-3 text-sm text-error-600 dark:text-error-400">{rosterError}</p>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <p className="text-sm text-error-600 dark:text-error-400">{rosterError}</p>
+              {!rosterLoading && (
+                <button
+                  type="button"
+                  onClick={() => setRosterReloadKey((k) => k + 1)}
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                >
+                  {t("common.retry")}
+                </button>
+              )}
+            </div>
           )}
           {rosterLoading ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {t("doctors.loadingClinicDoctors")}
-            </p>
-          ) : roster.length === 0 ? (
+            <ListSkeleton rows={3} />
+          ) : rosterError ? null : roster.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {t("doctors.noOtherDoctorsAtClinic", { inviteDoctor: t("doctors.inviteDoctor") })}
             </p>
@@ -347,7 +382,7 @@ export default function AddExistingDoctorForm({
                 value={specializations}
                 onChange={setSpecializations}
                 onBlur={() => touch("specializations")}
-                disabled={busy}
+                disabled={isSubmitting}
                 error={showError("specializations", specializations.length === 0)}
                 hint={
                   showError("specializations", specializations.length === 0)
@@ -403,17 +438,20 @@ export default function AddExistingDoctorForm({
 
           <div className="mt-6 flex items-center justify-end gap-3">
             <button
+              type="button"
               onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+              disabled={isSubmitting}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
               {t("common.cancel")}
             </button>
             <button
+              type="button"
               onClick={addToBranch}
-              disabled={busy}
-              className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              disabled={isSubmitting}
+              className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
             >
-              {busy ? t("doctors.adding") : t("doctors.addToBranch")}
+              {isSubmitting ? t("doctors.adding") : t("doctors.addToBranch")}
             </button>
           </div>
         </div>

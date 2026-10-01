@@ -9,6 +9,9 @@ interface ButtonProps {
   onClick?: () => void; // Click handler
   disabled?: boolean; // Disabled state
   className?: string; // Disabled state
+  type?: "button" | "submit" | "reset"; // Native type (omitted → browser default)
+  loading?: boolean; // Request in flight: disables the button and shows loadingText
+  loadingText?: ReactNode; // Label while loading, e.g. "Saving..."
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -20,7 +23,12 @@ const Button: React.FC<ButtonProps> = ({
   onClick,
   className = "",
   disabled = false,
+  type,
+  loading = false,
+  loadingText,
 }) => {
+  const isDisabled = disabled || loading;
+
   // Size Classes
   const sizeClasses = {
     sm: "px-4 py-3 text-sm",
@@ -37,16 +45,18 @@ const Button: React.FC<ButtonProps> = ({
 
   return (
     <button
+      type={type}
       className={`inline-flex items-center justify-center font-medium gap-2 rounded-lg transition ${className} ${
         sizeClasses[size]
       } ${variantClasses[variant]} ${
-        disabled ? "cursor-not-allowed opacity-50" : ""
+        isDisabled ? "cursor-not-allowed opacity-50" : ""
       }`}
       onClick={onClick}
-      disabled={disabled}
+      disabled={isDisabled}
+      aria-busy={loading || undefined}
     >
       {startIcon && <span className="flex items-center">{startIcon}</span>}
-      {children}
+      {loading && loadingText ? loadingText : children}
       {endIcon && <span className="flex items-center">{endIcon}</span>}
     </button>
   );

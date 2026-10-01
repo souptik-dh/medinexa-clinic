@@ -99,6 +99,7 @@ const Calendar: React.FC = () => {
         <div className="flex flex-col items-center gap-3 p-8 text-sm text-error-600 dark:text-error-400">
           <p>{error}</p>
           <button
+            type="button"
             onClick={load}
             className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
           >

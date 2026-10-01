@@ -31,6 +31,7 @@ import {
   today,
 } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 const APPOINTMENT_STATUSES: AppointmentStatus[] = [
   "pending",
@@ -69,7 +70,7 @@ export default function DoctorProfilePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const { pending: photoBusy, run: runPhotoUpload } = useAsyncAction();
   const [photoError, setPhotoError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -77,6 +78,8 @@ export default function DoctorProfilePanel() {
   const [availability, setAvailability] = useState<AvailabilityResponse | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
+  // Only the newest date's availability may land (rapid date changes / re-checks).
+  const { begin: beginAvail, isLatest: isLatestAvail } = useLatestRequest();
 
   const [bookings, setBookings] = useState<Appointment[] | null>(null);
   const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -118,18 +121,21 @@ export default function DoctorProfilePanel() {
 
   const checkAvailability = useCallback(async () => {
     if (!date) return;
+    const token = beginAvail();
     setAvailLoading(true);
     setAvailError(null);
     try {
       const res = await doctorsApi.availability(doctorId, date, branchId);
+      if (!isLatestAvail(token)) return;
       setAvailability(res);
     } catch (err) {
+      if (!isLatestAvail(token)) return;
       setAvailability(null);
       setAvailError(err instanceof ApiError ? err.message : t("doctorProfile.failedToLoadAvailability"));
     } finally {
-      setAvailLoading(false);
+      if (isLatestAvail(token)) setAvailLoading(false);
     }
-  }, [doctorId, date, branchId]);
+  }, [doctorId, date, branchId, beginAvail, isLatestAvail]);
 
   useEffect(() => {
     if (doctor && doctor.slot_type !== "sequential") checkAvailability();
@@ -204,20 +210,20 @@ export default function DoctorProfilePanel() {
 
   const uploadPhoto = async (file: File) => {
     if (!doctor) return;
-    setPhotoBusy(true);
-    setPhotoError(null);
-    try {
-      const res = await doctorsApi.uploadBranchDoctorPhoto(branchId, doctor.id, file);
-      setDoctor((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
-      toast.success(t("doctorProfile.photoUploaded"));
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed");
-      setPhotoError(message);
-      toast.error(message);
-    } finally {
-      setPhotoBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
-    }
+    await runPhotoUpload(async () => {
+      setPhotoError(null);
+      try {
+        const res = await doctorsApi.uploadBranchDoctorPhoto(branchId, doctor.id, file);
+        setDoctor((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
+        toast.success(t("doctorProfile.photoUploaded"));
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : t("doctorProfile.photoUploadFailed");
+        setPhotoError(message);
+        toast.error(message);
+      } finally {
+        if (fileRef.current) fileRef.current.value = "";
+      }
+    });
   };
 
   if (loading) {
@@ -234,12 +240,15 @@ export default function DoctorProfilePanel() {
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error ?? t("doctorProfile.doctorNotFound")}
         </div>
-        <Link
-          href="/doctors"
-          className="mt-4 inline-block text-sm font-medium text-brand-500 hover:text-brand-600"
-        >
-          {t("doctorProfile.backToDoctors")}
-        </Link>
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <Link
+            href="/doctors"
+            className="inline-block text-sm font-medium text-brand-500 hover:text-brand-600"
+          >
+            {t("doctorProfile.backToDoctors")}
+          </Link>
+          <RetryButton onClick={load} />
+        </div>
       </div>
     );
   }
@@ -320,7 +329,9 @@ export default function DoctorProfilePanel() {
           {bookingsLoading ? (
             <Skeleton className="mt-3 h-8 w-64" />
           ) : bookingsError ? (
-            <p className="mt-2 text-sm text-error-600 dark:text-error-400">{bookingsError}</p>
+            <p className="mt-2 text-sm text-error-600 dark:text-error-400">
+              {bookingsError} <RetryButton onClick={loadBookings} />
+            </p>
           ) : (
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-300">
@@ -343,7 +354,9 @@ export default function DoctorProfilePanel() {
           {invitesLoading ? (
             <Skeleton className="mt-3 h-8 w-48" />
           ) : invitesError ? (
-            <p className="mt-2 text-sm text-error-600 dark:text-error-400">{invitesError}</p>
+            <p className="mt-2 text-sm text-error-600 dark:text-error-400">
+              {invitesError} <RetryButton onClick={loadInvites} />
+            </p>
           ) : invites && invites.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {invites.map((inv) => (
@@ -379,7 +392,9 @@ export default function DoctorProfilePanel() {
           {reviewsLoading ? (
             <ListSkeleton rows={3} />
           ) : reviewsError ? (
-            <p className="mt-4 text-sm text-error-600 dark:text-error-400">{reviewsError}</p>
+            <p className="mt-4 text-sm text-error-600 dark:text-error-400">
+              {reviewsError} <RetryButton onClick={loadReviews} />
+            </p>
           ) : !reviews || reviews.length === 0 ? (
             <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
               {t("doctorProfile.noReviewsForDoctor")}
@@ -438,7 +453,7 @@ export default function DoctorProfilePanel() {
                 if (file) uploadPhoto(file);
               }}
               disabled={photoBusy}
-              className="block w-full max-w-xs text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
+              className="block w-full max-w-xs text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
             />
             {photoBusy && (
               <span className="text-sm text-gray-500 dark:text-gray-400">{t("doctors.uploading")}</span>
@@ -474,9 +489,10 @@ export default function DoctorProfilePanel() {
                     />
                   </div>
                   <button
+                    type="button"
                     onClick={checkAvailability}
                     disabled={availLoading || !date}
-                    className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                    className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
                   >
                     {availLoading ? t("doctorProfile.checking") : t("doctorProfile.check")}
                   </button>
@@ -486,7 +502,16 @@ export default function DoctorProfilePanel() {
                   <p className="mt-3 text-sm text-error-600 dark:text-error-400">{availError}</p>
                 )}
 
-                {availability && (
+                {/* A new date swaps the previous day's slots for placeholders. */}
+                {availLoading && (
+                  <div className="mt-4 flex flex-wrap gap-2" role="status" aria-busy="true">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton key={i} className="h-8 w-16 rounded-lg" />
+                    ))}
+                  </div>
+                )}
+
+                {!availLoading && availability && (
                   <div className="mt-4 flex flex-wrap gap-2">
                     {availability.status === "leave" ? (
                       <p className="text-sm text-error-600 dark:text-error-400">
@@ -519,6 +544,19 @@ export default function DoctorProfilePanel() {
         </div>
       )}
     </div>
+  );
+}
+
+function RetryButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-sm font-medium text-brand-500 underline hover:text-brand-600"
+    >
+      {t("common.retry")}
+    </button>
   );
 }
 

@@ -16,6 +16,7 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateBranch, canUpdateBranch } from "@/lib/permissions";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 interface BranchFormProps {
   mode: "create" | "edit";
@@ -27,6 +28,8 @@ interface BranchFormProps {
    * back to the host instead of navigating away. */
   onDone?: (branchId?: string) => void;
   onCancel?: () => void;
+  /** Lets an embedding drawer block closing while a save is in flight. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 type RequiredField =
@@ -46,6 +49,7 @@ export default function BranchForm({
   branchId: branchIdProp,
   onDone,
   onCancel,
+  onPendingChange,
 }: BranchFormProps) {
   const router = useRouter();
   const params = useParams<{ clinicId?: string; branchId?: string }>();
@@ -77,15 +81,27 @@ export default function BranchForm({
   const [tradeLicenseValidationStatus, setTradeLicenseValidationStatus] =
     useState<TradeLicenseValidationStatus>("PENDING");
   const [tradeLicenseMessage, setTradeLicenseMessage] = useState<string | null>(null);
-  const [validating, setValidating] = useState(false);
+  const { pending: validating, run: runValidate } = useAsyncAction();
   const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
   const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
     useState("");
   const [clinicName, setClinicName] = useState("");
   const [loading, setLoading] = useState(isEdit);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    onPendingChange?.(isSaving);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSaving]);
+  // The host may unmount the form from onDone while the save is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     if (!clinicId) {
@@ -170,22 +186,21 @@ export default function BranchForm({
       setError(t("branchForm.enterTradeLicenseFirst"));
       return;
     }
-    setValidating(true);
     setError(null);
-    try {
-      const res = await clinicsApi.validateTradeLicense(number);
-      setTradeLicenseValidationStatus(res.status);
-      setTradeLicenseMessage(res.message);
-    } catch (err) {
-      setTradeLicenseValidationStatus("PENDING");
-      setTradeLicenseMessage(
-        err instanceof ApiError
-          ? err.message
-          : t("branchForm.unableToValidateTradeLicense")
-      );
-    } finally {
-      setValidating(false);
-    }
+    await runValidate(async () => {
+      try {
+        const res = await clinicsApi.validateTradeLicense(number);
+        setTradeLicenseValidationStatus(res.status);
+        setTradeLicenseMessage(res.message);
+      } catch (err) {
+        setTradeLicenseValidationStatus("PENDING");
+        setTradeLicenseMessage(
+          err instanceof ApiError
+            ? err.message
+            : t("branchForm.unableToValidateTradeLicense")
+        );
+      }
+    });
   };
 
   const submit = async () => {
@@ -215,53 +230,52 @@ export default function BranchForm({
       setError(t("branchForm.validateTradeLicenseBeforeCreate"));
       return;
     }
-    if (busy) return;
-    setBusy(true);
     setError(null);
-    try {
-      const input = {
-        name,
-        address,
-        phone,
-        timezone,
-        nearby_location: nearbyLocation || null,
-        city,
-        district,
-        pin_code: pinCode,
-        state: stateField,
-        post_office: postOffice,
-        lat: lat === "" ? null : Number(lat),
-        lng: lng === "" ? null : Number(lng),
-        trade_license_number: tradeLicenseNumber,
-        trade_license_validation_status: tradeLicenseValidationStatus,
-        drug_license_number: drugLicenseNumber || null,
-        clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
-      };
-      let redirectTo = "/branches";
-      let savedBranchId: string | undefined;
-      if (isEdit) {
-        await branchesApi.update(branchId, input);
-        toast.success(t("branchForm.branchUpdatedSuccess"));
-        savedBranchId = branchId;
-        redirectTo = `/clinics/${clinicId}/branches/${branchId}/overview`;
-      } else {
-        const created = await branchesApi.create(clinicId, input);
-        toast.success(t("branchForm.branchCreatedSuccess"));
-        savedBranchId = created.id;
-        redirectTo = `/clinics/${clinicId}/branches/${created.id}/overview`;
+    await runSave(async () => {
+      try {
+        const input = {
+          name,
+          address,
+          phone,
+          timezone,
+          nearby_location: nearbyLocation || null,
+          city,
+          district,
+          pin_code: pinCode,
+          state: stateField,
+          post_office: postOffice,
+          lat: lat === "" ? null : Number(lat),
+          lng: lng === "" ? null : Number(lng),
+          trade_license_number: tradeLicenseNumber,
+          trade_license_validation_status: tradeLicenseValidationStatus,
+          drug_license_number: drugLicenseNumber || null,
+          clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
+        };
+        let redirectTo = "/branches";
+        let savedBranchId: string | undefined;
+        if (isEdit) {
+          await branchesApi.update(branchId, input);
+          toast.success(t("branchForm.branchUpdatedSuccess"));
+          savedBranchId = branchId;
+          redirectTo = `/clinics/${clinicId}/branches/${branchId}/overview`;
+        } else {
+          const created = await branchesApi.create(clinicId, input);
+          toast.success(t("branchForm.branchCreatedSuccess"));
+          savedBranchId = created.id;
+          redirectTo = `/clinics/${clinicId}/branches/${created.id}/overview`;
+        }
+        if (onDone) {
+          onDone(savedBranchId);
+          return;
+        }
+        setTimeout(() => router.push(redirectTo), 150);
+      } catch (err) {
+        // Field values are kept so the user can correct and retry.
+        const message = getErrorMessage(err, t("branchForm.unableToSaveBranch"));
+        setError(message);
+        toast.error(message);
       }
-      if (onDone) {
-        onDone(savedBranchId);
-        return;
-      }
-      setTimeout(() => router.push(redirectTo), 150);
-    } catch (err) {
-      const message = getErrorMessage(err, t("branchForm.unableToSaveBranch"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!canSubmit) {
@@ -435,7 +449,7 @@ export default function BranchForm({
                     type="button"
                     onClick={validateTradeLicense}
                     disabled={validating || !tradeLicenseNumber.trim()}
-                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:opacity-50 ${
+                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                       tradeLicenseValidationStatus === "VALID"
                         ? "bg-success-50 text-success-700 hover:bg-success-100 dark:bg-success-500/10 dark:text-success-500"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -488,6 +502,8 @@ export default function BranchForm({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
+            disabled={isSaving}
             onClick={() =>
               onCancel
                 ? onCancel()
@@ -497,16 +513,23 @@ export default function BranchForm({
                       : "/branches"
                   )
             }
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("common.cancel")}
           </button>
           <button
+            type="button"
             onClick={submit}
-            disabled={busy || loading}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSaving || loading}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("auth.saving") : isEdit ? t("settings.saveChanges") : t("branches.addBranch")}
+            {isSaving
+              ? isEdit
+                ? t("common.updatingEllipsis")
+                : t("common.creatingEllipsis")
+              : isEdit
+                ? t("settings.saveChanges")
+                : t("branches.addBranch")}
           </button>
         </div>
       </div>

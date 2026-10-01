@@ -10,6 +10,7 @@ import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { ApiError, authApi } from "@/lib/api";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type RequiredField = "phone" | "otp" | "newPassword" | "confirmPassword";
@@ -24,7 +25,8 @@ export default function NewPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked: a repeated Enter or double click can't fire a second auth request.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
@@ -41,20 +43,19 @@ export default function NewPasswordForm() {
       setError(t("auth.passwordsDoNotMatch"));
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await authApi.resetPassword({
-        phone,
-        otp,
-        new_password: newPassword,
-        confirm_password: confirmPassword,
-      });
-      setMessage(res.message);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("auth.unableToResetPassword"));
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      try {
+        const res = await authApi.resetPassword({
+          phone,
+          otp,
+          new_password: newPassword,
+          confirm_password: confirmPassword,
+        });
+        setMessage(res.message);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : t("auth.unableToResetPassword"));
+      }
+    });
   };
 
   return (

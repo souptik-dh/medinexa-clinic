@@ -10,6 +10,7 @@ import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type RequiredField = "name" | "phone";
 
@@ -20,14 +21,16 @@ export default function DoctorProfileForm() {
   const [regNo, setRegNo] = useState("");
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, run: runSave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
     try {
       const p: DoctorProfile = await doctorsApi.me();
       setName(p.name);
@@ -36,6 +39,7 @@ export default function DoctorProfileForm() {
       setBio(p.bio ?? "");
     } catch (err) {
       setError(getErrorMessage(err, t("doctorProfile.failedToLoadDoctorProfile")));
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -56,25 +60,25 @@ export default function DoctorProfileForm() {
       return;
     }
     if (saving) return;
-    setSaving(true);
     setError(null);
+    setLoadFailed(false);
     setOk(null);
-    try {
-      await doctorsApi.updateMe({
-        name,
-        phone: phone || null,
-        reg_no: regNo || null,
-        bio: bio || null,
-      });
-      setOk(t("doctorProfile.profileUpdated"));
-      toast.success(t("doctorProfile.profileUpdatedSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctorProfile.unableToUpdateProfile"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
+    await runSave(async () => {
+      try {
+        await doctorsApi.updateMe({
+          name,
+          phone: phone || null,
+          reg_no: regNo || null,
+          bio: bio || null,
+        });
+        setOk(t("doctorProfile.profileUpdated"));
+        toast.success(t("doctorProfile.profileUpdatedSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("doctorProfile.unableToUpdateProfile"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   return (
@@ -87,6 +91,15 @@ export default function DoctorProfileForm() {
       {error && (
         <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={load}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
       {ok && (
@@ -140,9 +153,10 @@ export default function DoctorProfileForm() {
 
       <div className="mt-6 flex justify-end">
         <button
+          type="button"
           onClick={submit}
           disabled={saving || loading}
-          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
           {saving ? t("auth.saving") : t("settings.saveChanges")}
         </button>

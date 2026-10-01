@@ -8,6 +8,7 @@ interface ModalProps {
   children: React.ReactNode;
   showCloseButton?: boolean; // New prop to control close button visibility
   isFullscreen?: boolean; // Default to false for backwards compatibility
+  closeDisabled?: boolean; // Block Escape/backdrop/close button while a request is in flight
 }
 
 // All popups open as a right-side slide-over panel (same interaction as
@@ -21,12 +22,16 @@ export const Modal: React.FC<ModalProps> = ({
   className,
   showCloseButton = true, // Default to true for backwards compatibility
   isFullscreen = false,
+  closeDisabled = false,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const requestClose = () => {
+    if (!closeDisabled) onClose();
+  };
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !closeDisabled) {
         onClose();
       }
     };
@@ -40,7 +45,7 @@ export const Modal: React.FC<ModalProps> = ({
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "unset";
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeDisabled]);
 
   if (!isOpen) return null;
 
@@ -53,7 +58,7 @@ export const Modal: React.FC<ModalProps> = ({
       {!isFullscreen && (
         <div
           className="absolute inset-0 h-full w-full bg-gray-400/50 backdrop-blur-[32px]"
-          onClick={onClose}
+          onClick={requestClose}
         ></div>
       )}
       <div
@@ -65,8 +70,11 @@ export const Modal: React.FC<ModalProps> = ({
       >
         {showCloseButton && (
           <button
-            onClick={onClose}
-            className="absolute right-3 top-3 z-999 flex h-9.5 w-9.5 items-center justify-center rounded-full bg-gray-100 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white sm:right-6 sm:top-6 sm:h-11 sm:w-11"
+            type="button"
+            onClick={requestClose}
+            disabled={closeDisabled}
+            aria-label="Close"
+            className="absolute right-3 top-3 z-999 flex h-9.5 w-9.5 items-center justify-center rounded-full bg-gray-100 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50 sm:right-6 sm:top-6 sm:h-11 sm:w-11"
           >
             <svg
               width="24"

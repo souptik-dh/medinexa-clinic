@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction } from "@/hooks/useAsyncAction";
 import { BranchLabTest, branchLabTestsApi } from "@/lib/api";
 import { labTestCategoryLabel, formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
@@ -25,7 +26,8 @@ export default function BranchLabTestsPanel() {
   const [items, setItems] = useState<BranchLabTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  // Per-row status toggle, so toggling one test never disables another.
+  const rowAction = useKeyedAction<string>();
 
   const load = useCallback(async () => {
     if (!branchId) return;
@@ -46,18 +48,21 @@ export default function BranchLabTestsPanel() {
   }, [load]);
 
   const handleToggleStatus = async (item: BranchLabTest) => {
-    setTogglingId(item.id);
-    try {
-      await branchLabTestsApi.update(branchId, item.id, {
-        status: item.status === "active" ? "inactive" : "active",
-      });
-      await load();
-      toast.success(t("branchLabTests.statusUpdated"));
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("branchLabTests.failedToUpdateStatus")));
-    } finally {
-      setTogglingId(null);
-    }
+    await rowAction.run(item.id, async () => {
+      try {
+        const updated = await branchLabTestsApi.update(branchId, item.id, {
+          status: item.status === "active" ? "inactive" : "active",
+        });
+        // Targeted update - the list is unfiltered, so just patch this row's
+        // status from the response instead of refetching the table.
+        setItems((prev) =>
+          prev.map((i) => (i.id === item.id ? { ...i, status: updated.status } : i))
+        );
+        toast.success(t("branchLabTests.statusUpdated"));
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("branchLabTests.failedToUpdateStatus")));
+      }
+    });
   };
 
   return (
@@ -70,6 +75,7 @@ export default function BranchLabTestsPanel() {
           </h3>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={load}
               className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
@@ -104,9 +110,7 @@ export default function BranchLabTestsPanel() {
         )}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-          {loading ? (
-            <TableSkeleton rows={5} cols={6} />
-          ) : items.length === 0 ? (
+          {!loading && items.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {t("branchLabTests.noBranchLabTests")}
             </p>
@@ -154,7 +158,11 @@ export default function BranchLabTestsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {items.map((item) => (
+                  {loading ? (
+                    <TableRowsSkeleton rows={5} cols={6} actions cellClassName="py-3" />
+                  ) : items.map((item) => {
+                    const toggling = rowAction.isPending(item.id);
+                    return (
                     <TableRow key={item.id}>
                       <TableCell className="py-3">
                         <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -198,22 +206,26 @@ export default function BranchLabTestsPanel() {
                             {t("common.edit")}
                           </Link>
                           <button
+                            type="button"
                             onClick={() => handleToggleStatus(item)}
-                            disabled={togglingId === item.id}
-                            className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                            disabled={toggling}
+                            className={`rounded-lg px-2 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                               item.status === "active"
                                 ? "text-error-600 hover:bg-error-50 dark:hover:bg-error-500/10"
                                 : "text-success-600 hover:bg-success-50 dark:hover:bg-success-500/10"
                             }`}
                           >
-                            {item.status === "active"
-                              ? t("labTestsPage.deactivate")
-                              : t("labTestsPage.activate")}
+                            {toggling
+                              ? t("common.updatingEllipsis")
+                              : item.status === "active"
+                                ? t("labTestsPage.deactivate")
+                                : t("labTestsPage.activate")}
                           </button>
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

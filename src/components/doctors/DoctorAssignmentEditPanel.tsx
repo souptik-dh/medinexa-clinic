@@ -20,6 +20,7 @@ import { formatDate, today } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction } from "@/hooks/useAsyncAction";
 
 function formatDateOnly(d: Date): string {
   const y = d.getFullYear();
@@ -49,6 +50,8 @@ interface DoctorAssignmentEditPanelProps {
   doctorId?: string;
   onDone?: () => void;
   onCancel?: () => void;
+  /** Reports when the save/certificate upload is in flight, so a host drawer can block closing. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 export default function DoctorAssignmentEditPanel({
@@ -56,6 +59,7 @@ export default function DoctorAssignmentEditPanel({
   doctorId: doctorIdProp,
   onDone,
   onCancel,
+  onPendingChange,
 }: DoctorAssignmentEditPanelProps = {}) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -76,11 +80,11 @@ export default function DoctorAssignmentEditPanel({
 
   const [fee, setFee] = useState("");
   const [certificate, setCertificate] = useState("");
-  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const { pending: uploadingCertificate, run: runCertificateUpload } = useAsyncAction();
   const [slotType, setSlotType] = useState<SlotType>("fixed");
   const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
   const [slotsDirty, setSlotsDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const certificateFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -94,7 +98,20 @@ export default function DoctorAssignmentEditPanel({
   const [rangeFrom, setRangeFrom] = useState(today());
   const [rangeTo, setRangeTo] = useState(today());
   const [newExceptionReason, setNewExceptionReason] = useState("");
-  const [exceptionBusy, setExceptionBusy] = useState(false);
+  // Adding a leave and removing individual leaves are independent actions.
+  const { pending: isAddingLeave, run: runAddLeave } = useAsyncAction();
+  const leaveRowAction = useKeyedAction<string>();
+
+  useEffect(() => {
+    onPendingChange?.(isSaving || uploadingCertificate);
+  }, [isSaving, uploadingCertificate, onPendingChange]);
+  // The host may unmount the form from onDone while the request is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const MAX_RANGE_DAYS = 180;
 
@@ -144,17 +161,18 @@ export default function DoctorAssignmentEditPanel({
       .catch(() => setOperatingDays(null));
   }, [branchId]);
 
-  const loadExceptions = useCallback(async (assignmentId: string) => {
-    setExceptionsLoading(true);
+  // `silent` refreshes after a mutation without flashing the list skeleton.
+  const loadExceptions = useCallback(async (assignmentId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setExceptionsLoading(true);
     setExceptionsError(null);
     try {
       const res = await doctorsApi.listExceptions(assignmentId);
       setExceptions(res.items);
     } catch (err) {
-      setExceptions([]);
+      if (!opts?.silent) setExceptions([]);
       setExceptionsError(getErrorMessage(err, t("doctorAssignmentEdit.failedToLoadLeaveDates")));
     } finally {
-      setExceptionsLoading(false);
+      if (!opts?.silent) setExceptionsLoading(false);
     }
   }, [t]);
 
@@ -170,44 +188,44 @@ export default function DoctorAssignmentEditPanel({
       setExceptionsError(t("doctorAssignmentEdit.rangeSpanError", { days: rangeDates.length, max: MAX_RANGE_DAYS }));
       return;
     }
-    setExceptionBusy(true);
-    setExceptionsError(null);
     const reason = newExceptionReason.trim() || null;
-    try {
-      // One call marks the whole range as a leave — the backend stores it as a single
-      // { excluded_date, end_date } row, not one row per day.
-      await doctorsApi.createException(doctor.assignment_id, {
-        excluded_date: exceptionMode === "range" ? rangeFrom : newExceptionDate,
-        end_date: exceptionMode === "range" ? rangeTo : undefined,
-        reason,
-      });
-      setNewExceptionReason("");
-      await loadExceptions(doctor.assignment_id);
-      toast.success(t("doctorAssignmentEdit.leaveDatesAdded"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotAddLeave"));
-      setExceptionsError(message);
-      toast.error(message);
-    } finally {
-      setExceptionBusy(false);
-    }
+    await runAddLeave(async () => {
+      setExceptionsError(null);
+      try {
+        // One call marks the whole range as a leave — the backend stores it as a single
+        // { excluded_date, end_date } row, not one row per day.
+        await doctorsApi.createException(doctor.assignment_id, {
+          excluded_date: exceptionMode === "range" ? rangeFrom : newExceptionDate,
+          end_date: exceptionMode === "range" ? rangeTo : undefined,
+          reason,
+        });
+        setNewExceptionReason("");
+        toast.success(t("doctorAssignmentEdit.leaveDatesAdded"));
+        // The new row's server id is needed, so refresh - silently.
+        await loadExceptions(doctor.assignment_id, { silent: true });
+      } catch (err) {
+        const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotAddLeave"));
+        setExceptionsError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const removeException = async (exception: DoctorAssignmentException) => {
     if (!doctor) return;
-    setExceptionBusy(true);
-    setExceptionsError(null);
-    try {
-      await doctorsApi.removeException(doctor.assignment_id, exception.id);
-      await loadExceptions(doctor.assignment_id);
-      toast.success(t("doctorAssignmentEdit.leaveDateRemoved"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotRemoveLeave"));
-      setExceptionsError(message);
-      toast.error(message);
-    } finally {
-      setExceptionBusy(false);
-    }
+    await leaveRowAction.run(exception.id, async () => {
+      setExceptionsError(null);
+      try {
+        await doctorsApi.removeException(doctor.assignment_id, exception.id);
+        // Targeted update - drop just this leave (only active ones are listed anyway).
+        setExceptions((prev) => prev.filter((x) => x.id !== exception.id));
+        toast.success(t("doctorAssignmentEdit.leaveDateRemoved"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("doctorAssignmentEdit.couldNotRemoveLeave"));
+        setExceptionsError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const updateSlots = (next: SlotTemplateItem[]) => {
@@ -218,20 +236,20 @@ export default function DoctorAssignmentEditPanel({
   const handleCertificateSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !doctor) return;
-    setUploadingCertificate(true);
-    setError(null);
-    try {
-      const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
-      setCertificate(res.certificate_url);
-      toast.success(t("doctors.certificateUploaded"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setUploadingCertificate(false);
-      if (certificateFileRef.current) certificateFileRef.current.value = "";
-    }
+    await runCertificateUpload(async () => {
+      setError(null);
+      try {
+        const res = await doctorsApi.uploadAssignmentCertificate(doctor.assignment_id, file);
+        setCertificate(res.certificate_url);
+        toast.success(t("doctors.certificateUploaded"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
+        setError(message);
+        toast.error(message);
+      } finally {
+        if (certificateFileRef.current) certificateFileRef.current.value = "";
+      }
+    });
   };
 
   const save = async () => {
@@ -252,38 +270,37 @@ export default function DoctorAssignmentEditPanel({
         return;
       }
     }
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await doctorsApi.updateAssignment(doctor.assignment_id, {
-        ...(isDoctorSelf ? {} : { fee_amount: amount }),
-        certificate: certificate.trim() || undefined,
-        slot_type: slotType,
-        ...(slotsDirty ? { slot_template: slots } : {}),
-      });
-      const rescheduled = res.rescheduled_appointment_count ?? 0;
-      const cancelled = res.cancelled_appointment_count ?? 0;
-      if (rescheduled > 0 || cancelled > 0) {
-        const parts: string[] = [];
-        if (rescheduled > 0) parts.push(`${rescheduled} appointment${rescheduled > 1 ? "s" : ""} rescheduled`);
-        if (cancelled > 0) parts.push(`${cancelled} appointment${cancelled > 1 ? "s" : ""} cancelled (no slot available)`);
-        toast.success(`${t("doctorAssignmentEdit.assignmentUpdated")} — ${parts.join(", ")}. Affected patients were notified.`);
-      } else {
-        toast.success(t("doctorAssignmentEdit.assignmentUpdated"));
+    await runSave(async () => {
+      setError(null);
+      try {
+        const res = await doctorsApi.updateAssignment(doctor.assignment_id, {
+          ...(isDoctorSelf ? {} : { fee_amount: amount }),
+          certificate: certificate.trim() || undefined,
+          slot_type: slotType,
+          ...(slotsDirty ? { slot_template: slots } : {}),
+        });
+        const rescheduled = res.rescheduled_appointment_count ?? 0;
+        const cancelled = res.cancelled_appointment_count ?? 0;
+        if (rescheduled > 0 || cancelled > 0) {
+          const parts: string[] = [];
+          if (rescheduled > 0) parts.push(`${rescheduled} appointment${rescheduled > 1 ? "s" : ""} rescheduled`);
+          if (cancelled > 0) parts.push(`${cancelled} appointment${cancelled > 1 ? "s" : ""} cancelled (no slot available)`);
+          toast.success(`${t("doctorAssignmentEdit.assignmentUpdated")} — ${parts.join(", ")}. Affected patients were notified.`);
+        } else {
+          toast.success(t("doctorAssignmentEdit.assignmentUpdated"));
+        }
+        if (onDone) {
+          onDone();
+        } else {
+          router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
+        }
+      } catch (err) {
+        // Edits are kept so the user can correct and retry.
+        const message = getErrorMessage(err, t("doctorAssignmentEdit.unableToUpdateAssignment"));
+        setError(message);
+        toast.error(message);
       }
-      if (onDone) {
-        onDone();
-      } else {
-        router.push(isDoctorSelf ? "/doctor-schedule" : "/doctors");
-      }
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctorAssignmentEdit.unableToUpdateAssignment"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!canManage) {
@@ -308,12 +325,22 @@ export default function DoctorAssignmentEditPanel({
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error ?? t("doctorProfile.doctorNotFound")}
         </div>
-        <button
-          onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
-          className="mt-4 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
-        >
-          {t("doctorProfile.backToDoctors")}
-        </button>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            {t("doctorProfile.backToDoctors")}
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            {t("common.retry")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -367,8 +394,8 @@ export default function DoctorAssignmentEditPanel({
             <button
               type="button"
               onClick={() => certificateFileRef.current?.click()}
-              disabled={uploadingCertificate}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              disabled={uploadingCertificate || isSaving}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
             >
               {uploadingCertificate
                 ? t("doctors.uploading")
@@ -418,8 +445,18 @@ export default function DoctorAssignmentEditPanel({
           </p>
 
           {exceptionsError && (
-            <div className="mb-3 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-              {exceptionsError}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+              <span>{exceptionsError}</span>
+              {/* A failed load leaves the list empty - offer a retry. */}
+              {!exceptionsLoading && exceptions.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => loadExceptions(doctor.assignment_id)}
+                  className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-100 dark:text-error-400 dark:hover:bg-error-500/20"
+                >
+                  {t("common.retry")}
+                </button>
+              )}
             </div>
           )}
 
@@ -435,7 +472,9 @@ export default function DoctorAssignmentEditPanel({
             }
             return (
               <ul className="mb-4 space-y-2">
-                {activeExceptions.map((exception) => (
+                {activeExceptions.map((exception) => {
+                  const removing = leaveRowAction.isPending(exception.id);
+                  return (
                   <li
                     key={exception.id}
                     className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800"
@@ -453,14 +492,16 @@ export default function DoctorAssignmentEditPanel({
                       )}
                     </div>
                     <button
+                      type="button"
                       onClick={() => removeException(exception)}
-                      disabled={exceptionBusy}
-                      className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
+                      disabled={removing}
+                      className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-error-500/10"
                     >
-                      {t("schedule.remove")}
+                      {removing ? t("common.removingEllipsis") : t("schedule.remove")}
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             );
           })()}
@@ -537,14 +578,15 @@ export default function DoctorAssignmentEditPanel({
               />
             </div>
             <button
+              type="button"
               onClick={addExceptions}
               disabled={
-                exceptionBusy ||
+                isAddingLeave ||
                 (exceptionMode === "single" ? !newExceptionDate : rangeDates.length === 0)
               }
-              className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+              className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
             >
-              {exceptionBusy
+              {isAddingLeave
                 ? t("schedule.adding")
                 : exceptionMode === "range"
                   ? (rangeDates.length === 1
@@ -593,17 +635,21 @@ export default function DoctorAssignmentEditPanel({
 
       <div className="mt-6 flex items-center justify-end gap-3">
         <button
+          type="button"
           onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          disabled={isSaving}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("common.cancel")}
         </button>
+        {/* Also held while the certificate uploads, so the save can't send the old one. */}
         <button
+          type="button"
           onClick={save}
-          disabled={busy}
-          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          disabled={isSaving || uploadingCertificate}
+          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
-          {busy ? t("auth.saving") : t("settings.saveChanges")}
+          {isSaving ? t("auth.saving") : t("settings.saveChanges")}
         </button>
       </div>
     </div>

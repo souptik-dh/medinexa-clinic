@@ -36,7 +36,8 @@ import {
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
-import { StatGridSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton, StatGridSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { canDeleteClinic } from "@/lib/permissions";
 import {
   autoCreateBranchForClinic,
@@ -68,13 +69,20 @@ export default function ClinicOverviewPanel() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const { pending: isDeleting, run: runDelete } = useAsyncAction();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  // Mirrors the embedded ClinicForm's save state so the drawer can't be
+  // dismissed mid-request.
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const { begin, isLatest } = useLatestRequest();
 
-  const load = useCallback(async () => {
+  // `silent` refreshes after a mutation (edit, auto-created branch) without
+  // swapping the whole overview for its skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!clinicId) return;
-    setLoading(true);
+    const token = begin();
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [clinicRes, branchesRes, labTestsRes, appointmentsRes] =
@@ -84,6 +92,7 @@ export default function ClinicOverviewPanel() {
           labTestsApi.list({ clinic_id: clinicId, limit: 100 }),
           appointmentsApi.list({ clinic_id: clinicId, limit: 5 }),
         ]);
+      if (!isLatest(token)) return;
       setClinic(clinicRes);
       setBranches(branchesRes.items);
       setLabTestCount(labTestsRes.items.length);
@@ -97,6 +106,7 @@ export default function ClinicOverviewPanel() {
             .catch(() => 0)
         )
       );
+      if (!isLatest(token)) return;
       setDoctorCount(perBranchCounts.reduce((sum, n) => sum + n, 0));
 
       // Patient counts are per-branch; approximate total from first page
@@ -108,13 +118,15 @@ export default function ClinicOverviewPanel() {
             .catch(() => 0)
         )
       );
+      if (!isLatest(token)) return;
       setPatientCount(perBranchPatients.reduce((sum, n) => sum + n, 0));
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("clinicOverview.failedToLoad")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [clinicId, t]);
+  }, [clinicId, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -143,7 +155,7 @@ export default function ClinicOverviewPanel() {
       .then(() => {
         clearAutoBranchPending(clinic.id);
         toast.success(t("clinicOverview.firstBranchCreatedAuto"));
-        load();
+        load({ silent: true });
       })
       .catch((err) => {
         toast.error(getErrorMessage(err, t("branches.autoCreateFailed")));
@@ -163,26 +175,40 @@ export default function ClinicOverviewPanel() {
 
   const confirmDeleteClinic = async () => {
     if (!clinic) return;
-    setDeleting(true);
-    try {
-      await clinicsApi.remove(clinic.id, true);
-      toast.success(t("clinicOverview.clinicDeletedSuccess"));
-      router.replace("/clinics");
-    } catch (err) {
-      toast.error(
-        getErrorMessage(err, t("clinicOverview.unableToDeleteClinic"))
-      );
-    } finally {
-      setDeleting(false);
-      setConfirmingDelete(false);
-    }
+    await runDelete(async () => {
+      try {
+        await clinicsApi.remove(clinic.id, true);
+        toast.success(t("clinicOverview.clinicDeletedSuccess"));
+        router.replace("/clinics");
+      } catch (err) {
+        toast.error(
+          getErrorMessage(err, t("clinicOverview.unableToDeleteClinic"))
+        );
+      } finally {
+        setConfirmingDelete(false);
+      }
+    });
   };
 
   if (loading) {
+    // Mirrors the real layout: header card, 4 stat cards, recent appointments.
     return (
       <div className="space-y-6">
-        <StatGridSkeleton count={4} />
-        <TableSkeleton cols={5} />
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-5 w-1/3 min-w-32" />
+              <Skeleton className="h-3.5 w-1/2" />
+              <Skeleton className="h-3 w-1/4" />
+            </div>
+          </div>
+        </div>
+        <StatGridSkeleton count={4} className="grid grid-cols-2 gap-4 lg:grid-cols-4" />
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="mb-4 h-5 w-48" />
+          <TableSkeleton cols={5} />
+        </div>
       </div>
     );
   }
@@ -190,6 +216,15 @@ export default function ClinicOverviewPanel() {
     return (
       <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
         {error ?? t("clinicOverview.clinicNotFound")}
+        {error && (
+          <button
+            type="button"
+            onClick={() => load()}
+            className="ml-3 font-medium underline"
+          >
+            {t("common.retry")}
+          </button>
+        )}
       </div>
     );
   }
@@ -262,16 +297,19 @@ export default function ClinicOverviewPanel() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setEditOpen(true)}
-              className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+              disabled={isDeleting}
+              className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
             >
               {t("common.edit")}
             </button>
             {canDelete && (
               <button
+                type="button"
                 onClick={() => setConfirmingDelete(true)}
-                disabled={deleting}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/[0.03]"
+                disabled={isDeleting}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/[0.03]"
               >
                 •••
               </button>
@@ -476,6 +514,7 @@ export default function ClinicOverviewPanel() {
       <FormDrawer
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
+        closeDisabled={isSavingEdit}
         title={t("clinicsPage.editClinic")}
         description={clinic.name}
       >
@@ -484,9 +523,10 @@ export default function ClinicOverviewPanel() {
           clinicId={clinic.id}
           onDone={() => {
             setEditOpen(false);
-            load();
+            load({ silent: true });
           }}
           onCancel={() => setEditOpen(false)}
+          onPendingChange={setIsSavingEdit}
         />
       </FormDrawer>
 

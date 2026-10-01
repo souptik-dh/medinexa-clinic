@@ -6,6 +6,7 @@ import Badge, { BadgeColor } from "@/components/ui/badge/Badge";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { downloadBlob, formatDate, formatDateTime } from "@/lib/utils";
 import {
@@ -86,7 +87,8 @@ export default function PatientDocumentsModal({
   const [activeTab, setActiveTab] = useState<Tab>("documents");
 
   const [items, setItems] = useState<PatientDocument[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true so the empty state never flashes before the first fetch.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [typeFilter, setTypeFilter] = useState<PatientDocumentType | "">("");
@@ -97,35 +99,45 @@ export default function PatientDocumentsModal({
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDescription, setUploadDescription] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // The upload form is locked (and the modal can't be dismissed) while uploading.
+  const { pending: isUploading, run: runUpload } = useAsyncAction();
 
   const [emailTargetId, setEmailTargetId] = useState<string | null>(null);
   const [emailValue, setEmailValue] = useState("");
-  const [emailBusy, setEmailBusy] = useState(false);
 
   const [historyTargetId, setHistoryTargetId] = useState<string | null>(null);
   const [historyEvents, setHistoryEvents] = useState<HistoryEvent[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const historyRequest = useLatestRequest();
 
-  const [busyAction, setBusyAction] = useState<string | null>(null);
+  // Per-document action state, keyed `${action}:${doc.id}` (download / email /
+  // print / delete), so one document's request never disables another's buttons.
+  const docAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
 
-  const load = useCallback(async () => {
+  // `silent` refreshes after a mutation without flashing the list skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!canView) return;
-    setLoading(true);
+    const token = begin();
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const res = await patientDocumentsApi.listByPatient(patientId, {
         document_type: typeFilter || undefined,
         status: statusFilter || undefined,
       });
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
+      // Don't leave the previous filter's documents posing as this one's results.
+      if (!opts?.silent) setItems([]);
       setError(getErrorMessage(err, t("patientDocuments.failedToLoad")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId, typeFilter, statusFilter, canView]);
+  }, [patientId, typeFilter, statusFilter, canView, begin, isLatest]);
 
   useEffect(() => {
     if (isOpen) load();
@@ -145,37 +157,37 @@ export default function PatientDocumentsModal({
       toast.error(t("patientDocuments.fileTooLarge"));
       return;
     }
-    setUploading(true);
-    try {
-      await patientDocumentsApi.upload({
-        patient_id: patientId,
-        document_type: uploadType,
-        title: uploadTitle.trim(),
-        description: uploadDescription.trim() || undefined,
-        branch_id: isOwner ? branchId ?? undefined : undefined,
-        file: uploadFile,
-      });
-      toast.success(t("patientDocuments.uploadSuccess"));
-      resetUploadForm();
-      setShowUploadForm(false);
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("patientDocuments.uploadFailed")));
-    } finally {
-      setUploading(false);
-    }
+    await runUpload(async () => {
+      try {
+        await patientDocumentsApi.upload({
+          patient_id: patientId,
+          document_type: uploadType,
+          title: uploadTitle.trim(),
+          description: uploadDescription.trim() || undefined,
+          branch_id: isOwner ? branchId ?? undefined : undefined,
+          file: uploadFile,
+        });
+        toast.success(t("patientDocuments.uploadSuccess"));
+        resetUploadForm();
+        setShowUploadForm(false);
+        // The new document's server fields are needed - refresh silently.
+        load({ silent: true });
+      } catch (err) {
+        // Form fields (and the chosen file) are kept so the user can retry.
+        toast.error(getErrorMessage(err, t("patientDocuments.uploadFailed")));
+      }
+    });
   };
 
   const handleDownload = async (doc: PatientDocument) => {
-    setBusyAction(`download:${doc.id}`);
-    try {
-      const blob = await patientDocumentsApi.download(doc.id);
-      downloadBlob(blob, doc.file_name);
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("patientDocuments.downloadFailed")));
-    } finally {
-      setBusyAction(null);
-    }
+    await docAction.run(`download:${doc.id}`, async () => {
+      try {
+        const blob = await patientDocumentsApi.download(doc.id);
+        downloadBlob(blob, doc.file_name);
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("patientDocuments.downloadFailed")));
+      }
+    });
   };
 
   const openEmailForm = (doc: PatientDocument) => {
@@ -186,49 +198,50 @@ export default function PatientDocumentsModal({
 
   const handleSendEmail = async (documentId: string) => {
     if (!emailValue.trim()) return;
-    setEmailBusy(true);
-    try {
-      const delivery = await patientDocumentsApi.sendEmail(documentId, emailValue.trim());
-      if (delivery.status === "DELIVERED") {
-        toast.success(t("patientDocuments.emailSuccess"));
-      } else {
-        toast.error(delivery.error_message || t("patientDocuments.emailFailed"));
+    await docAction.run(`email:${documentId}`, async () => {
+      try {
+        const delivery = await patientDocumentsApi.sendEmail(documentId, emailValue.trim());
+        if (delivery.status === "DELIVERED") {
+          toast.success(t("patientDocuments.emailSuccess"));
+        } else {
+          toast.error(delivery.error_message || t("patientDocuments.emailFailed"));
+        }
+        setEmailTargetId(null);
+        // Delivery summary changed server-side - refresh without a skeleton flash.
+        load({ silent: true });
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("patientDocuments.emailFailed")));
       }
-      setEmailTargetId(null);
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("patientDocuments.emailFailed")));
-    } finally {
-      setEmailBusy(false);
-    }
+    });
   };
 
   const handlePrint = async (doc: PatientDocument) => {
-    setBusyAction(`print:${doc.id}`);
-    try {
-      window.open(doc.file_url, "_blank", "noopener,noreferrer");
-      await patientDocumentsApi.print(doc.id);
-      toast.success(t("patientDocuments.printSuccess"));
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("patientDocuments.printFailed")));
-    } finally {
-      setBusyAction(null);
-    }
+    await docAction.run(`print:${doc.id}`, async () => {
+      try {
+        window.open(doc.file_url, "_blank", "noopener,noreferrer");
+        await patientDocumentsApi.print(doc.id);
+        toast.success(t("patientDocuments.printSuccess"));
+        load({ silent: true });
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("patientDocuments.printFailed")));
+      }
+    });
   };
 
   const handleDelete = async (doc: PatientDocument) => {
+    const key = `delete:${doc.id}`;
+    if (docAction.isPending(key)) return;
     if (!window.confirm(t("patientDocuments.deleteConfirm"))) return;
-    setBusyAction(`delete:${doc.id}`);
-    try {
-      await patientDocumentsApi.remove(doc.id);
-      toast.success(t("patientDocuments.deleteSuccess"));
-      load();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("patientDocuments.deleteFailed")));
-    } finally {
-      setBusyAction(null);
-    }
+    await docAction.run(key, async () => {
+      try {
+        await patientDocumentsApi.remove(doc.id);
+        toast.success(t("patientDocuments.deleteSuccess"));
+        // Targeted update - drop just this document instead of refetching.
+        setItems((prev) => prev.filter((d) => d.id !== doc.id));
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("patientDocuments.deleteFailed")));
+      }
+    });
   };
 
   const toggleHistory = async (doc: PatientDocument) => {
@@ -240,8 +253,11 @@ export default function PatientDocumentsModal({
     setHistoryTargetId(doc.id);
     setHistoryEvents(null);
     setHistoryLoading(true);
+    // Switching documents quickly must not show an older document's history.
+    const token = historyRequest.begin();
     try {
       const detail = await patientDocumentsApi.get(doc.id);
+      if (!historyRequest.isLatest(token)) return;
       const events: HistoryEvent[] = [
         { kind: "uploaded", at: detail.uploaded_at, byName: detail.uploaded_by_name },
         ...detail.deliveries
@@ -250,10 +266,11 @@ export default function PatientDocumentsModal({
       ];
       setHistoryEvents(events);
     } catch (err) {
+      if (!historyRequest.isLatest(token)) return;
       toast.error(getErrorMessage(err, t("patientDocuments.historyFailed")));
       setHistoryTargetId(null);
     } finally {
-      setHistoryLoading(false);
+      if (historyRequest.isLatest(token)) setHistoryLoading(false);
     }
   };
 
@@ -297,7 +314,7 @@ export default function PatientDocumentsModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[860px] p-6 lg:p-8">
+    <Modal isOpen={isOpen} onClose={onClose} closeDisabled={isUploading} className="max-w-[860px] p-6 lg:p-8">
       <div className="flex items-start justify-between">
         <div>
           <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -395,8 +412,10 @@ export default function PatientDocumentsModal({
 
             {canUpload && (
               <button
+                type="button"
                 onClick={() => setShowUploadForm((v) => !v)}
-                className="h-10 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600"
+                disabled={isUploading}
+                className="h-10 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
                 {showUploadForm ? t("appointments.close") : t("patientDocuments.uploadDocument")}
               </button>
@@ -478,16 +497,17 @@ export default function PatientDocumentsModal({
                     setShowUploadForm(false);
                     resetUploadForm();
                   }}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                  disabled={isUploading}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
                   {t("appointments.close")}
                 </button>
                 <button
                   type="submit"
-                  disabled={uploading || !uploadFile || !uploadTitle.trim()}
-                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                  disabled={isUploading || !uploadFile || !uploadTitle.trim()}
+                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
                 >
-                  {uploading ? t("patientDocuments.uploading") : t("patientDocuments.upload")}
+                  {isUploading ? t("patientDocuments.uploading") : t("patientDocuments.upload")}
                 </button>
               </div>
             </form>
@@ -496,6 +516,15 @@ export default function PatientDocumentsModal({
           {error && (
             <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
               {error}
+              {!loading && items.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => load()}
+                  className="ml-3 font-medium underline hover:no-underline"
+                >
+                  {t("common.retry")}
+                </button>
+              )}
             </div>
           )}
 
@@ -508,7 +537,12 @@ export default function PatientDocumentsModal({
               </p>
             ) : (
               <div className="space-y-3">
-                {items.map((doc) => (
+                {items.map((doc) => {
+                  const downloading = docAction.isPending(`download:${doc.id}`);
+                  const sending = docAction.isPending(`email:${doc.id}`);
+                  const printing = docAction.isPending(`print:${doc.id}`);
+                  const deleting = docAction.isPending(`delete:${doc.id}`);
+                  return (
                   <div
                     key={doc.id}
                     className="rounded-xl border border-gray-200 p-4 dark:border-gray-800"
@@ -536,17 +570,20 @@ export default function PatientDocumentsModal({
                         </p>
                         <div className="mt-4 flex justify-end gap-3">
                           <button
+                            type="button"
                             onClick={() => setEmailTargetId(null)}
-                            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                            disabled={sending}
+                            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
                           >
                             {t("appointments.close")}
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleSendEmail(doc.id)}
-                            disabled={emailBusy || !emailValue.trim()}
-                            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                            disabled={sending || !emailValue.trim()}
+                            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
                           >
-                            {emailBusy ? t("patientDocuments.sending") : t("patientDocuments.send")}
+                            {sending ? t("patientDocuments.sending") : t("patientDocuments.send")}
                           </button>
                         </div>
                       </div>
@@ -584,34 +621,39 @@ export default function PatientDocumentsModal({
                             {t("patientDocuments.view")}
                           </a>
                           <button
+                            type="button"
                             onClick={() => handleDownload(doc)}
-                            disabled={busyAction === `download:${doc.id}`}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                            disabled={downloading || deleting}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
                           >
-                            {busyAction === `download:${doc.id}`
+                            {downloading
                               ? t("patientDocuments.downloading")
                               : t("patientDocuments.download")}
                           </button>
                           {canEmail && (
                             <button
+                              type="button"
                               onClick={() => openEmailForm(doc)}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                              disabled={deleting}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                             >
                               {t("patientDocuments.email")}
                             </button>
                           )}
                           {canPrint && (
                             <button
+                              type="button"
                               onClick={() => handlePrint(doc)}
-                              disabled={busyAction === `print:${doc.id}`}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
+                              disabled={printing || deleting}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                             >
-                              {busyAction === `print:${doc.id}`
+                              {printing
                                 ? t("patientDocuments.printing")
                                 : t("patientDocuments.print")}
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={() => toggleHistory(doc)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                           >
@@ -621,11 +663,12 @@ export default function PatientDocumentsModal({
                           </button>
                           {canDelete && (
                             <button
+                              type="button"
                               onClick={() => handleDelete(doc)}
-                              disabled={busyAction === `delete:${doc.id}`}
-                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                              disabled={deleting || printing}
+                              className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
-                              {busyAction === `delete:${doc.id}`
+                              {deleting
                                 ? t("patientDocuments.deleting")
                                 : t("patientDocuments.delete")}
                             </button>
@@ -694,7 +737,8 @@ export default function PatientDocumentsModal({
                       </>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -703,8 +747,10 @@ export default function PatientDocumentsModal({
 
       <div className="mt-6 flex justify-end">
         <button
+          type="button"
           onClick={onClose}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          disabled={isUploading}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("appointments.close")}
         </button>
@@ -724,6 +770,7 @@ function TabButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`border-b-2 px-4 py-2 text-sm font-medium ${
         active

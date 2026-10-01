@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { Notification, notificationsApi } from "@/lib/api";
 import { notificationLink, notificationTypeLabel, timeAgo } from "@/lib/utils";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 const POLL_INTERVAL_MS = 30000;
 
@@ -15,20 +16,32 @@ export default function NotificationDropdown() {
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [markingAll, setMarkingAll] = useState(false);
+  const { pending: markingAll, run: runMarkAll } = useAsyncAction();
+  // Per-notification lock so a double click can't fire markRead twice.
+  const readAction = useKeyedAction<string>();
+  // Polls and open-refreshes can overlap; only the newest response may land.
+  const { begin, isLatest } = useLatestRequest();
+  const hasLoaded = useRef(false);
 
+  // Only the very first fetch shows the skeleton; polls and re-opens refresh
+  // silently so the list doesn't flash every 30s.
   const load = useCallback(async () => {
-    setLoading(true);
+    const token = begin();
+    const silent = hasLoaded.current;
+    if (!silent) setLoading(true);
     try {
       const res = await notificationsApi.list({ limit: 10 });
+      if (!isLatest(token)) return;
+      hasLoaded.current = true;
       setItems(res.items);
       setUnreadCount(res.unread_count);
     } catch {
-      setItems([]);
+      if (!isLatest(token)) return;
+      if (!silent) setItems([]);
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, []);
+  }, [begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -52,33 +65,35 @@ export default function NotificationDropdown() {
   const handleMarkRead = async (id: string) => {
     const target = items.find((n) => n.id === id);
     if (!target || target.read_at) return;
-    try {
-      await notificationsApi.markRead(id);
-      setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch {
-      // ignore read failures
-    }
+    await readAction.run(id, async () => {
+      try {
+        await notificationsApi.markRead(id);
+        setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)));
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } catch {
+        // ignore read failures
+      }
+    });
   };
 
   const handleMarkAllRead = async () => {
-    if (markingAll || unreadCount === 0) return;
-    setMarkingAll(true);
-    try {
-      await notificationsApi.markAllRead();
-      const now = new Date().toISOString();
-      setItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
-      setUnreadCount(0);
-    } catch {
-      // ignore mark-all failures
-    } finally {
-      setMarkingAll(false);
-    }
+    if (unreadCount === 0) return;
+    await runMarkAll(async () => {
+      try {
+        await notificationsApi.markAllRead();
+        const now = new Date().toISOString();
+        setItems((prev) => prev.map((n) => (n.read_at ? n : { ...n, read_at: now })));
+        setUnreadCount(0);
+      } catch {
+        // ignore mark-all failures
+      }
+    });
   };
 
   return (
     <div className="relative">
       <button
+        type="button"
         className="relative dropdown-toggle flex items-center justify-center text-gray-500 transition-colors bg-white border border-gray-200 rounded-full hover:text-gray-700 h-11 w-11 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
         onClick={handleClick}
       >
@@ -121,14 +136,16 @@ export default function NotificationDropdown() {
           <div className="flex items-center gap-3">
             {unreadCount > 0 && (
               <button
+                type="button"
                 onClick={handleMarkAllRead}
                 disabled={markingAll}
-                className="text-xs font-medium text-brand-500 transition hover:text-brand-600 disabled:opacity-50"
+                className="text-xs font-medium text-brand-500 transition hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {t("notifications.markAllRead")}
+                {markingAll ? t("common.updatingEllipsis") : t("notifications.markAllRead")}
               </button>
             )}
             <button
+              type="button"
               onClick={toggleDropdown}
               className="text-gray-500 transition dropdown-toggle dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             >

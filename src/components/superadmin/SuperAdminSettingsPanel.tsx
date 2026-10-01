@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ApiError, PlatformSetting, superAdminApi } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
+import { useKeyedAction } from "@/hooks/useAsyncAction";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function SuperAdminSettingsPanel() {
   const [items, setItems] = useState<PlatformSetting[]>([]);
@@ -10,18 +12,23 @@ export default function SuperAdminSettingsPanel() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  // Per-setting save lock: saving one key never blocks the others.
+  const { run: runSave, isPending: isSaving } = useKeyedAction<string>();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // `silent` refreshes after a save without swapping the page for skeletons.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await superAdminApi.settings();
       setItems(res.items);
       setEditableKeys(res.editable_keys ?? []);
       setDrafts(Object.fromEntries(res.items.map((i) => [i.key, i.value])));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load settings");
+      // A failed silent refresh keeps the settings already on screen.
+      if (!opts?.silent) setError(err instanceof ApiError ? err.message : "Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -31,26 +38,61 @@ export default function SuperAdminSettingsPanel() {
     load();
   }, [load]);
 
-  const save = async (key: string) => {
-    setSavingKey(key);
-    try {
-      await superAdminApi.updateSetting(key, drafts[key] ?? "");
-      toast.success(`Saved "${key}".`);
-      load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save setting");
-    } finally {
-      setSavingKey(null);
-    }
-  };
+  const save = (key: string) =>
+    runSave(key, async () => {
+      try {
+        const value = drafts[key] ?? "";
+        const res = await superAdminApi.updateSetting(key, value);
+        const saved = res?.value ?? value;
+        // Patch the saved value from the response right away, then refresh
+        // silently to pick up server-side fields such as updated_at.
+        setItems((prev) => prev.map((i) => (i.key === key ? { ...i, value: saved } : i)));
+        setDrafts((prev) => ({ ...prev, [key]: saved }));
+        toast.success(`Saved "${key}".`);
+        await load({ silent: true });
+      } catch (err) {
+        // The draft is kept so the user can correct and retry.
+        toast.error(err instanceof ApiError ? err.message : "Failed to save setting");
+      }
+    });
 
   if (loading) {
-    return <p className="py-8 text-center text-sm text-gray-400">Loading settings…</p>;
+    // Mirrors the header card + one card per setting.
+    return (
+      <div role="status" aria-busy="true" className="space-y-4">
+        <span className="sr-only">Loading settings…</span>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="mt-2 h-3.5 w-80 max-w-full" />
+        </div>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Skeleton className="mb-2 h-3 w-36" />
+                <Skeleton className="h-11 w-full rounded-lg" />
+              </div>
+              <Skeleton className="h-11 w-20 rounded-lg" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
   if (error) {
     return (
       <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
         {error}
+        <button
+          type="button"
+          onClick={() => load()}
+          className="ml-3 font-medium underline hover:no-underline"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -76,6 +118,8 @@ export default function SuperAdminSettingsPanel() {
         const isEditable = editableKeys.some((e) => e.key === setting.key);
         const description = editableKeys.find((e) => e.key === setting.key)?.description;
         const dirty = drafts[setting.key] !== setting.value;
+        // The field is locked while saving so the refresh can't overwrite a newer edit.
+        const saving = isSaving(setting.key);
         return (
           <div
             key={setting.key}
@@ -99,17 +143,18 @@ export default function SuperAdminSettingsPanel() {
                   onChange={(e) =>
                     setDrafts((prev) => ({ ...prev, [setting.key]: e.target.value }))
                   }
-                  disabled={!isEditable}
+                  disabled={!isEditable || saving}
                   className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                 />
               </div>
               {isEditable && (
                 <button
+                  type="button"
                   onClick={() => save(setting.key)}
-                  disabled={!dirty || savingKey === setting.key}
-                  className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+                  disabled={!dirty || saving}
+                  className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {savingKey === setting.key ? "Saving…" : "Save"}
+                  {saving ? "Saving…" : "Save"}
                 </button>
               )}
             </div>

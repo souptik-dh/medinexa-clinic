@@ -10,8 +10,9 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, LedgerEntry, clinicsApi, ledgerApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { SelectSkeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useLatestRequest } from "@/hooks/useAsyncAction";
 
 export default function LedgerPanel() {
   const { t } = useTranslation();
@@ -19,11 +20,14 @@ export default function LedgerPanel() {
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
 
   const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [clinicsLoading, setClinicsLoading] = useState(isOwner);
   const [clinicId, setClinicId] = useState("");
   const [month, setMonth] = useState("");
   const [items, setItems] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Clinic/month changes fire overlapping requests; only the newest may land.
+  const { begin, isLatest } = useLatestRequest();
 
   useEffect(() => {
     if (!isOwner) return;
@@ -35,26 +39,33 @@ export default function LedgerPanel() {
       })
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
-      });
+      })
+      .finally(() => setClinicsLoading(false));
   }, [isOwner, t]);
 
   const load = useCallback(async () => {
+    const token = begin();
     if (!clinicId) {
       setItems([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
+    // Don't let the previous clinic/month's rows pose as this query's results.
+    setItems([]);
     setError(null);
     try {
       const res = await ledgerApi.list(clinicId, month || undefined);
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setItems([]);
       setError(err instanceof ApiError ? err.message : t("ledger.failedToLoad"));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [clinicId, month, t]);
+  }, [clinicId, month, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -72,6 +83,8 @@ export default function LedgerPanel() {
     acc[item.currency] = (acc[item.currency] ?? 0) + item.total_amount;
     return acc;
   }, {});
+  // Also covers the gap before the clinic list has picked a default clinic.
+  const showSkeleton = loading || (clinicsLoading && !clinicId);
 
   return (
     <div className="space-y-4">
@@ -84,6 +97,9 @@ export default function LedgerPanel() {
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               {t("billing.clinic")}
             </label>
+            {clinicsLoading ? (
+              <SelectSkeleton />
+            ) : (
             <select
               value={clinicId}
               onChange={(e) => setClinicId(e.target.value)}
@@ -96,6 +112,7 @@ export default function LedgerPanel() {
                 </option>
               ))}
             </select>
+            )}
           </div>
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -110,6 +127,7 @@ export default function LedgerPanel() {
           </div>
           {month && (
             <button
+              type="button"
               onClick={() => setMonth("")}
               className="h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
@@ -122,10 +140,19 @@ export default function LedgerPanel() {
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {clinicId && !loading && items.length === 0 && (
+            <button
+              type="button"
+              onClick={load}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
-      {items.length > 0 && (
+      {!loading && items.length > 0 && (
         <div className="flex flex-wrap gap-3">
           {Object.entries(totalsByCurrency).map(([currency, total]) => (
             <div
@@ -144,13 +171,11 @@ export default function LedgerPanel() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-        {!clinicId ? (
+        {!clinicId && !showSkeleton ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("ledger.selectClinicHint")}
           </p>
-        ) : loading ? (
-          <TableSkeleton rows={5} cols={5} />
-        ) : items.length === 0 ? (
+        ) : !showSkeleton && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("ledger.noPaymentsRecorded", { suffix: month ? t("ledger.inThisMonth") : "" })}
           </p>
@@ -177,7 +202,9 @@ export default function LedgerPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((entry) => (
+                {showSkeleton ? (
+                  <TableRowsSkeleton rows={5} cols={5} cellClassName="py-3" />
+                ) : items.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">

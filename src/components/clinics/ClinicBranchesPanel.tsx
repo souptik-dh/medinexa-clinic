@@ -27,7 +27,8 @@ import BranchForm from "@/components/branches/BranchForm";
 import RatingStars from "@/components/common/RatingStars";
 import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { useAuth } from "@/context/AuthContext";
 import {
   canCreateBranch,
@@ -47,7 +48,14 @@ export default function ClinicBranchesPanel() {
   const [branchesLoading, setBranchesLoading] = useState(true);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Independent action states: auto-create vs. each row's delete.
+  const { pending: isAutoCreating, run: runAutoCreate } = useAsyncAction();
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
+  // Mirrors the embedded BranchForm's save state so its drawer can't be
+  // dismissed mid-request.
+  const [formSaving, setFormSaving] = useState(false);
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -63,34 +71,53 @@ export default function ClinicBranchesPanel() {
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
   const canUpdate = isAdmin || canUpdateBranch(userPermissions);
 
-  const loadBranches = useCallback(async () => {
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const loadBranches = useCallback(async (opts?: { silent?: boolean }) => {
     if (!clinicId) return;
-    setBranchesLoading(true);
+    const token = begin();
+    if (!opts?.silent) setBranchesLoading(true);
     try {
       const res = await branchesApi.list(clinicId);
+      if (!isLatest(token)) return;
       setBranches(res.items);
     } catch (err) {
-      setBranches([]);
+      if (!isLatest(token)) return;
+      if (!opts?.silent) setBranches([]);
       setError(getErrorMessage(err, t("branches.failedToLoad")));
+      setLoadFailed(true);
     } finally {
-      setBranchesLoading(false);
+      if (isLatest(token)) setBranchesLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
 
-  useEffect(() => {
+  const loadClinic = useCallback(() => {
     if (!clinicId) return;
     setClinicLoading(true);
     clinicsApi
       .get(clinicId)
       .then(setClinic)
-      .catch((err) =>
-        setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")))
-      )
+      .catch((err) => {
+        setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
+        setLoadFailed(true);
+      })
       .finally(() => setClinicLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clinicId]);
+
+  useEffect(() => {
+    if (!clinicId) return;
+    loadClinic();
     loadBranches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId, loadBranches]);
+
+  const retryLoad = () => {
+    setError(null);
+    setLoadFailed(false);
+    if (!clinic) loadClinic();
+    loadBranches();
+  };
 
   const handlePhotoUpdated = (photoUrl: string) => {
     setSelectedBranch((prev) =>
@@ -127,19 +154,18 @@ export default function ClinicBranchesPanel() {
       toast.error(t("appointments.noPermission"));
       return;
     }
-    setBusy(true);
     setError(null);
-    try {
-      await autoCreateBranchForClinic(clinic, user?.phone);
-      toast.success(t("branches.branchCreatedAuto"));
-      await loadBranches();
-    } catch (err) {
-      const message = getErrorMessage(err, t("branches.autoCreateFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    await runAutoCreate(async () => {
+      try {
+        await autoCreateBranchForClinic(clinic, user?.phone);
+        toast.success(t("branches.branchCreatedAuto"));
+        await loadBranches({ silent: true });
+      } catch (err) {
+        const message = getErrorMessage(err, t("branches.autoCreateFailed"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const confirmDeleteBranch = async () => {
@@ -150,15 +176,18 @@ export default function ClinicBranchesPanel() {
       return;
     }
     setError(null);
-    try {
-      await branchesApi.remove(branch.id, true);
-      if (selectedBranch?.id === branch.id) setSelectedBranch(null);
-      await loadBranches();
-      toast.success(t("branches.branchDeletedSuccess"));
-      setBranchToDelete(null);
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("branches.unableToDeleteBranch")));
-    }
+    await rowAction.run(branch.id, async () => {
+      try {
+        await branchesApi.remove(branch.id, true);
+        if (selectedBranch?.id === branch.id) setSelectedBranch(null);
+        // Targeted update - drop just this row instead of refetching the table.
+        setBranches((prev) => prev.filter((b) => b.id !== branch.id));
+        toast.success(t("branches.branchDeletedSuccess"));
+        setBranchToDelete(null);
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("branches.unableToDeleteBranch")));
+      }
+    });
   };
 
   const filtered = branches.filter((b) => {
@@ -184,6 +213,16 @@ export default function ClinicBranchesPanel() {
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={retryLoad}
+              disabled={clinicLoading || branchesLoading}
+              className="ml-3 font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -198,16 +237,18 @@ export default function ClinicBranchesPanel() {
               branches.length < 1 &&
               canCreate && (
                 <button
+                  type="button"
                   onClick={autoCreateBranch}
-                  disabled={busy}
+                  disabled={isAutoCreating}
                   title={t("branches.autoCreateBranchTitle")}
-                  className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                  className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
                 >
-                  {busy ? t("branches.creating") : t("branches.autoCreateBranch")}
+                  {isAutoCreating ? t("branches.creating") : t("branches.autoCreateBranch")}
                 </button>
               )}
             {canCreate && (
               <button
+                type="button"
                 onClick={() => setCreateOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
@@ -256,9 +297,7 @@ export default function ClinicBranchesPanel() {
           </div>
         </div>
 
-        {clinicLoading || branchesLoading ? (
-          <TableSkeleton cols={5} />
-        ) : filtered.length === 0 ? (
+        {!(clinicLoading || branchesLoading) && filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {search
               ? t("branches.noBranchesMatchSearch")
@@ -302,7 +341,11 @@ export default function ClinicBranchesPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filtered.map((b) => (
+                {clinicLoading || branchesLoading ? (
+                  <TableRowsSkeleton rows={5} cols={5} actions cellClassName="py-3" />
+                ) : filtered.map((b) => {
+                  const deleting = rowAction.isPending(b.id);
+                  return (
                   <TableRow key={b.id}>
                     <TableCell className="py-3">
                       <Link
@@ -338,25 +381,29 @@ export default function ClinicBranchesPanel() {
                         </Link>
                         {canUpdate && (
                           <button
+                            type="button"
                             onClick={() => setEditingBranch(b)}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/[0.03]"
+                            disabled={deleting}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-white/[0.03]"
                           >
                             {t("common.edit")}
                           </button>
                         )}
                         {canDelete && (
                           <button
+                            type="button"
                             onClick={() => setBranchToDelete(b)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            disabled={deleting}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            {t("common.delete")}
+                            {deleting ? t("common.deletingEllipsis") : t("common.delete")}
                           </button>
                         )}
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -400,6 +447,7 @@ export default function ClinicBranchesPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+        closeDisabled={formSaving}
         title={t("branches.addBranch")}
         description={clinic?.name}
       >
@@ -408,15 +456,17 @@ export default function ClinicBranchesPanel() {
           clinicId={clinicId}
           onDone={() => {
             setCreateOpen(false);
-            loadBranches();
+            loadBranches({ silent: true });
           }}
           onCancel={() => setCreateOpen(false)}
+          onPendingChange={setFormSaving}
         />
       </FormDrawer>
 
       <FormDrawer
         isOpen={editingBranch !== null}
         onClose={() => setEditingBranch(null)}
+        closeDisabled={formSaving}
         title={t("branches.editBranch")}
         description={editingBranch?.name}
       >
@@ -427,9 +477,10 @@ export default function ClinicBranchesPanel() {
             branchId={editingBranch.id}
             onDone={() => {
               setEditingBranch(null);
-              loadBranches();
+              loadBranches({ silent: true });
             }}
             onCancel={() => setEditingBranch(null)}
+            onPendingChange={setFormSaving}
           />
         )}
       </FormDrawer>

@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, clinicsApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
-import { CardGridSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { CardGridSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
 
 export default function ProfilePanel() {
@@ -79,10 +79,14 @@ export default function ProfilePanel() {
               <ProfileRow label={t("appointments.branch")} value={staffBranch?.name ?? "—"} />
             </>
           ) : (
-            <ProfileRow label={t("dashboard.clinics")} value={String(clinics.length)} />
+            <ProfileRow
+              label={t("dashboard.clinics")}
+              value={loading ? <Skeleton className="h-4 w-6" /> : String(clinics.length)}
+            />
           )}
         </dl>
         <button
+          type="button"
           onClick={logout}
           className="mt-6 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
@@ -161,7 +165,16 @@ export default function ProfilePanel() {
           {loading ? (
             <CardGridSkeleton count={2} />
           ) : error ? (
-            <p className="py-8 text-center text-sm text-error-600 dark:text-error-400">{error}</p>
+            <div className="py-8 text-center text-sm text-error-600 dark:text-error-400">
+              <p>{error}</p>
+              <button
+                type="button"
+                onClick={load}
+                className="mt-2 font-medium underline hover:no-underline"
+              >
+                {t("common.retry")}
+              </button>
+            </div>
           ) : clinics.length === 0 ? (
             <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
               {clinic
@@ -197,7 +210,7 @@ export default function ProfilePanel() {
   );
 }
 
-function ProfileRow({ label, value }: { label: string; value?: string }) {
+function ProfileRow({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-sm text-gray-500 dark:text-gray-400">{label}</dt>

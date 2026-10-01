@@ -26,6 +26,7 @@ import { PHONE_VALIDATION_MESSAGE, isValidPhone } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type RequiredField =
   | "branch"
@@ -87,9 +88,15 @@ interface InviteDoctorFormProps {
    * refresh/show that list instead. */
   onDone?: (result?: { isDirect: boolean }) => void;
   onCancel?: () => void;
+  /** Reports when a submit/upload is in flight, so a host drawer can block closing. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
-export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormProps = {}) {
+export default function InviteDoctorForm({
+  onDone,
+  onCancel,
+  onPendingChange,
+}: InviteDoctorFormProps = {}) {
   const router = useRouter();
   const { can } = useAuth();
   const canManage = can("doctors:manage");
@@ -106,44 +113,64 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
   const [feeAmount, setFeeAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [certificate, setCertificate] = useState("");
-  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const { pending: uploadingCertificate, run: runCertificateUpload } = useAsyncAction();
   const certificateFileRef = useRef<HTMLInputElement | null>(null);
   const [slotType, setSlotType] = useState<SlotType>("fixed");
   const [slots, setSlots] = useState<SlotTemplateItem[]>([]);
   const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[] | null>(null);
   const [verified, setVerified] = useState<NmcDoctorResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSubmitting, run: runSubmit } = useAsyncAction();
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    onPendingChange?.(isSubmitting || uploadingCertificate);
+  }, [isSubmitting, uploadingCertificate, onPendingChange]);
+  // The host may unmount the form from onDone while the request is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     if (!branch) {
       setOperatingDays(null);
       return;
     }
+    // Ignore a slower response for a previously selected branch.
+    let active = true;
     branchScheduleApi
       .get(branch.id)
-      .then((res) => setOperatingDays(res.operating_days))
-      .catch(() => setOperatingDays(null));
+      .then((res) => {
+        if (active) setOperatingDays(res.operating_days);
+      })
+      .catch(() => {
+        if (active) setOperatingDays(null);
+      });
+    return () => {
+      active = false;
+    };
   }, [branch]);
 
   const handleCertificateSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingCertificate(true);
-    setError(null);
-    try {
-      const res = await doctorInvitesApi.uploadCertificate(file);
-      setCertificate(res.certificate_url);
-      toast.success(t("doctors.certificateUploaded"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setUploadingCertificate(false);
-      if (certificateFileRef.current) certificateFileRef.current.value = "";
-    }
+    await runCertificateUpload(async () => {
+      setError(null);
+      try {
+        const res = await doctorInvitesApi.uploadCertificate(file);
+        setCertificate(res.certificate_url);
+        toast.success(t("doctors.certificateUploaded"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("doctors.certificateUploadFailed"));
+        setError(message);
+        toast.error(message);
+      } finally {
+        if (certificateFileRef.current) certificateFileRef.current.value = "";
+      }
+    });
   };
 
   const onNmcSelect = (doc: NmcDoctorResult) => {
@@ -185,40 +212,39 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
       setError(slotError);
       return;
     }
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await doctorInvitesApi.create(branch.id, {
-        name: inviteName,
-        specialization_ids: specializations.map((s) => s.id),
-        email: inviteEmail,
-        phone: phone || null,
-        reg_no: regNo || null,
-        smc_name: smcName || null,
-        doctor_degree: doctorDegree || null,
-        fee_amount: amount,
-        currency,
-        certificate: certificate || null,
-        slot_type: slotType,
-        slot_template: slots,
-      });
-      const isDirect = result.type === "direct_assignment";
-      toast.success(
-        isDirect ? t("doctors.doctorAddedSuccess") : t("doctors.inviteSent"),
-      );
-      if (onDone) {
-        onDone({ isDirect });
-      } else {
-        router.push("/doctors");
+    await runSubmit(async () => {
+      setError(null);
+      try {
+        const result = await doctorInvitesApi.create(branch.id, {
+          name: inviteName,
+          specialization_ids: specializations.map((s) => s.id),
+          email: inviteEmail,
+          phone: phone || null,
+          reg_no: regNo || null,
+          smc_name: smcName || null,
+          doctor_degree: doctorDegree || null,
+          fee_amount: amount,
+          currency,
+          certificate: certificate || null,
+          slot_type: slotType,
+          slot_template: slots,
+        });
+        const isDirect = result.type === "direct_assignment";
+        toast.success(
+          isDirect ? t("doctors.doctorAddedSuccess") : t("doctors.inviteSent"),
+        );
+        if (onDone) {
+          onDone({ isDirect });
+        } else {
+          router.push("/doctors");
+        }
+      } catch (err) {
+        // Form fields are kept so the user can correct and retry.
+        const message = getErrorMessage(err, t("doctors.unableToSendInvite"));
+        setError(message);
+        toast.error(message);
       }
-    } catch (err) {
-      const message = getErrorMessage(err, t("doctors.unableToSendInvite"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!canManage) {
@@ -255,7 +281,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <div className="space-y-4">
-          <NmcDoctorSearch onSelect={onNmcSelect} disabled={busy} />
+          <NmcDoctorSearch onSelect={onNmcSelect} disabled={isSubmitting} />
           {verified && (
             <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-sm dark:bg-success-500/10">
               <div>
@@ -268,6 +294,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setVerified(null)}
                 className="shrink-0 text-theme-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
               >
@@ -347,7 +374,7 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
               value={specializations}
               onChange={setSpecializations}
               onBlur={() => touch("specializations")}
-              disabled={busy}
+              disabled={isSubmitting}
               error={showError("specializations", specializations.length === 0)}
               hint={
                 showError("specializations", specializations.length === 0)
@@ -369,8 +396,8 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
               <button
                 type="button"
                 onClick={() => certificateFileRef.current?.click()}
-                disabled={uploadingCertificate}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                disabled={uploadingCertificate || isSubmitting}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
                 {uploadingCertificate
                   ? t("doctors.uploading")
@@ -442,17 +469,22 @@ export default function InviteDoctorForm({ onDone, onCancel }: InviteDoctorFormP
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={() => (onCancel ? onCancel() : router.push("/doctors"))}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            disabled={isSubmitting}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("common.cancel")}
           </button>
+          {/* Also held while the certificate uploads, so the invite can't go out
+           * without the certificate the user just picked. */}
           <button
+            type="button"
             onClick={createInvite}
-            disabled={busy}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSubmitting || uploadingCertificate}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("doctors.sending") : t("doctors.sendInvite")}
+            {isSubmitting ? t("doctors.sending") : t("doctors.sendInvite")}
           </button>
         </div>
       </div>

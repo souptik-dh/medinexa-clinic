@@ -7,8 +7,9 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import LabScheduleWeekEditor, {
   LabScheduleEntry,
 } from "@/components/lab-tests/LabScheduleWeekEditor";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 function toEntry(item: LabTestSchedule): LabScheduleEntry {
   return {
@@ -56,13 +57,16 @@ export default function BranchLabSchedulePanel({
   const [original, setOriginal] = useState<LabScheduleEntry[]>([]);
   const [entries, setEntries] = useState<LabScheduleEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const { pending: saving, run: runSave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // `silent` refreshes after a save without flashing the editor skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!branchId) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
+    setLoadFailed(false);
     try {
       const res = await labTestSchedulesApi.list(branchId);
       const loaded = res.items.map(toEntry);
@@ -70,6 +74,7 @@ export default function BranchLabSchedulePanel({
       setEntries(dedupeEntries(loaded));
     } catch (err) {
       setError(getErrorMessage(err, t("labSchedule.failedToLoadSchedule")));
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -88,65 +93,104 @@ export default function BranchLabSchedulePanel({
 
   const handleSave = async () => {
     if (!branchId) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const removed = original.filter(
-        (o) => !entries.some((e) => e.localKey === o.localKey)
-      );
-      const added = entries.filter((e) => !e.id);
-      const changed = entries.filter((e) => {
-        if (!e.id) return false;
-        const match = original.find((o) => o.localKey === e.localKey);
-        return match && hasChanged(e, match);
-      });
+    // Locked: a repeated click while saving can't fire the diff twice.
+    await runSave(async () => {
+      setError(null);
+      try {
+        const removed = original.filter(
+          (o) => !entries.some((e) => e.localKey === o.localKey)
+        );
+        const added = entries.filter((e) => !e.id);
+        const changed = entries.filter((e) => {
+          if (!e.id) return false;
+          const match = original.find((o) => o.localKey === e.localKey);
+          return match && hasChanged(e, match);
+        });
 
-      await Promise.all([
-        ...removed.map((o) => labTestSchedulesApi.remove(branchId, o.id!)),
-        ...added.map((e) =>
-          labTestSchedulesApi.create(branchId, {
-            weekday: e.weekday,
-            start_time: e.start_time,
-            end_time: e.end_time,
-            is_active: e.is_active,
-          })
-        ),
-        ...changed.map((e) =>
-          labTestSchedulesApi.update(branchId, e.id!, {
-            weekday: e.weekday,
-            start_time: e.start_time,
-            end_time: e.end_time,
-            is_active: e.is_active,
-          })
-        ),
-      ]);
+        await Promise.all([
+          ...removed.map((o) => labTestSchedulesApi.remove(branchId, o.id!)),
+          ...added.map((e) =>
+            labTestSchedulesApi.create(branchId, {
+              weekday: e.weekday,
+              start_time: e.start_time,
+              end_time: e.end_time,
+              is_active: e.is_active,
+            })
+          ),
+          ...changed.map((e) =>
+            labTestSchedulesApi.update(branchId, e.id!, {
+              weekday: e.weekday,
+              start_time: e.start_time,
+              end_time: e.end_time,
+              is_active: e.is_active,
+            })
+          ),
+        ]);
 
-      toast.success(t("labSchedule.updatedSuccess"));
-      await load();
-    } catch (err) {
-      const msg = getErrorMessage(
-        err,
-        t("labSchedule.failedToSaveChanges")
-      );
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setSaving(false);
-    }
+        toast.success(t("labSchedule.updatedSuccess"));
+        // Re-sync ids of newly created ranges - silently, editor stays on screen.
+        await load({ silent: true });
+      } catch (err) {
+        // Unsaved edits are kept so the user can retry.
+        const msg = getErrorMessage(
+          err,
+          t("labSchedule.failedToSaveChanges")
+        );
+        setError(msg);
+        toast.error(msg);
+      }
+    });
   };
 
   return (
     <div className="space-y-4">
 
       {error && (
-        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+          <span>{error}</span>
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={() => load()}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-100 dark:text-error-400 dark:hover:bg-error-500/20"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         {loading ? (
-          <DetailSkeleton rows={4} />
+          // Mirrors the week editor: 7 day toggles, a couple of day groups
+          // with time-range rows, and the action buttons.
+          <div role="status" aria-busy="true">
+            <span className="sr-only">{t("common.loading")}</span>
+            <div className="flex gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <Skeleton key={i} className="h-[52px] flex-1 rounded-lg" />
+              ))}
+            </div>
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                  <div className="mb-3 flex items-center justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Skeleton className="h-11 w-32 rounded-lg" />
+                    <Skeleton className="h-11 w-32 rounded-lg" />
+                    <Skeleton className="mb-1 h-4 w-16" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Skeleton className="h-10 w-32 rounded-lg" />
+              <Skeleton className="h-10 w-28 rounded-lg" />
+            </div>
+          </div>
         ) : (
           <>
             <LabScheduleWeekEditor
@@ -158,7 +202,7 @@ export default function BranchLabSchedulePanel({
                 type="button"
                 onClick={() => setEntries(original)}
                 disabled={!dirty || saving}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
                 {t("labSchedule.discardChanges")}
               </button>
@@ -166,7 +210,7 @@ export default function BranchLabSchedulePanel({
                 type="button"
                 onClick={handleSave}
                 disabled={!dirty || saving}
-                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
                 {saving ? t("auth.saving") : t("settings.saveChanges")}
               </button>

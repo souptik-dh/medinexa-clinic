@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ApiError, Branch, branchesApi, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
+import { SelectSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export interface BranchSelectValue {
   id: string;
@@ -218,6 +219,10 @@ function OwnerBranchPicker({
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
             {t("billing.clinic")}
           </label>
+          {/* Same-height placeholder while the options load, so the row doesn't jump. */}
+          {loadingClinics ? (
+            <SelectSkeleton />
+          ) : (
           <select
             value={clinicId}
             onChange={(e) => onClinicChange(e.target.value)}
@@ -233,11 +238,15 @@ function OwnerBranchPicker({
               </option>
             ))}
           </select>
+          )}
         </div>
         <div className="sm:w-56">
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
             {t("appointments.branch")}
           </label>
+          {clinicId && loadingBranches ? (
+            <SelectSkeleton />
+          ) : (
           <select
             value={value}
             onChange={(e) => {
@@ -261,6 +270,7 @@ function OwnerBranchPicker({
               </option>
             ))}
           </select>
+          )}
           {hint && (
             <p
               className={`mt-1.5 text-xs ${

@@ -16,7 +16,8 @@ import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
 import { useAuth } from "@/context/AuthContext";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { StaffMember, staffApi } from "@/lib/api";
 import { BRANCH_STAFF_PERMISSION_META, BranchStaffPermission } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
@@ -34,7 +35,10 @@ export default function StaffPanel() {
   const [items, setItems] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Independent action states: the Add form vs. each row's Remove button.
+  const { pending: isSubmitting, run: runSubmit } = useAsyncAction();
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -44,23 +48,32 @@ export default function StaffPanel() {
     resetKey: branch?.id,
   });
 
-  const load = useCallback(async (b: BranchSelectValue | null) => {
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const load = useCallback(async (b: BranchSelectValue | null, opts?: { silent?: boolean }) => {
+    const token = begin();
     if (!b) {
       setItems([]);
+      setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!opts?.silent) {
+      setLoading(true);
+      // Don't let the previous branch's rows pose as this branch's results.
+      setItems([]);
+    }
     setError(null);
     try {
       const res = await staffApi.list(b.id);
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
-      setItems([]);
+      if (!isLatest(token)) return;
+      if (!opts?.silent) setItems([]);
       setError(getErrorMessage(err, t("staff.failedToLoad")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [t]);
+  }, [t, begin, isLatest]);
 
   const onBranchChange = (b: BranchSelectValue | null) => {
     setBranch(b);
@@ -96,20 +109,22 @@ export default function StaffPanel() {
       toast.error(message);
       return;
     }
-    setBusy(true);
     setError(null);
-    try {
-      await staffApi.create(branch.id, { name, phone, email: trimmedEmail || null });
-      closeModal();
-      await load(branch);
-      toast.success(t("staff.addedSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("staff.unableToAdd"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    await runSubmit(async () => {
+      try {
+        await staffApi.create(branch.id, { name, phone, email: trimmedEmail || null });
+        closeModal();
+        toast.success(t("staff.addedSuccess"));
+        // The new member's server-assigned fields (id, permissions, created_at)
+        // are needed, so refresh the list - silently, keeping rows on screen.
+        await load(branch, { silent: true });
+      } catch (err) {
+        // Form fields are kept so the user can correct and retry.
+        const message = getErrorMessage(err, t("staff.unableToAdd"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const remove = async (member: StaffMember) => {
@@ -118,20 +133,21 @@ export default function StaffPanel() {
       toast.error(t("appointments.noPermission"));
       return;
     }
+    if (rowAction.isPending(member.id)) return;
     if (!window.confirm(t("staff.removeConfirm", { name: member.name }))) return;
-    setBusy(true);
     setError(null);
-    try {
-      await staffApi.remove(branch.id, member.id);
-      await load(branch);
-      toast.success(t("staff.removedSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("staff.unableToRemove"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    await rowAction.run(member.id, async () => {
+      try {
+        await staffApi.remove(branch.id, member.id);
+        // Targeted update - drop just this row instead of refetching the table.
+        setItems((prev) => prev.filter((m) => m.id !== member.id));
+        toast.success(t("staff.removedSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("staff.unableToRemove"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const openPermissions = (member: StaffMember) => {
@@ -175,8 +191,9 @@ export default function StaffPanel() {
           </h3>
           {canManage && (
             <button
+              type="button"
               onClick={openCreate}
-              disabled={busy || !branch}
+              disabled={!branch}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
             >
               + {t("staff.addStaff")}
@@ -188,9 +205,7 @@ export default function StaffPanel() {
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("staff.selectBranchHint")}
           </p>
-        ) : loading ? (
-          <TableSkeleton rows={5} cols={5} />
-        ) : items.length === 0 ? (
+        ) : !loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("staff.noStaffAtBranch")}
           </p>
@@ -217,8 +232,11 @@ export default function StaffPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {pageItems.map((member) => {
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={5} actions cellClassName="py-3" />
+                ) : pageItems.map((member) => {
                   const labels = permissionLabels(member);
+                  const removing = rowAction.isPending(member.id);
                   return (
                   <TableRow key={member.id}>
                     <TableCell className="py-3 align-top">
@@ -254,8 +272,9 @@ export default function StaffPanel() {
                       <div className="flex flex-nowrap justify-end gap-1.5">
                         {canManage && (
                           <button
+                            type="button"
                             onClick={() => openPermissions(member)}
-                            disabled={busy}
+                            disabled={removing}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
                           >
                             {t("staff.permissions")}
@@ -263,11 +282,12 @@ export default function StaffPanel() {
                         )}
                         {canManage && (
                           <button
+                            type="button"
                             onClick={() => remove(member)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            disabled={removing}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            {t("staff.remove")}
+                            {removing ? t("common.removingEllipsis") : t("staff.remove")}
                           </button>
                         )}
                       </div>
@@ -279,7 +299,7 @@ export default function StaffPanel() {
             </Table>
           </div>
         )}
-        {items.length > 10 && (
+        {!loading && items.length > 10 && (
           <div className="mt-4 flex justify-center">
             <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
           </div>
@@ -287,7 +307,7 @@ export default function StaffPanel() {
       </div>
 
       {/* Add staff modal */}
-      <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[500px] p-6 lg:p-8">
+      <Modal isOpen={isOpen} onClose={closeModal} closeDisabled={isSubmitting} className="max-w-[500px] p-6 lg:p-8">
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           {t("staff.addStaffMemberTitle")}
         </h5>
@@ -342,17 +362,20 @@ export default function StaffPanel() {
         </div>
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={closeModal}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            disabled={isSubmitting}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("appointments.close")}
           </button>
           <button
+            type="button"
             onClick={create}
-            disabled={busy || !name || !phone}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSubmitting || !name || !phone}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("staff.adding") : t("common.add")}
+            {isSubmitting ? t("staff.adding") : t("common.add")}
           </button>
         </div>
       </Modal>

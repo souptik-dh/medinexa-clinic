@@ -11,7 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { useClinicId } from "@/hooks/useClinicId";
 import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
@@ -54,18 +55,33 @@ export default function LabTestAppointmentsPanel() {
   const [searchName, setSearchName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [completingId, setCompletingId] = useState<string | null>(null);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  // Per-row Complete state, so completing one row never disables another.
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
   const [showBookModal, setShowBookModal] = useState(false);
   const [receiptsFor, setReceiptsFor] = useState<LabTestAppointment | null>(null);
 
   useEffect(() => {
     if (clinicId) {
-      branchesApi.list(clinicId).then((res) => setBranches(res.items)).catch(() => {});
+      setBranchesLoading(true);
+      branchesApi
+        .list(clinicId)
+        .then((res) => setBranches(res.items))
+        .catch(() => {})
+        .finally(() => setBranchesLoading(false));
     }
   }, [clinicId]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // Filters/search fire a request per change: only the newest response may
+  // land. `silent` refreshes after a mutation without flashing the skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = begin();
+    if (!opts?.silent) {
+      setLoading(true);
+      // Don't let the previous filter's rows pose as the new results.
+      setItems([]);
+    }
     setError(null);
     try {
       const res = await labTestAppointmentsApi.list({
@@ -76,29 +92,31 @@ export default function LabTestAppointmentsPanel() {
         date_to: dateTo || undefined,
         limit: 50,
       });
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("appointments.failedToLoadLabTestAppointments")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [selectedBranch, statusFilter, searchName, dateFrom, dateTo, t]);
+  }, [selectedBranch, statusFilter, searchName, dateFrom, dateTo, t, begin, isLatest]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const handleComplete = async (id: string) => {
-    setCompletingId(id);
-    try {
-      await labTestAppointmentsApi.complete(id);
-      toast.success(t("appointments.labAppointmentCompleted"));
-      await load();
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("appointments.failedToCompleteAppointment")));
-    } finally {
-      setCompletingId(null);
-    }
+    await rowAction.run(id, async () => {
+      try {
+        await labTestAppointmentsApi.complete(id);
+        toast.success(t("appointments.labAppointmentCompleted"));
+        // The row may leave the current status filter, so refresh - silently.
+        await load({ silent: true });
+      } catch (err) {
+        toast.error(getErrorMessage(err, t("appointments.failedToCompleteAppointment")));
+      }
+    });
   };
 
   const canApprove = (a: LabTestAppointment) => a.status === "PENDING";
@@ -118,6 +136,7 @@ export default function LabTestAppointmentsPanel() {
       {can("lab_appointments:create") && (
         <div className="mb-4 flex justify-end">
           <button
+            type="button"
             onClick={() => setShowBookModal(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
           >
@@ -141,7 +160,8 @@ export default function LabTestAppointmentsPanel() {
           <select
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
-            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            disabled={branchesLoading}
+            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
             <option value="">{t("appointments.allBranches")}</option>
             {branches.map((b) => (
@@ -190,7 +210,8 @@ export default function LabTestAppointmentsPanel() {
           />
         </FilterField>
         <button
-          onClick={load}
+          type="button"
+          onClick={() => load()}
           className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
         >
           {t("appointments.refresh")}
@@ -204,9 +225,7 @@ export default function LabTestAppointmentsPanel() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-        {loading ? (
-          <TableSkeleton rows={5} cols={8} />
-        ) : items.length === 0 ? (
+        {!loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("appointments.noLabTestAppointmentsMatch")}
           </p>
@@ -242,7 +261,11 @@ export default function LabTestAppointmentsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((appt) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={8} actions cellClassName="py-3" />
+                ) : items.map((appt) => {
+                  const completing = rowAction.isPending(appt.id);
+                  return (
                   <TableRow key={appt.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -295,11 +318,12 @@ export default function LabTestAppointmentsPanel() {
                         )}
                         {canComplete(appt) && can("lab_appointments:complete") && (
                           <button
+                            type="button"
                             onClick={() => handleComplete(appt.id)}
-                            disabled={completingId === appt.id}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-success-600 hover:bg-success-50 disabled:opacity-50 dark:hover:bg-success-500/10"
+                            disabled={completing}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-success-600 hover:bg-success-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-success-500/10"
                           >
-                            {t("appointments.complete")}
+                            {completing ? t("common.completingEllipsis") : t("appointments.complete")}
                           </button>
                         )}
                         {canPay(appt) && can("lab_payments:collect") && (
@@ -310,6 +334,7 @@ export default function LabTestAppointmentsPanel() {
                         )}
                         {canViewReceipts(appt) && (
                           <button
+                            type="button"
                             onClick={() => setReceiptsFor(appt)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
                           >
@@ -319,7 +344,8 @@ export default function LabTestAppointmentsPanel() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -331,7 +357,7 @@ export default function LabTestAppointmentsPanel() {
         isOpen={showBookModal}
         onClose={() => setShowBookModal(false)}
         initialClinicId={clinicId ?? undefined}
-        onBooked={load}
+        onBooked={() => load({ silent: true })}
       />
 
       <ReceiptsModal

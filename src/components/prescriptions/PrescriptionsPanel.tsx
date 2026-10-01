@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
-import { TableSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import {
   ApiError,
   Appointment,
@@ -43,7 +44,10 @@ export default function PrescriptionsPanel() {
   const [status, setStatus] = useState<AppointmentStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Download state is per prescription (keyed by appointment id).
+  const download = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
+  const prescriptionRequest = useLatestRequest();
 
   const [active, setActive] = useState<Appointment | null>(null);
   const [prescription, setPrescription] = useState<Prescription | null>(null);
@@ -51,6 +55,8 @@ export default function PrescriptionsPanel() {
   const { isOpen, openModal, closeModal } = useModal();
 
   const load = useCallback(async () => {
+    // Status changes fire overlapping requests; only the newest may land.
+    const token = begin();
     setLoading(true);
     setError(null);
     try {
@@ -58,13 +64,15 @@ export default function PrescriptionsPanel() {
         status: status || undefined,
         limit: 50,
       });
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(err instanceof ApiError ? err.message : t("appointments.failedToLoadAppointments"));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [status, t]);
+  }, [status, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -75,10 +83,14 @@ export default function PrescriptionsPanel() {
     setPrescription(null);
     setPrescriptionError(null);
     openModal();
+    // Opening another appointment quickly must not show the previous one's prescription.
+    const token = prescriptionRequest.begin();
     try {
       const res = await prescriptionsApi.get(appt.id);
+      if (!prescriptionRequest.isLatest(token)) return;
       setPrescription(res);
     } catch (err) {
+      if (!prescriptionRequest.isLatest(token)) return;
       setPrescriptionError(
         err instanceof ApiError ? err.message : t("prescriptions.failedToLoadPrescription")
       );
@@ -87,17 +99,17 @@ export default function PrescriptionsPanel() {
 
   const downloadPdf = async () => {
     if (!active) return;
-    setBusy(true);
     setError(null);
-    try {
-      const blob = await prescriptionsApi.pdf(active.id);
-      downloadBlob(blob, `prescription-${active.id.slice(0, 8)}.pdf`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("prescriptions.downloadFailed"));
-    } finally {
-      setBusy(false);
-    }
+    await download.run(active.id, async () => {
+      try {
+        const blob = await prescriptionsApi.pdf(active.id);
+        downloadBlob(blob, `prescription-${active.id.slice(0, 8)}.pdf`);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : t("prescriptions.downloadFailed"));
+      }
+    });
   };
+  const downloading = !!active && download.isPending(active.id);
 
   return (
     <div>
@@ -120,8 +132,10 @@ export default function PrescriptionsPanel() {
           </select>
         </div>
         <button
+          type="button"
           onClick={load}
-          className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600"
+          disabled={loading}
+          className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
           {t("appointments.refresh")}
         </button>
@@ -130,6 +144,15 @@ export default function PrescriptionsPanel() {
       {error && (
         <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {!loading && items.length === 0 && (
+            <button
+              type="button"
+              onClick={load}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -137,9 +160,7 @@ export default function PrescriptionsPanel() {
         <h3 className="mb-4 text-lg font-semibold text-gray-800 dark:text-white/90">
           {t("prescriptions.title")}
         </h3>
-        {loading ? (
-          <TableSkeleton rows={6} cols={5} />
-        ) : items.length === 0 ? (
+        {!loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("prescriptions.noAppointmentsMatch")}
           </p>
@@ -166,7 +187,9 @@ export default function PrescriptionsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((appt) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={6} cols={5} actions cellClassName="py-3" />
+                ) : items.map((appt) => (
                   <TableRow key={appt.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -190,6 +213,7 @@ export default function PrescriptionsPanel() {
                     <TableCell className="py-3">
                       <div className="flex justify-end">
                         <button
+                          type="button"
                           onClick={() => viewPrescription(appt)}
                           className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                         >
@@ -260,17 +284,19 @@ export default function PrescriptionsPanel() {
 
             <div className="mt-6 flex items-center justify-end gap-3">
               <button
+                type="button"
                 onClick={closeModal}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
               >
                 {t("appointments.close")}
               </button>
               <button
+                type="button"
                 onClick={downloadPdf}
-                disabled={busy || !!prescriptionError}
-                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                disabled={downloading || !!prescriptionError}
+                className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
-                {busy ? t("prescriptions.downloading") : t("prescriptions.downloadPdf")}
+                {downloading ? t("prescriptions.downloading") : t("prescriptions.downloadPdf")}
               </button>
             </div>
           </div>

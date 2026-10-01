@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type Mode = "owner" | "staff" | "doctor";
@@ -26,7 +27,8 @@ export default function SignInForm() {
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked: a repeated Enter or double click can't fire a second auth request.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const {
     sendOwnerLoginOtp,
     verifyOwnerOtp,
@@ -47,24 +49,23 @@ export default function SignInForm() {
       setError(PHONE_VALIDATION_MESSAGE);
       return;
     }
-    setSubmitting(true);
-    try {
-      if (mode === "owner") {
-        const msg = await sendOwnerLoginOtp(phoneValue);
-        setMessage(msg);
-      } else if (mode === "doctor") {
-        const msg = await sendDoctorLoginOtp(phoneValue);
-        setMessage(msg);
-      } else {
-        await staffLogin(phoneValue);
-        setMessage(t("auth.otpSentPhoneMessage"));
+    await runSubmit(async () => {
+      try {
+        if (mode === "owner") {
+          const msg = await sendOwnerLoginOtp(phoneValue);
+          setMessage(msg);
+        } else if (mode === "doctor") {
+          const msg = await sendDoctorLoginOtp(phoneValue);
+          setMessage(msg);
+        } else {
+          await staffLogin(phoneValue);
+          setMessage(t("auth.otpSentPhoneMessage"));
+        }
+        setStage("verify");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
       }
-      setStage("verify");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const verifyOtp = async () => {
@@ -73,21 +74,20 @@ export default function SignInForm() {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
-    setSubmitting(true);
-    try {
-      if (mode === "owner") {
-        await verifyOwnerOtp(phone, otp);
-      } else if (mode === "doctor") {
-        await verifyDoctorOtp(phone, otp);
-      } else {
-        await verifyStaffOtp(phone, otp);
+    await runSubmit(async () => {
+      try {
+        if (mode === "owner") {
+          await verifyOwnerOtp(phone, otp);
+        } else if (mode === "doctor") {
+          await verifyDoctorOtp(phone, otp);
+        } else {
+          await verifyStaffOtp(phone, otp);
+        }
+        router.push("/dashboard");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
       }
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const handleRequestSubmit = (e: React.FormEvent) => {
@@ -110,15 +110,14 @@ export default function SignInForm() {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
-    setSubmitting(true);
-    try {
-      await loginOwnerWithPassword(phone, password);
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      try {
+        await loginOwnerWithPassword(phone, password);
+        router.push("/dashboard");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
+      }
+    });
   };
 
   const switchMode = (m: Mode) => {
@@ -370,7 +369,8 @@ export default function SignInForm() {
                     setError(null);
                     setMessage(null);
                   }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                  disabled={submitting}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
                   {t("auth.back")}
                 </button>

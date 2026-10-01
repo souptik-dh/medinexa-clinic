@@ -12,6 +12,8 @@ import {
 import { ApiError, SuperAdminGrantItem, superAdminApi } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction } from "@/hooks/useAsyncAction";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 
 export default function SuperAdminAdminsPanel() {
   const { t } = useTranslation();
@@ -19,11 +21,13 @@ export default function SuperAdminAdminsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
-  const [granting, setGranting] = useState(false);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
+  // Independent action states: the Grant form vs. each row's Revoke button.
+  const { pending: granting, run: runGrant } = useAsyncAction();
+  const { run: runRevoke, isPending: isRevoking } = useKeyedAction<string>();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const res = await superAdminApi.superAdmins();
@@ -39,32 +43,32 @@ export default function SuperAdminAdminsPanel() {
     load();
   }, [load]);
 
-  const grant = async () => {
-    setGranting(true);
-    try {
-      const res = await superAdminApi.grantSuperAdmin(email.trim());
-      toast.success(res.message || t("superAdminAdmins.isNowSuperAdmin", { email }));
-      setEmail("");
-      load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToGrant"));
-    } finally {
-      setGranting(false);
-    }
-  };
+  const grant = () =>
+    runGrant(async () => {
+      try {
+        const res = await superAdminApi.grantSuperAdmin(email.trim());
+        toast.success(res.message || t("superAdminAdmins.isNowSuperAdmin", { email }));
+        setEmail("");
+        // The new grant's server-side fields are needed, so refresh silently.
+        load({ silent: true });
+      } catch (err) {
+        // The typed email is kept so the user can correct and retry.
+        toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToGrant"));
+      }
+    });
 
   const revoke = async (userId: string, userEmail: string) => {
+    if (isRevoking(userId)) return;
     if (!window.confirm(t("superAdminAdmins.revokeConfirm", { email: userEmail }))) return;
-    setRevokingId(userId);
-    try {
-      await superAdminApi.revokeSuperAdmin(userId);
-      toast.success(t("superAdminAdmins.accessRevoked"));
-      load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToRevoke"));
-    } finally {
-      setRevokingId(null);
-    }
+    await runRevoke(userId, async () => {
+      try {
+        await superAdminApi.revokeSuperAdmin(userId);
+        toast.success(t("superAdminAdmins.accessRevoked"));
+        load({ silent: true });
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdminAdmins.failedToRevoke"));
+      }
+    });
   };
 
   return (
@@ -83,22 +87,34 @@ export default function SuperAdminAdminsPanel() {
           />
         </div>
         <button
+          type="button"
           onClick={grant}
           disabled={granting || !email.includes("@")}
-          className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+          className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {granting ? t("superAdminAdmins.granting") : t("superAdminAdmins.grant")}
         </button>
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        {error && <p className="p-6 text-sm text-error-500">{error}</p>}
+        {error && (
+          <p className="p-6 text-sm text-error-500">
+            {error}
+            <button
+              type="button"
+              onClick={() => load()}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          </p>
+        )}
         {!error && !loading && items.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("superAdminAdmins.noGrantsRecorded")}
           </p>
         )}
-        {items.length > 0 && (
+        {(loading || items.length > 0) && (
           <div className="overflow-x-auto p-4 sm:p-6">
             <Table>
               <TableHeader>
@@ -110,7 +126,9 @@ export default function SuperAdminAdminsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((a) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={4} cols={4} cellClassName="px-4 py-3" />
+                ) : items.map((a) => (
                   <TableRow key={a.user_id}>
                     <TableCell className="px-4 py-3">
                       <p className="text-sm font-medium text-gray-800 dark:text-white/90">{a.name}</p>
@@ -128,11 +146,12 @@ export default function SuperAdminAdminsPanel() {
                     <TableCell className="px-4 py-3">
                       {!a.revoked && (
                         <button
+                          type="button"
                           onClick={() => revoke(a.user_id, a.email)}
-                          disabled={revokingId === a.user_id}
-                          className="rounded-lg border border-error-500/40 px-3 py-1.5 text-xs font-medium text-error-500 hover:bg-error-50 disabled:opacity-60 dark:hover:bg-error-500/10"
+                          disabled={isRevoking(a.user_id)}
+                          className="rounded-lg border border-error-500/40 px-3 py-1.5 text-xs font-medium text-error-500 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-error-500/10"
                         >
-                          {revokingId === a.user_id ? t("superAdminAdmins.revoking") : t("superAdminAdmins.revokeBtn")}
+                          {isRevoking(a.user_id) ? t("superAdminAdmins.revoking") : t("superAdminAdmins.revokeBtn")}
                         </button>
                       )}
                     </TableCell>
@@ -141,9 +160,6 @@ export default function SuperAdminAdminsPanel() {
               </TableBody>
             </Table>
           </div>
-        )}
-        {loading && (
-          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

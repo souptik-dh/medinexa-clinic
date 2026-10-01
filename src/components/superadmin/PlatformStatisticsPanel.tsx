@@ -5,7 +5,8 @@ import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { ApiError, SuperAdminStatistics, superAdminApi } from "@/lib/api";
 import { formatCurrency, subscriptionStatusColor, subscriptionStatusLabel } from "@/lib/utils";
-import { StatGridSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { useTranslation } from "@/hooks/useTranslation";
 
 export default function PlatformStatisticsPanel() {
@@ -13,15 +14,19 @@ export default function PlatformStatisticsPanel() {
   const [stats, setStats] = useState<SuperAdminStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
+  const { pending: processing, run: runSweepAction } = useAsyncAction();
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // `silent` refreshes after the sweep without swapping the page for skeletons.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       setStats(await superAdminApi.statistics());
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("superAdmin.failedToLoadStatistics"));
+      // A failed silent refresh keeps the stats already on screen.
+      if (!opts?.silent) setError(err instanceof ApiError ? err.message : t("superAdmin.failedToLoadStatistics"));
     } finally {
       setLoading(false);
     }
@@ -31,31 +36,75 @@ export default function PlatformStatisticsPanel() {
     load();
   }, [load]);
 
-  const runSweep = async () => {
-    setProcessing(true);
-    try {
-      const res = await superAdminApi.processSubscriptions();
-      toast.success(
-        t("superAdmin.sweepResult", {
-          message: res.message,
-          expiredTrials: res.result.expiredTrials,
-          expiredSubscriptions: res.result.expiredSubscriptions,
-          expiringNotified: res.result.expiringNotified,
-        })
-      );
-      load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdmin.failedToProcessSubscriptions"));
-    } finally {
-      setProcessing(false);
-    }
-  };
+  const runSweep = () =>
+    runSweepAction(async () => {
+      try {
+        const res = await superAdminApi.processSubscriptions();
+        toast.success(
+          t("superAdmin.sweepResult", {
+            message: res.message,
+            expiredTrials: res.result.expiredTrials,
+            expiredSubscriptions: res.result.expiredSubscriptions,
+            expiringNotified: res.result.expiringNotified,
+          })
+        );
+        load({ silent: true });
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdmin.failedToProcessSubscriptions"));
+      }
+    });
 
-  if (loading) return <StatGridSkeleton count={4} />;
+  if (loading) {
+    // Same section layout as the loaded view, so nothing jumps when data lands.
+    return (
+      <div role="status" aria-busy="true" className="space-y-4">
+        <span className="sr-only">{t("common.loading")}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="h-4 w-64 max-w-full" />
+          <Skeleton className="h-10 w-36 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            // Mirrors StatCard below (label + value, no icon tile).
+            <div
+              key={i}
+              className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]"
+            >
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-7 w-16" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="h-5 w-40" />
+          <div className="mt-3 flex flex-wrap gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-6 w-24 rounded-full" />
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="h-5 w-48" />
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-2.5 w-full rounded-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (error || !stats) {
     return (
       <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
         {error ?? t("superAdmin.statisticsUnavailable")}
+        <button
+          type="button"
+          onClick={() => load()}
+          className="ml-3 font-medium underline hover:no-underline"
+        >
+          {t("common.retry")}
+        </button>
       </div>
     );
   }
@@ -74,9 +123,10 @@ export default function PlatformStatisticsPanel() {
           {t("superAdmin.snapshot")}
         </p>
         <button
+          type="button"
           onClick={runSweep}
           disabled={processing}
-          className="inline-flex h-10 items-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+          className="inline-flex h-10 items-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {processing ? t("superAdmin.processingEllipsis") : t("superAdmin.runSweep")}
         </button>

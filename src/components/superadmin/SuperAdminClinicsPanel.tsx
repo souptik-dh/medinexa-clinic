@@ -27,6 +27,10 @@ import {
   subscriptionStatusLabel,
 } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { Skeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
+
+type ClinicAction = "activate" | "deactivate" | "extend";
 
 export default function SuperAdminClinicsPanel() {
   const { t } = useTranslation();
@@ -42,14 +46,19 @@ export default function SuperAdminClinicsPanel() {
   const [items, setItems] = useState<SuperAdminClinicListItem[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { begin, isLatest } = useLatestRequest();
+  const { begin: beginDetail, isLatest: isLatestDetail } = useLatestRequest();
 
   const [detail, setDetail] = useState<SuperAdminClinicDetail | null>(null);
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // actions
-  const [actionBusy, setActionBusy] = useState(false);
+  // actions - keyed per clinic, so one clinic's in-flight action never locks
+  // another. Activate/deactivate/extend on the SAME clinic all rewrite its
+  // subscription, so they share that clinic's lock (see `clinicBusy`).
+  const { run: runClinicAction, isPending: isClinicActionPending } = useKeyedAction<string>();
   const [deactivateOpen, setDeactivateOpen] = useState(false);
   const [deactivateReason, setDeactivateReason] = useState("");
   const [extendOpen, setExtendOpen] = useState(false);
@@ -63,9 +72,21 @@ export default function SuperAdminClinicsPanel() {
     if (s) setStatus(s);
   }, []);
 
+  // `silent` refreshes after a mutation without flashing the table skeleton.
   const load = useCallback(
-    async (nextCursor?: string, append = false) => {
-      setLoading(true);
+    async (nextCursor?: string, append = false, opts?: { silent?: boolean }) => {
+      const token = begin();
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoadingMore(false);
+        if (!opts?.silent) {
+          setLoading(true);
+          // Don't let the previous query's rows pose as this query's results.
+          setItems([]);
+          setCursor(undefined);
+        }
+      }
       setError(null);
       try {
         const res = await superAdminApi.clinics({
@@ -74,16 +95,21 @@ export default function SuperAdminClinicsPanel() {
           limit: nextCursor ? undefined : 20,
           cursor: nextCursor,
         });
+        if (!isLatest(token)) return;
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setCursor(res.next_cursor ?? undefined);
       } catch (err) {
-        if (!append) setItems([]);
+        if (!isLatest(token)) return;
+        if (!append && !opts?.silent) setItems([]);
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
       } finally {
-        setLoading(false);
+        if (isLatest(token)) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [q, status, t]
+    [q, status, t, begin, isLatest]
   );
 
   useEffect(() => {
@@ -92,83 +118,99 @@ export default function SuperAdminClinicsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, status]);
 
-  const openDetail = async (clinicId: string) => {
-    setDetailLoading(true);
+  // `silent` re-fetches the open clinic after an action without swapping the
+  // modal content for the skeleton.
+  const openDetail = async (clinicId: string, opts?: { silent?: boolean }) => {
+    const token = beginDetail();
+    if (!opts?.silent) setDetailLoading(true);
     try {
       const [d, p] = await Promise.all([
         superAdminApi.clinic(clinicId),
         superAdminApi.clinicPayments(clinicId),
       ]);
+      if (!isLatestDetail(token)) return;
       setDetail(d);
       setPayments(p.items);
     } catch (err) {
+      if (!isLatestDetail(token)) return;
       toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToLoadClinic"));
     } finally {
-      setDetailLoading(false);
+      if (isLatestDetail(token)) setDetailLoading(false);
     }
   };
 
   const refreshDetail = async () => {
     if (!detail) return;
-    await openDetail(detail.id);
-    load();
+    await openDetail(detail.id, { silent: true });
+    load(undefined, false, { silent: true });
   };
+
+  const clinicBusy = (clinicId: string) =>
+    (["activate", "deactivate", "extend"] as ClinicAction[]).some((a) =>
+      isClinicActionPending(`${clinicId}:${a}`)
+    );
 
   const handleActivate = async () => {
     if (!detail) return;
-    setActionBusy(true);
-    try {
-      const res = await superAdminApi.activateClinic(detail.id);
-      toast.success(res.message || t("superAdminClinics.clinicActivated"));
-      await refreshDetail();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToActivateClinic"));
-    } finally {
-      setActionBusy(false);
-    }
+    if (clinicBusy(detail.id)) return;
+    await runClinicAction(`${detail.id}:activate`, async () => {
+      try {
+        const res = await superAdminApi.activateClinic(detail.id);
+        toast.success(res.message || t("superAdminClinics.clinicActivated"));
+        await refreshDetail();
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToActivateClinic"));
+      }
+    });
   };
 
   const handleDeactivate = async () => {
     if (!detail) return;
-    setActionBusy(true);
-    try {
-      const res = await superAdminApi.deactivateClinic(detail.id, deactivateReason.trim());
-      toast.success(res.message || t("superAdminClinics.clinicDeactivated"));
-      setDeactivateOpen(false);
-      setDeactivateReason("");
-      await refreshDetail();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToDeactivateClinic"));
-    } finally {
-      setActionBusy(false);
-    }
+    if (clinicBusy(detail.id)) return;
+    await runClinicAction(`${detail.id}:deactivate`, async () => {
+      try {
+        const res = await superAdminApi.deactivateClinic(detail.id, deactivateReason.trim());
+        toast.success(res.message || t("superAdminClinics.clinicDeactivated"));
+        setDeactivateOpen(false);
+        setDeactivateReason("");
+        await refreshDetail();
+      } catch (err) {
+        // Reason is kept so the user can retry.
+        toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToDeactivateClinic"));
+      }
+    });
   };
 
   const handleExtend = async () => {
     if (!detail) return;
-    setActionBusy(true);
-    try {
-      const months = extendMonths > 0 ? extendMonths : undefined;
-      const trialDays = extendTrialDays > 0 ? extendTrialDays : undefined;
-      const res = await superAdminApi.extendSubscription(detail.id, {
-        ...(months ? { months } : {}),
-        ...(trialDays && !months ? { trial_days: trialDays } : {}),
-        reason: extendReason.trim(),
-      });
-      toast.success(res.message || t("superAdminClinics.subscriptionExtended"));
-      setExtendOpen(false);
-      setExtendMonths(1);
-      setExtendTrialDays(0);
-      setExtendReason("");
-      await refreshDetail();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToExtendSubscription"));
-    } finally {
-      setActionBusy(false);
-    }
+    if (clinicBusy(detail.id)) return;
+    await runClinicAction(`${detail.id}:extend`, async () => {
+      try {
+        const months = extendMonths > 0 ? extendMonths : undefined;
+        const trialDays = extendTrialDays > 0 ? extendTrialDays : undefined;
+        const res = await superAdminApi.extendSubscription(detail.id, {
+          ...(months ? { months } : {}),
+          ...(trialDays && !months ? { trial_days: trialDays } : {}),
+          reason: extendReason.trim(),
+        });
+        toast.success(res.message || t("superAdminClinics.subscriptionExtended"));
+        setExtendOpen(false);
+        setExtendMonths(1);
+        setExtendTrialDays(0);
+        setExtendReason("");
+        await refreshDetail();
+      } catch (err) {
+        // Months/days/reason are kept so the user can retry.
+        toast.error(err instanceof ApiError ? err.message : t("superAdminClinics.failedToExtendSubscription"));
+      }
+    });
   };
 
   const sub = detail?.subscription;
+  const detailBusy = detail ? clinicBusy(detail.id) : false;
+  const activating = detail ? isClinicActionPending(`${detail.id}:activate`) : false;
+  const deactivating = detail ? isClinicActionPending(`${detail.id}:deactivate`) : false;
+  const extending = detail ? isClinicActionPending(`${detail.id}:extend`) : false;
 
   return (
     <div className="space-y-4">
@@ -194,14 +236,26 @@ export default function SuperAdminClinicsPanel() {
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
         {error && (
-          <p className="p-6 text-sm text-error-500">{error}</p>
+          <div className="flex flex-wrap items-center gap-3 p-6">
+            <p className="text-sm text-error-500">{error}</p>
+            {items.length === 0 && (
+              <button
+                type="button"
+                onClick={() => load()}
+                disabled={loading}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+              >
+                {t("common.retry")}
+              </button>
+            )}
+          </div>
         )}
         {!error && items.length === 0 && !loading && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("superAdminClinics.noClinicsFound")}
           </p>
         )}
-        {items.length > 0 && (
+        {(loading || items.length > 0) && (
           <div className="overflow-x-auto p-4 sm:p-6">
             <Table>
               <TableHeader>
@@ -224,7 +278,9 @@ export default function SuperAdminClinicsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((c) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={5} cellClassName="px-4 py-3" />
+                ) : items.map((c) => (
                   <TableRow
                     key={c.id}
                     onClick={() => openDetail(c.id)}
@@ -256,29 +312,64 @@ export default function SuperAdminClinicsPanel() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {loadingMore && (
+                  <TableRowsSkeleton rows={3} cols={5} cellClassName="px-4 py-3" />
+                )}
               </TableBody>
             </Table>
-            {cursor && (
+            {!loading && cursor && (
               <div className="mt-3 text-center">
                 <button
+                  type="button"
                   onClick={() => load(cursor, true)}
-                  disabled={loading}
-                  className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
+                  disabled={loadingMore}
+                  className="text-sm font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? t("common.loading") : t("patients.loadMore")}
+                  {loadingMore ? t("common.loading") : t("patients.loadMore")}
                 </button>
               </div>
             )}
           </div>
         )}
-        {loading && items.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
-        )}
       </div>
 
       {/* Detail modal */}
-      <Modal isOpen={detailLoading || !!detail} onClose={() => setDetail(null)} className="max-w-3xl p-6">
-        {detailLoading && <p className="py-10 text-center text-sm text-gray-400">{t("superAdminClinics.loadingClinic")}</p>}
+      <Modal isOpen={detailLoading || !!detail} onClose={() => setDetail(null)} closeDisabled={detailBusy} className="max-w-3xl p-6">
+        {detailLoading && (
+          <div role="status" aria-busy="true" className="space-y-5">
+            <span className="sr-only">{t("superAdminClinics.loadingClinic")}</span>
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+            <div className="space-y-2 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+              <Skeleton className="mb-3 h-3 w-20" />
+              <Skeleton className="h-3.5 w-1/2" />
+              <Skeleton className="h-3.5 w-2/5" />
+              <Skeleton className="h-3.5 w-3/5" />
+            </div>
+            <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+              <Skeleton className="mb-3 h-3 w-24" />
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Skeleton className="h-9 w-24 rounded-lg" />
+                <Skeleton className="h-9 w-24 rounded-lg" />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-xl" />
+              ))}
+            </div>
+          </div>
+        )}
         {!detailLoading && detail && (
           <div className="max-h-[75vh] space-y-5 overflow-y-auto">
             <div>
@@ -342,24 +433,27 @@ export default function SuperAdminClinicsPanel() {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {sub.status !== "ACTIVE" && sub.status !== "TRIAL" && (
                     <button
+                      type="button"
                       onClick={handleActivate}
-                      disabled={actionBusy}
-                      className="h-9 rounded-lg bg-success-500 px-3 text-sm font-medium text-white hover:bg-success-600 disabled:opacity-60"
+                      disabled={detailBusy}
+                      className="h-9 rounded-lg bg-success-500 px-3 text-sm font-medium text-white hover:bg-success-600 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {t("superAdminClinics.activate")}
+                      {activating ? t("superAdminClinics.working") : t("superAdminClinics.activate")}
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => setDeactivateOpen(true)}
-                    disabled={actionBusy || sub.status === "INACTIVE"}
-                    className="h-9 rounded-lg bg-error-500 px-3 text-sm font-medium text-white hover:bg-error-600 disabled:opacity-60"
+                    disabled={detailBusy || sub.status === "INACTIVE"}
+                    className="h-9 rounded-lg bg-error-500 px-3 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {t("superAdminClinics.deactivate")}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setExtendOpen(true)}
-                    disabled={actionBusy}
-                    className="h-9 rounded-lg border border-brand-500/40 px-3 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-60 dark:hover:bg-brand-500/10"
+                    disabled={detailBusy}
+                    className="h-9 rounded-lg border border-brand-500/40 px-3 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-brand-500/10"
                   >
                     {t("superAdminClinics.extendEllipsis")}
                   </button>
@@ -419,7 +513,7 @@ export default function SuperAdminClinicsPanel() {
       </Modal>
 
       {/* Deactivate modal */}
-      <Modal isOpen={deactivateOpen} onClose={() => setDeactivateOpen(false)} className="max-w-md p-6">
+      <Modal isOpen={deactivateOpen} onClose={() => setDeactivateOpen(false)} closeDisabled={deactivating} className="max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("superAdminClinics.deactivateClinic")}</h3>
         <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
           {t("superAdminClinics.deactivateDesc")}
@@ -432,16 +526,17 @@ export default function SuperAdminClinicsPanel() {
           className="w-full rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
         <button
+          type="button"
           onClick={handleDeactivate}
-          disabled={actionBusy || deactivateReason.trim().length < 3}
-          className="mt-4 h-11 w-full rounded-lg bg-error-500 text-sm font-medium text-white hover:bg-error-600 disabled:opacity-60"
+          disabled={detailBusy || deactivateReason.trim().length < 3}
+          className="mt-4 h-11 w-full rounded-lg bg-error-500 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {actionBusy ? t("superAdminClinics.working") : t("superAdminClinics.deactivate")}
+          {deactivating ? t("superAdminClinics.working") : t("superAdminClinics.deactivate")}
         </button>
       </Modal>
 
       {/* Extend modal */}
-      <Modal isOpen={extendOpen} onClose={() => setExtendOpen(false)} className="max-w-md p-6">
+      <Modal isOpen={extendOpen} onClose={() => setExtendOpen(false)} closeDisabled={extending} className="max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("superAdminClinics.extendSubscription")}</h3>
         <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">
           {t("superAdminClinics.extendDesc")}
@@ -479,15 +574,16 @@ export default function SuperAdminClinicsPanel() {
           className="w-full rounded-lg border border-gray-300 bg-transparent p-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
         <button
+          type="button"
           onClick={handleExtend}
           disabled={
-            actionBusy ||
+            detailBusy ||
             extendReason.trim().length < 3 ||
             !(extendMonths > 0) !== !(extendTrialDays > 0)
           }
-          className="mt-4 h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+          className="mt-4 h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {actionBusy ? t("superAdminClinics.working") : t("superAdminClinics.extend")}
+          {extending ? t("superAdminClinics.working") : t("superAdminClinics.extend")}
         </button>
       </Modal>
     </div>

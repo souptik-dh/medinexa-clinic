@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { canUpdateBranch } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 interface BranchLicensesPanelProps {
   clinicId: string;
@@ -55,8 +56,11 @@ export default function BranchLicensesPanel({
 }: BranchLicensesPanelProps) {
   const [branch, setBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploadingType, setUploadingType] = useState<BranchLicenseType | null>(null);
+  // Per-licence upload state: each document type uploads independently.
+  const upload = useKeyedAction<BranchLicenseType>();
+  const { begin, isLatest } = useLatestRequest();
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const fileRefs = useRef<Record<BranchLicenseType, HTMLInputElement | null>>({
     "trade-license": null,
@@ -71,16 +75,21 @@ export default function BranchLicensesPanel({
   const canUpload = isAdmin || canUpdateBranch(userPermissions);
 
   const load = useCallback(async () => {
+    const token = begin();
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
     try {
       const res = await branchesApi.list(clinicId);
+      if (!isLatest(token)) return;
       const b = res.items.find((x) => x.id === branchId) ?? null;
       setBranch(b);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("licenses.failedToLoad")));
+      setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId, branchId]);
@@ -99,21 +108,26 @@ export default function BranchLicensesPanel({
       toast.error(t("appointments.noPermission"));
       return;
     }
-    setUploadingType(type);
     setError(null);
     setOk(null);
     try {
-      const res = await branchesApi.uploadLicense(branchId, type, file);
-      await load();
-      onLicenseUpdated?.(res.type, res.url);
-      setOk(t("licenses.documentUploaded"));
-      toast.success(t("licenses.uploadSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("licenses.uploadFailed"));
-      setError(message);
-      toast.error(message);
+      await upload.run(type, async () => {
+        try {
+          const res = await branchesApi.uploadLicense(branchId, type, file);
+          // Targeted update - patch just this licence's URL from the response
+          // instead of refetching (other uploads may be in flight).
+          const urlField = LICENSE_DEFS.find((d) => d.type === res.type)?.urlField;
+          if (urlField) setBranch((prev) => (prev ? { ...prev, [urlField]: res.url } : prev));
+          onLicenseUpdated?.(res.type, res.url);
+          setOk(t("licenses.documentUploaded"));
+          toast.success(t("licenses.uploadSuccess"));
+        } catch (err) {
+          const message = getErrorMessage(err, t("licenses.uploadFailed"));
+          setError(message);
+          toast.error(message);
+        }
+      });
     } finally {
-      setUploadingType(null);
       const ref = fileRefs.current[type];
       if (ref) ref.value = "";
     }
@@ -129,6 +143,15 @@ export default function BranchLicensesPanel({
       {error && (
         <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={() => load()}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
       {ok && (
@@ -144,7 +167,7 @@ export default function BranchLicensesPanel({
           {LICENSE_DEFS.map((def) => {
             const number = branch?.[def.numberField] ?? null;
             const url = branch?.[def.urlField] ?? null;
-            const uploading = uploadingType === def.type;
+            const uploading = upload.isPending(def.type);
             return (
               <div
                 key={def.type}
@@ -186,9 +209,10 @@ export default function BranchLicensesPanel({
                       className="hidden"
                     />
                     <button
+                      type="button"
                       onClick={() => fileRefs.current[def.type]?.click()}
                       disabled={uploading}
-                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
                     >
                       {uploading
                         ? t("doctors.uploading")

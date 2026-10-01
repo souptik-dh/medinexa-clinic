@@ -11,6 +11,7 @@ import FieldError from "@/components/form/FieldError";
 import { getInputClass, inputClass, textareaClass } from "@/components/form/fieldStyles";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { useAuth } from "@/context/AuthContext";
 import { canCreateClinic, canUpdateClinic } from "@/lib/permissions";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -24,6 +25,9 @@ interface ClinicFormProps {
    * back to the host instead of navigating away. */
   onDone?: (clinicId?: string) => void;
   onCancel?: () => void;
+  /** Lets an embedding host (e.g. a drawer) lock its close controls while
+   * the save request is in flight. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 type RequiredField =
@@ -40,6 +44,7 @@ export default function ClinicForm({
   clinicId: clinicIdProp,
   onDone,
   onCancel,
+  onPendingChange,
 }: ClinicFormProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -66,14 +71,31 @@ export default function ClinicForm({
   const [tradeLicenseValidationStatus, setTradeLicenseValidationStatus] =
     useState<TradeLicenseValidationStatus>("PENDING");
   const [tradeLicenseMessage, setTradeLicenseMessage] = useState<string | null>(null);
-  const [validating, setValidating] = useState(false);
+  const { pending: validating, run: runValidate } = useAsyncAction();
   const [drugLicenseNumber, setDrugLicenseNumber] = useState("");
   const [clinicalEstablishmentRegNumber, setClinicalEstablishmentRegNumber] =
     useState("");
   const [loading, setLoading] = useState(isEdit);
-  const [busy, setBusy] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
+  // Stays true after a standalone save until the delayed redirect fires, so
+  // the button can't be pressed again in between.
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
+
+  useEffect(() => {
+    onPendingChange?.(isSaving);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSaving]);
+  // The host may unmount the form from onDone while the save is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   useEffect(() => {
     if (!isEdit || !clinicId) {
@@ -105,7 +127,9 @@ export default function ClinicForm({
         }
       })
       .catch((err) => {
-        if (active) setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
+        if (!active) return;
+        setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
+        setLoadFailed(true);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -114,7 +138,14 @@ export default function ClinicForm({
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, clinicId]);
+  }, [isEdit, clinicId, reloadKey]);
+
+  const retryLoad = () => {
+    setError(null);
+    setLoadFailed(false);
+    setLoading(true);
+    setReloadKey((k) => k + 1);
+  };
 
   const onTradeLicenseNumberChange = (value: string) => {
     setTradeLicenseNumber(value);
@@ -132,20 +163,19 @@ export default function ClinicForm({
       setError(t("clinicForm.enterTradeLicenseNumberFirst"));
       return;
     }
-    setValidating(true);
     setError(null);
-    try {
-      const res = await clinicsApi.validateTradeLicense(number);
-      setTradeLicenseValidationStatus(res.status);
-      setTradeLicenseMessage(res.message);
-    } catch (err) {
-      setTradeLicenseValidationStatus("PENDING");
-      setTradeLicenseMessage(
-        getErrorMessage(err, t("clinicForm.unableToValidateTradeLicense"))
-      );
-    } finally {
-      setValidating(false);
-    }
+    await runValidate(async () => {
+      try {
+        const res = await clinicsApi.validateTradeLicense(number);
+        setTradeLicenseValidationStatus(res.status);
+        setTradeLicenseMessage(res.message);
+      } catch (err) {
+        setTradeLicenseValidationStatus("PENDING");
+        setTradeLicenseMessage(
+          getErrorMessage(err, t("clinicForm.unableToValidateTradeLicense"))
+        );
+      }
+    });
   };
 
   const onSelectPostOffice = (po: PostOffice) => {
@@ -177,49 +207,50 @@ export default function ClinicForm({
       setError(t("clinicForm.validateTradeLicenseBeforeCreate"));
       return;
     }
-    if (busy) return;
-    setBusy(true);
+    if (redirecting) return;
     setError(null);
-    try {
-      const input = {
-        name,
-        description: description || null,
-        nearby_location: nearbyLocation || null,
-        city,
-        district,
-        pin_code: pinCode,
-        state: stateField,
-        post_office: postOffice,
-        trade_license_number: tradeLicenseNumber,
-        trade_license_validation_status: tradeLicenseValidationStatus,
-        drug_license_number: drugLicenseNumber || null,
-        clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
-      };
-      let redirectTo = "/clinics";
-      let savedClinicId: string | undefined;
-      if (isEdit) {
-        await clinicsApi.update(clinicId, input);
-        toast.success(t("common.updateSuccess"));
-        savedClinicId = clinicId;
-        redirectTo = `/clinics/${clinicId}/overview`;
-      } else {
-        const created = await clinicsApi.create(input);
-        toast.success(t("common.createSuccess"));
-        savedClinicId = created.id;
-        redirectTo = `/clinics/${created.id}/overview`;
+    await runSave(async () => {
+      try {
+        const input = {
+          name,
+          description: description || null,
+          nearby_location: nearbyLocation || null,
+          city,
+          district,
+          pin_code: pinCode,
+          state: stateField,
+          post_office: postOffice,
+          trade_license_number: tradeLicenseNumber,
+          trade_license_validation_status: tradeLicenseValidationStatus,
+          drug_license_number: drugLicenseNumber || null,
+          clinical_establishment_reg_number: clinicalEstablishmentRegNumber || null,
+        };
+        let redirectTo = "/clinics";
+        let savedClinicId: string | undefined;
+        if (isEdit) {
+          await clinicsApi.update(clinicId, input);
+          toast.success(t("common.updateSuccess"));
+          savedClinicId = clinicId;
+          redirectTo = `/clinics/${clinicId}/overview`;
+        } else {
+          const created = await clinicsApi.create(input);
+          toast.success(t("common.createSuccess"));
+          savedClinicId = created.id;
+          redirectTo = `/clinics/${created.id}/overview`;
+        }
+        if (onDone) {
+          onDone(savedClinicId);
+          return;
+        }
+        setRedirecting(true);
+        setTimeout(() => router.push(redirectTo), 150);
+      } catch (err) {
+        // Entered values are kept so the user can fix and resubmit.
+        const message = getErrorMessage(err, t("clinicForm.unableToSaveClinic"));
+        setError(message);
+        toast.error(message);
       }
-      if (onDone) {
-        onDone(savedClinicId);
-        return;
-      }
-      setTimeout(() => router.push(redirectTo), 150);
-    } catch (err) {
-      const message = getErrorMessage(err, t("clinicForm.unableToSaveClinic"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    });
   };
 
   if (!canSubmit) {
@@ -237,6 +268,15 @@ export default function ClinicForm({
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={retryLoad}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -370,7 +410,7 @@ export default function ClinicForm({
                     type="button"
                     onClick={validateTradeLicense}
                     disabled={validating || !tradeLicenseNumber.trim()}
-                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:opacity-50 ${
+                    className={`h-11 shrink-0 whitespace-nowrap rounded-lg px-3.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
                       tradeLicenseValidationStatus === "VALID"
                         ? "bg-success-50 text-success-700 hover:bg-success-100 dark:bg-success-500/10 dark:text-success-500"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
@@ -423,21 +463,30 @@ export default function ClinicForm({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={() =>
               onCancel
                 ? onCancel()
                 : router.push(isEdit ? `/clinics/${clinicId}/overview` : "/clinics")
             }
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            disabled={isSaving}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("common.cancel")}
           </button>
           <button
+            type="button"
             onClick={submit}
-            disabled={busy || loading}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSaving || redirecting || loading}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("auth.saving") : isEdit ? t("clinicForm.saveChanges") : t("clinicsPage.createClinic")}
+            {isSaving || redirecting
+              ? isEdit
+                ? t("auth.saving")
+                : t("common.creatingEllipsis")
+              : isEdit
+                ? t("clinicForm.saveChanges")
+                : t("clinicsPage.createClinic")}
           </button>
         </div>
       </div>

@@ -12,6 +12,8 @@ import {
 import { ApiError, SuperAdminPlanVersion, superAdminApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 export default function SuperAdminPlansPanel() {
   const { t } = useTranslation();
@@ -23,41 +25,47 @@ export default function SuperAdminPlansPanel() {
   const [monthlyAmount, setMonthlyAmount] = useState("");
   const [currency, setCurrency] = useState("INR");
   const [trialMonths, setTrialMonths] = useState("1");
-  const [publishing, setPublishing] = useState(false);
+  const { pending: publishing, run: runPublish } = useAsyncAction();
+  const { begin, isLatest } = useLatestRequest();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes after publishing without flashing the table skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = begin();
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const res = await superAdminApi.plans();
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(err instanceof ApiError ? err.message : t("superAdminPlans.failedToLoadPlans"));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [t]);
+  }, [t, begin, isLatest]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const publish = async () => {
-    setPublishing(true);
-    try {
-      const res = await superAdminApi.publishPlan({
-        monthly_amount: Number(monthlyAmount),
-        currency: currency || undefined,
-        trial_months: trialMonths === "" ? undefined : Number(trialMonths),
-      });
-      toast.success(res.message || t("superAdminPlans.newPlanPublished"));
-      setMonthlyAmount("");
-      load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminPlans.failedToPublishPlan"));
-    } finally {
-      setPublishing(false);
-    }
+    await runPublish(async () => {
+      try {
+        const res = await superAdminApi.publishPlan({
+          monthly_amount: Number(monthlyAmount),
+          currency: currency || undefined,
+          trial_months: trialMonths === "" ? undefined : Number(trialMonths),
+        });
+        toast.success(res.message || t("superAdminPlans.newPlanPublished"));
+        setMonthlyAmount("");
+        // Publishing supersedes the previous active version, so refresh the
+        // whole list - silently, keeping the existing rows on screen.
+        load({ silent: true });
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdminPlans.failedToPublishPlan"));
+      }
+    });
   };
 
   return (
@@ -106,9 +114,10 @@ export default function SuperAdminPlansPanel() {
             />
           </div>
           <button
+            type="button"
             onClick={publish}
             disabled={publishing || !monthlyAmount || Number(monthlyAmount) <= 0}
-            className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+            className="inline-flex h-11 items-center rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {publishing ? t("superAdminPlans.publishing") : t("superAdminPlans.publish")}
           </button>
@@ -116,13 +125,25 @@ export default function SuperAdminPlansPanel() {
       </div>
 
       <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
-        {error && <p className="p-6 text-sm text-error-500">{error}</p>}
+        {error && (
+          <div className="flex flex-wrap items-center gap-3 p-6">
+            <p className="text-sm text-error-500">{error}</p>
+            <button
+              type="button"
+              onClick={() => load()}
+              disabled={loading}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            >
+              {t("common.retry")}
+            </button>
+          </div>
+        )}
         {!error && !loading && items.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("superAdminPlans.noPlanVersionsYet")}
           </p>
         )}
-        {items.length > 0 && (
+        {(loading || items.length > 0) && (
           <div className="overflow-x-auto p-4 sm:p-6">
             <Table>
               <TableHeader>
@@ -136,7 +157,9 @@ export default function SuperAdminPlansPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((p) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={4} cols={6} cellClassName="px-4 py-3" />
+                ) : items.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">{p.name}</TableCell>
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">
@@ -159,9 +182,6 @@ export default function SuperAdminPlansPanel() {
               </TableBody>
             </Table>
           </div>
-        )}
-        {loading && (
-          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
         )}
       </div>
     </div>

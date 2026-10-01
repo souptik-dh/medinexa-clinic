@@ -13,6 +13,7 @@ import {
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 export default function StaffPermissionsPanel() {
   const { t } = useTranslation();
@@ -27,8 +28,10 @@ export default function StaffPermissionsPanel() {
   const [member, setMember] = useState<StaffMember | null>(null);
   const [permValues, setPermValues] = useState<BranchStaffPermission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  // All permissions are saved in one request, so a single ref-locked save.
+  const { pending: isSaving, run: runSave } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     if (!branchId || !staffId) {
@@ -37,6 +40,7 @@ export default function StaffPermissionsPanel() {
     }
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
     try {
       const [staffRes, permRes] = await Promise.all([
         staffApi.list(branchId),
@@ -51,6 +55,7 @@ export default function StaffPermissionsPanel() {
       setPermValues(permRes.permissions as BranchStaffPermission[]);
     } catch (err) {
       setError(getErrorMessage(err, t("staffPermissions.failedToLoadPermissions")));
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -71,19 +76,20 @@ export default function StaffPermissionsPanel() {
       toast.error(t("appointments.noPermission"));
       return;
     }
-    setBusy(true);
     setError(null);
-    try {
-      await staffApi.setPermissions(branchId, staffId, permValues);
-      toast.success(t("staffPermissions.permissionsUpdatedSuccess"));
-      router.push("/staff");
-    } catch (err) {
-      const message = getErrorMessage(err, t("staffPermissions.unableToUpdatePermissions"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    setLoadFailed(false);
+    await runSave(async () => {
+      try {
+        await staffApi.setPermissions(branchId, staffId, permValues);
+        toast.success(t("staffPermissions.permissionsUpdatedSuccess"));
+        router.push("/staff");
+      } catch (err) {
+        // Toggled values are kept so the user can retry.
+        const message = getErrorMessage(err, t("staffPermissions.unableToUpdatePermissions"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   return (
@@ -100,6 +106,15 @@ export default function StaffPermissionsPanel() {
       {error && (
         <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={load}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -131,7 +146,7 @@ export default function StaffPermissionsPanel() {
                     <Checkbox
                       checked={permValues.includes(meta.permission)}
                       onChange={() => togglePermission(meta.permission)}
-                      disabled={!canManage}
+                      disabled={!canManage || isSaving}
                     />
                   </div>
                 ))}
@@ -143,6 +158,7 @@ export default function StaffPermissionsPanel() {
 
       <div className="mt-6 flex items-center justify-end gap-3">
         <button
+          type="button"
           onClick={() => router.push("/staff")}
           className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
@@ -150,11 +166,12 @@ export default function StaffPermissionsPanel() {
         </button>
         {canManage && (
           <button
+            type="button"
             onClick={save}
-            disabled={busy || loading}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSaving || loading}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("auth.saving") : t("staffPermissions.savePermissions")}
+            {isSaving ? t("auth.saving") : t("staffPermissions.savePermissions")}
           </button>
         )}
       </div>
