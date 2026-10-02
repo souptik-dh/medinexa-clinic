@@ -431,7 +431,7 @@
       top: 8px;
       left: 50%;
       transform: translateX(-50%);
-      width: 70px;
+      /* width: 70px; */
       height: 14px;
       background: #00C1CB;
       border-radius: 0 0 10px 10px;
@@ -478,6 +478,10 @@
       display: flex;
       align-items: center;
       gap: 60px;
+    }
+
+    .steps-reverse {
+      flex-direction: row-reverse;
     }
 
     .steps-phone {
@@ -692,17 +696,24 @@
     }
 
     @media (max-width: 992px) {
-      .hero-section { flex-direction: column; text-align: center; }
+      .hero-section { flex-direction: column; text-align: center; min-height: auto; padding-top: 30px; }
       .hero-content { max-width: 100%; }
-      .hero-actions { justify-content: center; }
-      .hero-visuals { width: 100%; justify-content: center; margin-top: 30px; padding-right: 0; }
-      .floating-phone-wrap { right: 10px; width: 170px; height: 340px; }
+      .hero-actions { justify-content: center; gap: 14px; }
+      .hero-visuals { width: 100%; justify-content: center; margin-top: 40px; margin-bottom: 40px; padding-right: 0; }
+      .laptop-container { max-width: 480px; }
+      .floating-phone-wrap { right: 0px; bottom: -25px; width: 145px; height: 290px; }
       .steps-section { flex-direction: column-reverse; text-align: center; }
       .step-item-card { text-align: left; }
       .footer-grid { grid-template-columns: 1fr 1fr; }
     }
 
     @media (max-width: 576px) {
+      .hero-actions { flex-direction: column; width: 100%; gap: 12px; }
+      .hero-actions .btn-gradient, .hero-actions .btn-secondary { width: 100%; justify-content: center; }
+      .hero-visuals { margin-top: 32px; margin-bottom: 30px; padding: 0 10px; }
+      .laptop-container { max-width: 320px; }
+      .floating-phone-wrap { right: -4px; bottom: -16px; width: 110px; height: 220px; border-width: 5px; border-radius: 22px; }
+      .floating-phone-wrap img { border-radius: 17px; }
       .swiper-slide {
         width: 220px !important;
         height: 440px !important;
@@ -719,6 +730,9 @@
         border-width: 8px;
         top: 12px;
       }
+      .store-buttons { flex-direction: column; align-items: center; gap: 12px; }
+      .store-btn { width: 100%; max-width: 280px; justify-content: center; }
+      .footer-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -889,6 +903,44 @@
     </div>
   </section>
 
+  <!-- Clinic 3-Steps Process Section -->
+  <section class="steps-section steps-reverse" id="clinic-steps">
+    <div class="steps-phone">
+      <div class="steps-phone-frame">
+        <img src="clinic_mobile_step.png" alt="Clinic Portal Step Preview" />
+      </div>
+    </div>
+
+    <div class="steps-content">
+      <h2>Empower Your Clinic in 3 Easy Steps</h2>
+      <p class="sub-desc">Streamline your clinic operations, patient queues, and appointment schedules with Jido Healthcare's powerful clinic management portal.</p>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">01</div>
+        <div class="step-text">
+          <h4>Register Your Clinic</h4>
+          <p>Set up your clinic profile, configure multiple branch locations, and invite doctors & clinic staff.</p>
+        </div>
+      </div>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">02</div>
+        <div class="step-text">
+          <h4>Configure Doctors & Schedules</h4>
+          <p>Assign doctors to branches, customize shift timings, configure slot limits, and manage consultation fees.</p>
+        </div>
+      </div>
+
+      <div class="step-item-card glass-card">
+        <div class="step-number-box">03</div>
+        <div class="step-text">
+          <h4>Manage Live Queues & Bookings</h4>
+          <p>Track real-time patient queues, handle walk-in & online appointments seamlessly, and eliminate patient wait times.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- FAQ Section -->
   <section class="faq-section" id="faq">
     <div class="section-head">
@@ -946,12 +998,12 @@
     
     <div class="store-buttons">
       <a href="#" class="store-btn">
-        <i class="fa-brands fa-apple"></i>
-        <span>Download on the<br><strong>App Store</strong></span>
+        <i class="fa-brands fa-google-play"></i>
+        <span>Patient App on<br><strong>Google Play</strong></span>
       </a>
       <a href="#" class="store-btn">
         <i class="fa-brands fa-google-play"></i>
-        <span>Get it on<br><strong>Google Play</strong></span>
+        <span>Clinic App on<br><strong>Google Play</strong></span>
       </a>
     </div>
   </section>

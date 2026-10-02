@@ -194,6 +194,50 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Clinic 3-Steps Process Section */}
+      <section className={`${styles.stepsSection} ${styles.stepsReverse}`} id="clinic-steps">
+        <div className={styles.stepsPhone}>
+          <div className={styles.stepsPhoneFrame}>
+            <img
+              src="/images/landing/clinic_mobile_step.png"
+              alt="Clinic Portal Step Preview"
+            />
+          </div>
+        </div>
+
+        <div className={styles.stepsContent}>
+          <h2>Empower Your Clinic in 3 Easy Steps</h2>
+          <p className={styles.subDesc}>
+            Streamline your clinic operations, patient queues, and appointment schedules with Jido Healthcare&apos;s
+            powerful clinic management portal.
+          </p>
+
+          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+            <div className={styles.stepNumberBox}>01</div>
+            <div className={styles.stepText}>
+              <h4>Register Your Clinic</h4>
+              <p>Set up your clinic profile, configure multiple branch locations, and invite doctors & clinic staff.</p>
+            </div>
+          </div>
+
+          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+            <div className={styles.stepNumberBox}>02</div>
+            <div className={styles.stepText}>
+              <h4>Configure Doctors & Schedules</h4>
+              <p>Assign doctors to branches, customize shift timings, configure slot limits, and manage consultation fees.</p>
+            </div>
+          </div>
+
+          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+            <div className={styles.stepNumberBox}>03</div>
+            <div className={styles.stepText}>
+              <h4>Manage Live Queues & Bookings</h4>
+              <p>Track real-time patient queues, handle walk-in & online appointments seamlessly, and eliminate patient wait times.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ Section */}
       <section className={styles.faqSection} id="faq">
         <div className={styles.sectionHead}>
@@ -215,7 +259,17 @@ export default function LandingPage() {
               <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
             </svg>
             <span className={styles.storeBtnText}>
-              Get it on<br />
+              Patient App on<br />
+              <strong>Google Play</strong>
+            </span>
+          </a>
+
+          <a href="#" className={styles.storeBtn}>
+            <svg className={styles.storeBtnIcon} width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
+            </svg>
+            <span className={styles.storeBtnText}>
+              Clinic App on<br />
               <strong>Google Play</strong>
             </span>
           </a>
