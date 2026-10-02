@@ -444,7 +444,7 @@
   top: 8px;
   left: 50%;
   transform: translateX(-50%);
-  width: 50px;
+  /* width: 50px; */
   height: 14px;
   background: #00C1CB;
   border-radius: 0 0 10px 10px;
@@ -474,6 +474,10 @@
   display: flex;
   align-items: center;
   gap: 60px;
+}
+
+.stepsReverse {
+  flex-direction: row-reverse;
 }
 
 .stepsPhone {
@@ -728,23 +732,31 @@
   .heroSection {
     flex-direction: column;
     text-align: center;
+    min-height: auto;
+    padding-top: 30px;
   }
   .heroContent {
     max-width: 100%;
   }
   .heroActions {
     justify-content: center;
+    gap: 14px;
   }
   .heroVisuals {
     width: 100%;
     justify-content: center;
-    margin-top: 30px;
+    margin-top: 40px;
+    margin-bottom: 40px;
     padding-right: 0;
   }
+  .laptopContainer {
+    max-width: 480px;
+  }
   .floatingPhoneWrap {
-    right: 10px;
-    width: 170px;
-    height: 340px;
+    right: 0px;
+    bottom: -25px;
+    width: 145px;
+    height: 290px;
   }
   .stepsSection {
     flex-direction: column-reverse;
@@ -759,6 +771,35 @@
 }
 
 @media (max-width: 576px) {
+  .heroActions {
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
+  }
+  .heroActions .btnGradient,
+  .heroActions .btnSecondary {
+    width: 100%;
+    justify-content: center;
+  }
+  .heroVisuals {
+    margin-top: 32px;
+    margin-bottom: 30px;
+    padding: 0 10px;
+  }
+  .laptopContainer {
+    max-width: 320px;
+  }
+  .floatingPhoneWrap {
+    right: -4px;
+    bottom: -16px;
+    width: 110px;
+    height: 220px;
+    border-width: 5px;
+    border-radius: 22px;
+  }
+  .floatingPhoneWrap img {
+    border-radius: 17px;
+  }
   .screenshotSliderArea {
     overflow: hidden;
   }
@@ -786,6 +827,16 @@
   }
   .heroContent h1 {
     font-size: 28px;
+  }
+  .storeButtons {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .storeBtn {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
   }
   .footerGrid {
     grid-template-columns: 1fr;
