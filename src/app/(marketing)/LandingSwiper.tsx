@@ -1,22 +1,23 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Swiper } from "swiper/bundle";
 import "swiper/swiper-bundle.css";
 import styles from "./landing.module.css";
 
 const screenshots = [
-  { src: "/images/landing/mobile_ss1.jpg", alt: "Doctor Profile" },
+  { src: "/images/landing/mobile_ss1.jpg", alt: "Patient Dashboard" },
   { src: "/images/landing/mobile_ss2.jpg", alt: "Doctor Search" },
-  { src: "/images/landing/mobile_ss3.jpg", alt: "Appointment Schedule" },
-  { src: "/images/landing/mobile_ss4.jpg", alt: "Payment Checkout" },
-  { src: "/images/landing/mobile_ss5.jpg", alt: "Clinic Details" },
-  { src: "/images/landing/mobile_ss6.jpg", alt: "Patient Dashboard" },
+  { src: "/images/landing/mobile_ss3.jpg", alt: "Doctor Profile" },
+  { src: "/images/landing/mobile_ss4.jpg", alt: "Select Appointment Date" },
+  { src: "/images/landing/mobile_ss5.jpg", alt: "Booking Appointment" },
+  { src: "/images/landing/mobile_ss6.jpg", alt: "My Bookings" },
 ];
 
 export function LandingSwiper() {
   const containerRef = useRef<HTMLDivElement>(null);
   const swiperRef = useRef<Swiper | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -38,9 +39,8 @@ export function LandingSwiper() {
         modifier: 1,
         slideShadows: false,
       },
-      pagination: {
-        el: `.${styles.swiperPagination}`,
-        clickable: true,
+      on: {
+        slideChange: (swiper) => setActiveIndex(swiper.realIndex),
       },
     });
 
@@ -48,6 +48,8 @@ export function LandingSwiper() {
       swiperRef.current?.destroy();
     };
   }, []);
+
+  const total = String(screenshots.length).padStart(2, "0");
 
   return (
     <div className={styles.screenshotSliderArea}>
@@ -65,9 +67,38 @@ export function LandingSwiper() {
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Pagination Bullets */}
-        <div className={`swiper-pagination ${styles.swiperPagination}`}></div>
+      {/* Prev / screen name / next */}
+      <div className={styles.sliderControls}>
+        <button
+          type="button"
+          className={styles.sliderNavBtn}
+          onClick={() => swiperRef.current?.slidePrev()}
+          aria-label="Previous screenshot"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+          </svg>
+        </button>
+
+        <div className={styles.sliderCaption} aria-live="polite">
+          <span className={styles.sliderCaptionCount}>
+            {String(activeIndex + 1).padStart(2, "0")} / {total}
+          </span>
+          <strong key={activeIndex}>{screenshots[activeIndex].alt}</strong>
+        </div>
+
+        <button
+          type="button"
+          className={styles.sliderNavBtn}
+          onClick={() => swiperRef.current?.slideNext()}
+          aria-label="Next screenshot"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+          </svg>
+        </button>
       </div>
     </div>
   );
