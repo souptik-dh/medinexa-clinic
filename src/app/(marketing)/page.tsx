@@ -38,245 +38,271 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className={styles.heroSection}>
-        <div className={styles.heroContent}>
-          <div className={styles.heroBadge}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-            </svg>
-            Healthcare Simplified
-          </div>
-          <h1>
-            Launch Your Healthcare Journey with{" "}
-            <span className={styles.gradientText}>Confidence</span>.
-          </h1>
-          <p>
-            Connect patients with top verified doctors and clinics, while
-            empowering medical facilities with unified branch controls,
-            sequential queue bookings, and doctor schedule management.
-          </p>
+      {/* SECTION 1 (Odd: Deep Purple Background) - Hero Section */}
+      <section className={styles.sectionOdd} id="hero">
+        <div className={styles.heroSection}>
+          <div className={styles.heroContent}>
+            <div className={styles.heroBadge}>
+              <span className={styles.heroBadgeDot}></span>
+              WHO WE ARE
+            </div>
+            <h1>
+              Smart, connected software for{" "}
+              <span className={styles.gradientText}>growing healthcare</span>
+            </h1>
+            <p>
+              Jido is a modern technology ecosystem focused on building smart, scalable, and
+              user-friendly digital solutions for healthcare facilities, clinic appointments,
+              and doctor queue management.
+            </p>
 
-          <div className={styles.heroActions}>
-            <Link href="/signup" className={styles.btnGradient}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
-              </svg>
-              Book Appointment
-            </Link>
-            <Link href="/signin" className={styles.btnSecondary}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>
-              </svg>
-              Clinic Portal Login
-            </Link>
+            <div className={styles.heroActions}>
+              <Link href="/signup" className={styles.btnGradient}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
+                </svg>
+                Get Started
+              </Link>
+              <Link href="/signin" className={styles.btnSecondaryDark}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/>
+                </svg>
+                Clinic Portal Login
+              </Link>
+            </div>
           </div>
-        </div>
 
-        {/* Right Side: Laptop Screen with Mobile Mockup */}
-        <div className={styles.heroVisuals} id="portal">
-          <div className={styles.laptopContainer}>
-            <div className={styles.laptopFrame}>
+          {/* Right Side: Laptop Screen with Mobile Mockup and ISO badge */}
+          <div className={styles.heroVisuals} id="portal">
+            <div className={styles.isoBadge}>
+              <div className={styles.isoIcon}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+                </svg>
+              </div>
+              <div className={styles.isoText}>
+                <strong>ISO 9001:2015</strong>
+                <span>Certified quality</span>
+              </div>
+            </div>
+
+            <div className={styles.laptopContainer}>
+              <div className={styles.laptopFrame}>
+                <img
+                  src="/images/landing/Screenshot_1.png"
+                  alt="Jido Healthcare Clinic Portal Dashboard"
+                />
+              </div>
+              <div className={styles.laptopBaseBar}></div>
+            </div>
+
+            <div className={styles.floatingPhoneWrap}>
               <img
-                src="/images/landing/Screenshot_1.png"
-                alt="Jido Healthcare Clinic Portal Dashboard"
+                src="/images/landing/mobile_ss1.jpg"
+                alt="Jido Healthcare Mobile App"
               />
             </div>
-            <div className={styles.laptopBaseBar}></div>
-          </div>
-
-          <div className={styles.floatingPhoneWrap}>
-            <img
-              src="/images/landing/mobile_ss1.jpg"
-              alt="Jido Healthcare Mobile App"
-            />
           </div>
         </div>
       </section>
 
-      {/* Key Features Grid */}
-      <section className={styles.sectionHead} id="features">
-        <h2>Why You Should Choose Jido Healthcare</h2>
-        <p>Modern tools designed to deliver smooth consultation and clinic management.</p>
-      </section>
-
-      <div className={styles.featuresGrid}>
-        <div className={`${styles.featureCard} ${styles.glassCard}`}>
-          <div className={`${styles.featureIcon} ${styles.icon1}`}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-          </div>
-          <h3>Verified Doctors</h3>
-          <p>Search qualified specialists by qualification, council registration, and fee structure.</p>
-        </div>
-
-        <div className={`${styles.featureCard} ${styles.glassCard}`}>
-          <div className={`${styles.featureIcon} ${styles.icon2}`}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
-            </svg>
-          </div>
-          <h3>Real-time 30-Day Slots</h3>
-          <p>Dynamic availability calendar with instant leave tracking and sequential queue booking.</p>
-        </div>
-
-        <div className={`${styles.featureCard} ${styles.glassCard}`}>
-          <div className={`${styles.featureIcon} ${styles.icon3}`}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-            </svg>
-          </div>
-          <h3>Fast & Secure Pay</h3>
-          <p>UPI, credit/debit card, and pay-at-clinic flexibility with instant receipt generation.</p>
-        </div>
-
-        <div className={`${styles.featureCard} ${styles.glassCard}`}>
-          <div className={`${styles.featureIcon} ${styles.icon4}`}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
-            </svg>
-          </div>
-          <h3>Multi-Branch Portal</h3>
-          <p>Comprehensive admin controls to manage branch doctors, patient invites, and clinic details.</p>
-        </div>
-      </div>
-
-      {/* App Screenshots Section */}
-      <section className={styles.sectionHead} id="screenshots">
-        <h2>App Screenshots</h2>
-        <p>Explore the intuitive screens crafted for iOS, Android, and mobile web.</p>
-      </section>
-
-      <LandingSwiper />
-
-      {/* 3-Steps Process Section */}
-      <section className={styles.stepsSection} id="steps">
-        <div className={styles.stepsPhone}>
-          <div className={styles.stepsPhoneFrame}>
-            <img
-              src="/images/landing/mobile_ss2.jpg"
-              alt="Mobile App Step Preview"
-            />
-          </div>
-        </div>
-
-        <div className={styles.stepsContent}>
-          <h2>Very Easy To Use Just Following 3 Steps</h2>
-          <p className={styles.subDesc}>
-            Get started with Jido Healthcare in three simple steps. Our intuitive
-            platform makes healthcare accessible to everyone.
-          </p>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>01</div>
-            <div className={styles.stepText}>
-              <h4>Install This App</h4>
-              <p>Download Jido Healthcare from the App Store or Google Play and create your account in seconds.</p>
-            </div>
-          </div>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>02</div>
-            <div className={styles.stepText}>
-              <h4>Login Or Signup</h4>
-              <p>Create your profile, verify your details, and get ready to access quality healthcare services.</p>
-            </div>
-          </div>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>03</div>
-            <div className={styles.stepText}>
-              <h4>Search Your Doctor & Book</h4>
-              <p>Find verified doctors by specialty, check real-time availability, and book your appointment instantly.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Clinic 3-Steps Process Section */}
-      <section className={`${styles.stepsSection} ${styles.stepsReverse}`} id="clinic-steps">
-        <div className={styles.stepsPhone}>
-          <div className={styles.stepsPhoneFrame}>
-            <img
-              src="/images/landing/clinic_mobile_step.png"
-              alt="Clinic Portal Step Preview"
-            />
-          </div>
-        </div>
-
-        <div className={styles.stepsContent}>
-          <h2>Empower Your Clinic in 3 Easy Steps</h2>
-          <p className={styles.subDesc}>
-            Streamline your clinic operations, patient queues, and appointment schedules with Jido Healthcare&apos;s
-            powerful clinic management portal.
-          </p>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>01</div>
-            <div className={styles.stepText}>
-              <h4>Register Your Clinic</h4>
-              <p>Set up your clinic profile, configure multiple branch locations, and invite doctors & clinic staff.</p>
-            </div>
-          </div>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>02</div>
-            <div className={styles.stepText}>
-              <h4>Configure Doctors & Schedules</h4>
-              <p>Assign doctors to branches, customize shift timings, configure slot limits, and manage consultation fees.</p>
-            </div>
-          </div>
-
-          <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
-            <div className={styles.stepNumberBox}>03</div>
-            <div className={styles.stepText}>
-              <h4>Manage Live Queues & Bookings</h4>
-              <p>Track real-time patient queues, handle walk-in & online appointments seamlessly, and eliminate patient wait times.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className={styles.faqSection} id="faq">
+      {/* SECTION 2 (Even: Current Light Background) - Key Features Grid */}
+      <section className={styles.sectionEven} id="features">
         <div className={styles.sectionHead}>
-          <h2>Frequently Asked Questions</h2>
-          <p>Have questions? We&apos;ve got answers to help you navigate Jido Healthcare effortlessly.</p>
+          <h2>Why You Should Choose Jido Healthcare</h2>
+          <p>Modern tools designed to deliver smooth consultation and clinic management.</p>
         </div>
 
-        <LandingFAQ />
-      </section>
+        <div className={styles.featuresGrid}>
+          <div className={`${styles.featureCard} ${styles.glassCard}`}>
+            <div className={`${styles.featureIcon} ${styles.icon1}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+            </div>
+            <h3>Verified Doctors</h3>
+            <p>Search qualified specialists by qualification, council registration, and fee structure.</p>
+          </div>
 
-      {/* Download App Call-to-Action */}
-      <section className={`${styles.downloadCard} ${styles.glassCard}`} id="download">
-        <h2>Download and Start Booking Today</h2>
-        <p>Experience fast, hassle-free healthcare appointments right at your fingertips.</p>
+          <div className={`${styles.featureCard} ${styles.glassCard}`}>
+            <div className={`${styles.featureIcon} ${styles.icon2}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z"/>
+              </svg>
+            </div>
+            <h3>Real-time 30-Day Slots</h3>
+            <p>Dynamic availability calendar with instant leave tracking and sequential queue booking.</p>
+          </div>
 
-        <div className={styles.storeButtons}>
-          <a href="#" className={styles.storeBtn}>
-            <svg className={styles.storeBtnIcon} width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
-            </svg>
-            <span className={styles.storeBtnText}>
-              Patient App on<br />
-              <strong>Google Play</strong>
-            </span>
-          </a>
+          <div className={`${styles.featureCard} ${styles.glassCard}`}>
+            <div className={`${styles.featureIcon} ${styles.icon3}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+              </svg>
+            </div>
+            <h3>Fast & Secure Pay</h3>
+            <p>UPI, credit/debit card, and pay-at-clinic flexibility with instant receipt generation.</p>
+          </div>
 
-          <a href="#" className={styles.storeBtn}>
-            <svg className={styles.storeBtnIcon} width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
-            </svg>
-            <span className={styles.storeBtnText}>
-              Clinic App on<br />
-              <strong>Google Play</strong>
-            </span>
-          </a>
+          <div className={`${styles.featureCard} ${styles.glassCard}`}>
+            <div className={`${styles.featureIcon} ${styles.icon4}`}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10zm-2-8h-2v2h2v-2zm0 4h-2v2h2v-2z"/>
+              </svg>
+            </div>
+            <h3>Multi-Branch Portal</h3>
+            <p>Comprehensive admin controls to manage branch doctors, patient invites, and clinic details.</p>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
+      {/* SECTION 3 (Odd: Deep Purple Background) - App Screenshots Section */}
+      <section className={styles.sectionOdd} id="screenshots">
+        <div className={`${styles.sectionHead} ${styles.sectionHeadLight}`}>
+          <h2>App Screenshots</h2>
+          <p>Explore the intuitive screens crafted for iOS, Android, and mobile web.</p>
+        </div>
+
+        <LandingSwiper />
+      </section>
+
+      {/* SECTION 4 (Even: Current Light Background) - 3-Steps Process Patient Section */}
+      <section className={styles.sectionEven} id="steps">
+        <div className={styles.stepsSection}>
+          <div className={styles.stepsPhone}>
+            <div className={styles.stepsPhoneFrame}>
+              <img
+                src="/images/landing/mobile_ss2.jpg"
+                alt="Mobile App Step Preview"
+              />
+            </div>
+          </div>
+
+          <div className={styles.stepsContent}>
+            <h2>Very Easy To Use Just Following 3 Steps</h2>
+            <p className={styles.subDesc}>
+              Get started with Jido Healthcare in three simple steps. Our intuitive
+              platform makes healthcare accessible to everyone.
+            </p>
+
+            <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+              <div className={styles.stepNumberBox}>01</div>
+              <div className={styles.stepText}>
+                <h4>Install This App</h4>
+                <p>Download Jido Healthcare from the App Store or Google Play and create your account in seconds.</p>
+              </div>
+            </div>
+
+            <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+              <div className={styles.stepNumberBox}>02</div>
+              <div className={styles.stepText}>
+                <h4>Login Or Signup</h4>
+                <p>Create your profile, verify your details, and get ready to access quality healthcare services.</p>
+              </div>
+            </div>
+
+            <div className={`${styles.stepItemCard} ${styles.glassCard}`}>
+              <div className={styles.stepNumberBox}>03</div>
+              <div className={styles.stepText}>
+                <h4>Search Your Doctor & Book</h4>
+                <p>Find verified doctors by specialty, check real-time availability, and book your appointment instantly.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 5 (Odd: Deep Purple Background) - Clinic 3-Steps Process Section */}
+      <section className={styles.sectionOdd} id="clinic-steps">
+        <div className={`${styles.stepsSection} ${styles.stepsReverse}`}>
+          <div className={styles.stepsPhone}>
+            <div className={`${styles.stepsPhoneFrame} ${styles.stepsPhoneFrameGlow}`}>
+              <img
+                src="/images/landing/clinic_mobile_step.png"
+                alt="Clinic Portal Step Preview"
+              />
+            </div>
+          </div>
+
+          <div className={`${styles.stepsContent} ${styles.stepsContentLight}`}>
+            <h2>Empower Your Clinic in 3 Easy Steps</h2>
+            <p className={styles.subDescLight}>
+              Streamline your clinic operations, patient queues, and appointment schedules with Jido Healthcare&apos;s
+              powerful clinic management portal.
+            </p>
+
+            <div className={`${styles.stepItemCard} ${styles.darkGlassCard}`}>
+              <div className={styles.stepNumberBox}>01</div>
+              <div className={styles.stepTextLight}>
+                <h4>Register Your Clinic</h4>
+                <p>Set up your clinic profile, configure multiple branch locations, and invite doctors & clinic staff.</p>
+              </div>
+            </div>
+
+            <div className={`${styles.stepItemCard} ${styles.darkGlassCard}`}>
+              <div className={styles.stepNumberBox}>02</div>
+              <div className={styles.stepTextLight}>
+                <h4>Configure Doctors & Schedules</h4>
+                <p>Assign doctors to branches, customize shift timings, configure slot limits, and manage consultation fees.</p>
+              </div>
+            </div>
+
+            <div className={`${styles.stepItemCard} ${styles.darkGlassCard}`}>
+              <div className={styles.stepNumberBox}>03</div>
+              <div className={styles.stepTextLight}>
+                <h4>Manage Live Queues & Bookings</h4>
+                <p>Track real-time patient queues, handle walk-in & online appointments seamlessly, and eliminate patient wait times.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 6 (Even: Current Light Background) - FAQ Section */}
+      <section className={styles.sectionEven} id="faq">
+        <div className={styles.faqSection}>
+          <div className={styles.sectionHead}>
+            <h2>Frequently Asked Questions</h2>
+            <p>Have questions? We&apos;ve got answers to help you navigate Jido Healthcare effortlessly.</p>
+          </div>
+
+          <LandingFAQ />
+        </div>
+      </section>
+
+      {/* SECTION 7 (Odd: Deep Purple Background) - Download App Call-to-Action */}
+      <section className={styles.sectionOdd} id="download">
+        <div className={styles.downloadContainer}>
+          <div className={`${styles.downloadCard} ${styles.downloadCardDark}`}>
+            <h2>Download and Start Booking Today</h2>
+            <p>Experience fast, hassle-free healthcare appointments right at your fingertips.</p>
+
+            <div className={styles.storeButtons}>
+              <a href="#" className={styles.storeBtn}>
+                <svg className={styles.storeBtnIcon} width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
+                </svg>
+                <span className={styles.storeBtnText}>
+                  Patient App on<br />
+                  <strong>Google Play</strong>
+                </span>
+              </a>
+
+              <a href="#" className={styles.storeBtn}>
+                <svg className={styles.storeBtnIcon} width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 20.5v-17c0-.59.34-1.11.84-1.35L13.69 12l-9.85 9.85c-.5-.24-.84-.76-.84-1.35zm13.81-5.38L6.05 21.34l8.49-8.49 2.27 2.27zm.91-.91L19.59 12l-1.87-2.21-2.27 2.27 2.27 2.15zM6.05 2.66l10.76 6.22-2.27 2.27-8.49-8.49z"/>
+                </svg>
+                <span className={styles.storeBtnText}>
+                  Clinic App on<br />
+                  <strong>Google Play</strong>
+                </span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 8 (Even: Current Light Background) - Footer */}
       <footer className={styles.footer}>
         <div className={styles.footerGrid}>
           <div className={styles.footerCol}>
