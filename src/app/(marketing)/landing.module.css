@@ -1651,7 +1651,12 @@
     padding: 48px 32px 0;
     gap: 16px;
   }
+  /* Stacked: drop the row flex ratios — with flex-basis 0 in a column the
+     phone area (absolutely positioned children) collapses to 0 height and
+     the phones spill over the text. */
   .downloadContent {
+    flex: none;
+    width: 100%;
     text-align: center;
     padding-bottom: 0;
   }
@@ -1664,7 +1669,16 @@
     justify-content: center;
   }
   .downloadVisual {
+    flex: none;
     align-self: center;
+    width: 340px;
+    max-width: 100%;
+    min-width: 0;
+    height: 380px;
+    margin-top: 12px;
+  }
+  .downloadToast {
+    left: -10px;
   }
   .stepItemCard {
     text-align: left;
@@ -1841,24 +1855,38 @@
   .storeBtnArrow {
     margin-left: auto;
   }
-  .downloadVisual {
-    min-width: 0;
-    width: 280px;
-    height: 320px;
+  .downloadCardDark p {
+    font-size: 15px;
+    margin-bottom: 24px;
   }
-  .downloadPhone {
-    width: 160px;
+  .downloadPerks {
+    gap: 8px 16px;
+  }
+  .downloadVisual {
+    width: 260px;
     height: 300px;
   }
+  .downloadPhone {
+    width: 150px;
+    height: 280px;
+  }
   .downloadPhoneBack {
-    height: 260px;
+    height: 240px;
   }
   .downloadPhoneFront {
-    left: 10px;
+    left: 4px;
   }
   .downloadToast {
-    left: -10px;
-    top: 30px;
+    left: 0;
+    top: 24px;
+    padding: 8px 12px 8px 8px;
+  }
+  .downloadToast strong {
+    font-size: 12px;
+  }
+  .downloadToastIcon {
+    width: 28px;
+    height: 28px;
   }
   .footerGrid {
     grid-template-columns: 1fr;
