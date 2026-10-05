@@ -1367,7 +1367,18 @@ Rejected by PRDEODB:
 }
 ```
 
-PRDEODB unreachable, slower than 10 s (the server gives up at that point), or returned something unparseable:
+PRDEODB rate-limited this server. PRDEODB allows roughly 20 lookups in a short burst per IP, and every clinic shares the API server's IP. It then answers "Too Many Requests" for about a minute. The server stops calling PRDEODB for 60 s and answers this immediately:
+```json
+{
+  "success": false,
+  "validated": false,
+  "status": "PENDING",
+  "retry_after_seconds": 60,
+  "message": "The trade license verification service is busy. Please try again in 60 seconds."
+}
+```
+
+PRDEODB unreachable, slower than 20 s (the server gives up at that point), or returned something unparseable:
 ```json
 {
   "success": false,
@@ -1377,7 +1388,7 @@ PRDEODB unreachable, slower than 10 s (the server gives up at that point), or re
 }
 ```
 
-Results are cached in server memory per number (case-insensitive): `VALID` for 12 h, `INVALID` for 10 min, so a repeat check (e.g. Validate then Save) answers instantly. `PENDING` is never cached.
+Results are cached in server memory per number (case-insensitive): `VALID` for 12 h, `INVALID` for 10 min, so a repeat check (e.g. Validate then Save) answers instantly. `PENDING` is never cached. Simultaneous checks of the same number share one PRDEODB request.
 
 The client should branch on `status`, not the HTTP code: `VALID` → mark verified; `INVALID` → show a "not found" error on the field; `PENDING` → "couldn't verify right now, try again" (not the same as invalid).
 

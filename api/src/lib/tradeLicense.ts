@@ -14,11 +14,43 @@ export interface TradeLicenseCheckResult {
 //   - found + certificate issued: an "alert-success" block containing
 //     "Your certificate has been generated" / a status cell reading "CERTIFICATE ISSUED"
 //   - docket not found: an "alert-danger" block containing "Record Not Found"
+//   - rate limited (per client IP, after ~20 lookups in a short burst): HTTP 200 with
+//     an "alert-danger" block "Too Many Requests — Please wait a minute…"
 // Anything else (e.g. "Pending for Gram Panchayat's acknowledgement" — mid-process,
 // neither issued nor rejected) is unrecognized and throws, since we can't confidently
 // call it VALID or INVALID; the caller maps that to "unable to validate right now".
+// Phrases are matched against the page's visible text (tags, scripts and entities
+// stripped, whitespace collapsed) so markup changes like "Certificate<br>Issued"
+// still match — but only these exact phrases, never looser "certificate…issued"
+// patterns that the notice text on a pending page could satisfy.
 const NOT_FOUND_RE = /record not found/i;
 const ISSUED_RE = /certificate has been generated|certificate issued/i;
+const RATE_LIMITED_RE = /too many requests/i;
+
+function visibleText(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/\s+/g, " ");
+}
+
+/** PRDEODB is refusing lookups from this server for now ("Too Many Requests"). */
+export class TradeLicenseServiceBusyError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super(`PRDEODB rate-limited this server; retry in ${retryAfterSeconds}s`);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+// Once PRDEODB rate-limits us, every request from this server's IP is refused for
+// about a minute, and hammering it only extends that. Stop calling it until the
+// cooldown passes and answer "busy" immediately instead.
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
+let busyUntil = 0;
 
 // The server's TLS stack only supports legacy renegotiation, which Node's default
 // fetch (undici) rejects outright (ERR_SSL_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) —
@@ -33,7 +65,7 @@ const legacyTlsAgent = new https.Agent({
 
 // PRDEODB sometimes stalls for many seconds; give up and let the caller report
 // PENDING ("try again") rather than leaving the user on a spinner.
-const PRDEODB_TIMEOUT_MS = 10_000;
+const PRDEODB_TIMEOUT_MS = 20_000;
 
 // A docket's outcome rarely changes, so repeat checks of the same number (Validate,
 // then Save, a retry, another form) are answered from memory. Issued certificates
@@ -43,6 +75,9 @@ const VALID_TTL_MS = 12 * 60 * 60 * 1000;
 const INVALID_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 1000;
 const resultCache = new Map<string, { result: TradeLicenseCheckResult; expiresAt: number }>();
+// Concurrent checks of the same number (double-tap, Validate racing Save) share one
+// PRDEODB request, so they don't eat into its rate limit twice.
+const inFlight = new Map<string, Promise<TradeLicenseCheckResult>>();
 
 function cacheResult(key: string, result: TradeLicenseCheckResult): TradeLicenseCheckResult {
   if (resultCache.size >= MAX_CACHE_ENTRIES) {
@@ -110,23 +145,37 @@ export async function resolveTradeLicenseStatus(
 }
 
 export async function checkTradeLicense(tradeLicenseNumber: string): Promise<TradeLicenseCheckResult> {
+  const number = tradeLicenseNumber.trim();
   if (
     // process.env.NODE_ENV !== "production" &&
-    tradeLicenseNumber === BYPASS_TRADE_LICENSE_NUMBER
+    number.toUpperCase() === BYPASS_TRADE_LICENSE_NUMBER
   ) {
     return { validated: true, message: "Application found" };
   }
 
-  const key = tradeLicenseNumber.trim().toUpperCase();
+  const key = number.toUpperCase();
   const cached = resultCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.result;
   resultCache.delete(key);
 
-  const { status, text: html } = await postForm(
-    PRDEODB_URL,
-    new URLSearchParams({ deptid: tradeLicenseNumber }).toString(),
-  );
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const lookup = lookupTradeLicense(number, key).finally(() => inFlight.delete(key));
+  inFlight.set(key, lookup);
+  return lookup;
+}
 
+async function lookupTradeLicense(number: string, key: string): Promise<TradeLicenseCheckResult> {
+  const waitMs = busyUntil - Date.now();
+  if (waitMs > 0) throw new TradeLicenseServiceBusyError(Math.ceil(waitMs / 1000));
+
+  const { status, text } = await postForm(PRDEODB_URL, new URLSearchParams({ deptid: number }).toString());
+  const html = visibleText(text);
+
+  if (RATE_LIMITED_RE.test(html)) {
+    busyUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+    throw new TradeLicenseServiceBusyError(RATE_LIMIT_COOLDOWN_MS / 1000);
+  }
   if (NOT_FOUND_RE.test(html)) {
     return cacheResult(key, {
       validated: false,
