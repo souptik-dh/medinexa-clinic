@@ -66,6 +66,12 @@ const legacyTlsAgent = new https.Agent({
 // PRDEODB sometimes stalls for many seconds; give up and let the caller report
 // PENDING ("try again") rather than leaving the user on a spinner.
 const PRDEODB_TIMEOUT_MS = 20_000;
+// req.setTimeout only starts once the socket is connected, so a SYN the portal never
+// answers would otherwise hang until the OS gives up (~21s on Windows, ETIMEDOUT).
+// Cap the connect separately and retry once — these failures are usually transient,
+// as is ECONNRESET from a keep-alive socket the portal silently dropped.
+const PRDEODB_CONNECT_TIMEOUT_MS = 8_000;
+const RETRYABLE_NETWORK_CODES = new Set(["ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "EAI_AGAIN", "CONNECT_TIMEOUT"]);
 
 // A docket's outcome rarely changes, so repeat checks of the same number (Validate,
 // then Save, a retry, another form) are answered from memory. Issued certificates
@@ -111,6 +117,18 @@ function postForm(url: string, body: string): Promise<{ status: number; text: st
       },
     );
     req.on("error", reject);
+    req.on("socket", (socket) => {
+      if (!socket.connecting) return; // reused keep-alive socket
+      const timer = setTimeout(() => {
+        req.destroy(
+          Object.assign(new Error(`PRDEODB connect timed out after ${PRDEODB_CONNECT_TIMEOUT_MS}ms`), {
+            code: "CONNECT_TIMEOUT",
+          }),
+        );
+      }, PRDEODB_CONNECT_TIMEOUT_MS);
+      socket.once("connect", () => clearTimeout(timer));
+      socket.once("close", () => clearTimeout(timer));
+    });
     req.setTimeout(PRDEODB_TIMEOUT_MS, () => {
       req.destroy(new Error(`PRDEODB timed out after ${PRDEODB_TIMEOUT_MS}ms`));
     });
@@ -169,7 +187,16 @@ async function lookupTradeLicense(number: string, key: string): Promise<TradeLic
   const waitMs = busyUntil - Date.now();
   if (waitMs > 0) throw new TradeLicenseServiceBusyError(Math.ceil(waitMs / 1000));
 
-  const { status, text } = await postForm(PRDEODB_URL, new URLSearchParams({ deptid: number }).toString());
+  const body = new URLSearchParams({ deptid: number }).toString();
+  let response: { status: number; text: string };
+  try {
+    response = await postForm(PRDEODB_URL, body);
+  } catch (err) {
+    if (!RETRYABLE_NETWORK_CODES.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
+    console.warn("[trade-license] PRDEODB network error, retrying once:", (err as Error).message);
+    response = await postForm(PRDEODB_URL, body);
+  }
+  const { status, text } = response;
   const html = visibleText(text);
 
   if (RATE_LIMITED_RE.test(html)) {
