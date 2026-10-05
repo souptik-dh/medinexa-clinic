@@ -1500,6 +1500,34 @@ try {
     console.log('Applied migration: branch_staff.joined_at');
   }
 
+  const [branchIsMainCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'is_main'`,
+  );
+  if (Number(branchIsMainCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE branches ADD COLUMN is_main TINYINT(1) NOT NULL DEFAULT 0 AFTER clinical_establishment_reg_url`,
+    );
+    // Existing clinics: their oldest live branch becomes the main branch.
+    const [liveBranches] = await conn.query(
+      `SELECT id, clinic_id FROM branches WHERE deleted_at IS NULL ORDER BY created_at ASC, id ASC`,
+    );
+    const mainByClinic = new Map();
+    for (const b of liveBranches) {
+      if (!mainByClinic.has(b.clinic_id)) mainByClinic.set(b.clinic_id, b.id);
+    }
+    if (mainByClinic.size > 0) {
+      await conn.query(`UPDATE branches SET is_main = 1 WHERE id IN (?)`, [[...mainByClinic.values()]]);
+    }
+    await conn.query(
+      `ALTER TABLE branches
+         ADD COLUMN main_branch_key CHAR(36)
+           GENERATED ALWAYS AS (IF(is_main = 1 AND deleted_at IS NULL, clinic_id, NULL)) STORED,
+         ADD UNIQUE KEY uniq_branches_main (main_branch_key)`,
+    );
+    console.log('Applied migration: branches.is_main + uniq_branches_main');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

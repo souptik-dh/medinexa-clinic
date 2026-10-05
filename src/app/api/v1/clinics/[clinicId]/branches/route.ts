@@ -4,7 +4,7 @@ import { pool, type Row } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
-import { notFound, unprocessable } from "@api/lib/errors";
+import { conflict, isUniqueViolation, notFound } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
 import { licenseFields, tradeLicenseValidationFields } from "@api/lib/licenses";
 import { getBranchRatingMap } from "@api/lib/reviews";
@@ -37,12 +37,14 @@ const createSchema = z.object({
     .max(64)
     .refine(isTimezone, "Invalid IANA timezone."),
   trade_license_number: z.string().trim().min(1).max(100),
-  // Must be "VALID" — the client echoes back the `status` a prior
-  // POST /clinics/validate-trade-license call returned for this exact number. A branch
-  // can't be created at all until that number has been validated; see the check below.
+  // Optional — validation is no longer required to create a branch. Persisted as
+  // given, defaulting to PENDING.
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).optional().nullable(),
   clinical_establishment_reg_number: z.string().trim().max(100).optional().nullable(),
+  // Marks this as the clinic's main (primary) branch. Defaults to true only for a
+  // clinic's first branch. At most one live main branch per clinic.
+  is_main: z.boolean().optional(),
 });
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
@@ -78,6 +80,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
       lng: b.lng != null ? Number(b.lng) : null,
       timezone: b.timezone,
       photo_url: b.photo_url,
+      is_main: !!b.is_main,
       ...licenseFields(b),
       ...tradeLicenseValidationFields(b),
       created_at: b.created_at,
@@ -92,18 +95,19 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   await getOwnedClinic(pool, clinicId, auth.userId);
   const body = parseBody(createSchema, await readJson(ctx.request));
 
-  // Entering a number is never itself validation (see "Trade license validation" in
-  // API.md) — a branch may not be created until POST /clinics/validate-trade-license
-  // has actually returned VALID for this number.
-  if (body.trade_license_validation_status !== "VALID") {
-    throw unprocessable(
-      "TRADE_LICENSE_NOT_VALIDATED",
-      "Trade License Number must be validated before creating a branch.",
-      "trade_license_number",
-    );
-  }
+  const validationStatus = body.trade_license_validation_status ?? "PENDING";
+  const validated = validationStatus === "VALID";
+  const validatedAt = validated ? new Date() : null;
 
-  const validatedAt = new Date();
+  const [existing] = await pool.query<Row[]>(
+    `SELECT COUNT(*) AS cnt, COALESCE(MAX(is_main), 0) AS has_main
+       FROM branches WHERE clinic_id = ? AND deleted_at IS NULL`,
+    [clinicId],
+  );
+  const isMain = body.is_main ?? Number(existing[0].cnt) === 0;
+  const mainBranchExists = () =>
+    conflict("MAIN_BRANCH_EXISTS", "This clinic already has a main branch.");
+  if (isMain && Number(existing[0].has_main) === 1) throw mainBranchExists();
 
   const id = newId();
   await pool.query(
@@ -111,9 +115,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
        id, clinic_id, name, address, nearby_location, city, district, pin_code, state, post_office,
        phone, lat, lng, timezone, trade_license_number, trade_license_validated,
        trade_license_validation_status, trade_license_validated_at, drug_license_number,
-       clinical_establishment_reg_number
+       clinical_establishment_reg_number, is_main
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       clinicId,
@@ -130,13 +134,18 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       body.lng ?? null,
       body.timezone,
       body.trade_license_number,
-      true,
-      "VALID",
+      validated,
+      validationStatus,
       validatedAt,
       body.drug_license_number ?? null,
       body.clinical_establishment_reg_number ?? null,
+      isMain,
     ],
-  );
+  ).catch((err) => {
+    // uniq_branches_main: a concurrent request already created this clinic's main branch.
+    if (isMain && isUniqueViolation(err)) throw mainBranchExists();
+    throw err;
+  });
 
   return json(
     {
@@ -154,11 +163,12 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       lng: body.lng ?? null,
       timezone: body.timezone,
       photo_url: null,
+      is_main: isMain,
       trade_license_number: body.trade_license_number,
       trade_license_url: null,
-      trade_license_validated: true,
-      trade_license_validation_status: "VALID",
-      trade_license_validated_at: validatedAt.toISOString(),
+      trade_license_validated: validated,
+      trade_license_validation_status: validationStatus,
+      trade_license_validated_at: validatedAt?.toISOString() ?? null,
       drug_license_number: body.drug_license_number ?? null,
       drug_license_url: null,
       clinical_establishment_reg_number: body.clinical_establishment_reg_number ?? null,

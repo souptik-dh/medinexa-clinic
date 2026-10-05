@@ -1041,7 +1041,7 @@ Auth: `clinic_owner`.
 | Field | Type | Notes |
 |---|---|---|
 | `trade_license_number` | string | **required**, issued by the local municipality, 1–100 |
-| `trade_license_validation_status` | string | **required, must be `"VALID"`** — the `status` a prior `POST /clinics/validate-trade-license` call returned for this exact number. A clinic cannot be created at all until that number has been validated; `PENDING`/`INVALID`/omitted all fail the same way. See [Trade license validation](#trade-license-validation). |
+| `trade_license_validation_status` | string? | optional — `PENDING` (default), `VALID` or `INVALID`, persisted as given. Validation is not required to create a clinic. See [Trade license validation](#trade-license-validation). |
 | `drug_license_number` | string? | optional — only if selling/stocking medicines, max 100 |
 | `clinical_establishment_reg_number` | string? | optional — Clinical Establishment Registration, max 100 |
 
@@ -1074,7 +1074,7 @@ Auth: `clinic_owner`.
 
 License document URLs are `null` until uploaded via `POST /clinics/:clinicId/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
 
-**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`), `422 TRADE_LICENSE_NOT_VALIDATED` (`trade_license_validation_status` isn't `"VALID"`).
+**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`).
 
 ### GET /clinics/:clinicId
 
@@ -1154,7 +1154,7 @@ Auth: `clinic_owner`, must own the clinic.
 
 ### Trade license validation
 
-A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. Entering a number is never itself validation: **`POST /clinics` hard-requires `trade_license_validation_status: "VALID"` and rejects the request with `422 TRADE_LICENSE_NOT_VALIDATED` otherwise** — a clinic simply cannot exist without a validated trade license. `PATCH /clinics/:clinicId` is less strict (existing clinics can still be edited while `PENDING`/`INVALID`), but changing an already-validated number resets it to `PENDING` server-side, see below.
+A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. Validation is optional: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app no longer calls this endpoint. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
 
 ### POST /clinics/validate-trade-license
 
@@ -1338,10 +1338,12 @@ Auth: `clinic_owner`, must own the clinic.
 | `trade_license_number` | string | **required**, issued by the local municipality, 1–100 |
 | `drug_license_number` | string? | optional — only if selling/stocking medicines, max 100 |
 | `clinical_establishment_reg_number` | string? | optional — Clinical Establishment Registration, max 100 |
+| `trade_license_validation_status` | string? | optional — `PENDING` (default), `VALID` or `INVALID`, persisted as given. Validation is not required. |
+| `is_main` | boolean? | marks this as the clinic's main (primary) branch. Defaults to `true` for the clinic's first branch, `false` otherwise. A clinic has at most one live main branch. |
 
-**Response `201`** — full Branch object (same shape as the list item above), with license URLs `null` until uploaded via `POST /branches/:id/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
+**Response `201`** — full Branch object (same shape as the list item above, including `is_main`), with license URLs `null` until uploaded via `POST /branches/:id/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
 
-**Errors:** `404 CLINIC_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `400 VALIDATION_ERROR` (invalid timezone or missing `trade_license_number`).
+**Errors:** `404 CLINIC_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `400 VALIDATION_ERROR` (invalid timezone or missing `trade_license_number`), `409 MAIN_BRANCH_EXISTS` (`is_main: true` but the clinic already has a main branch).
 
 ### PATCH /branches/:id
 
@@ -5372,7 +5374,7 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `CLINIC_ALREADY_DEACTIVATED` / `CLINIC_NOT_DEACTIVATED` | 409 | Clinic deactivation state doesn't match the requested action |
 | `PAYMENT_ALREADY_VERIFIED` / `PAYMENT_FAILED` | 409 | Subscription payment already `PAID` / already `FAILED` — cannot be re-verified |
 | `OUTSIDE_DOCTOR_AVAILABILITY` / `DATE_IN_PAST` / `OUTSIDE_SCHEDULE` | 422 | Booking rules violated |
-| `TRADE_LICENSE_NOT_VALIDATED` | 422 | `POST /clinics` without a `trade_license_validation_status: "VALID"` from a prior validate call |
+| `MAIN_BRANCH_EXISTS` | 409 | `POST /clinics/:clinicId/branches` with `is_main: true` when the clinic already has a main branch |
 | `PRESCRIPTION_REQUIRED` | 422 | Lab test requires a prescription but none was provided |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 | `PAYMENT_VERIFICATION_UNAVAILABLE` / `WEBHOOK_NOT_CONFIGURED` | 503 | Server's subscription payment/webhook secret isn't configured |

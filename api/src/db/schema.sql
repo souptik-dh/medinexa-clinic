@@ -156,11 +156,15 @@ CREATE TABLE IF NOT EXISTS branches (
   drug_license_url VARCHAR(500) NULL,
   clinical_establishment_reg_number VARCHAR(100) NULL,
   clinical_establishment_reg_url VARCHAR(500) NULL,
+  is_main TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   deleted_at DATETIME(3) NULL,
+  -- Non-NULL only for a clinic's live main branch, so uniq_branches_main allows at most one.
+  main_branch_key CHAR(36) GENERATED ALWAYS AS (IF(is_main = 1 AND deleted_at IS NULL, clinic_id, NULL)) STORED,
   PRIMARY KEY (id),
   KEY idx_branches_clinic (clinic_id),
+  UNIQUE KEY uniq_branches_main (main_branch_key),
   CONSTRAINT fk_branches_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id)
 ) ENGINE=InnoDB;
 

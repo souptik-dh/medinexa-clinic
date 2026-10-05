@@ -58,6 +58,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         lng: b.lng != null ? Number(b.lng) : null,
         timezone: b.timezone,
         photo_url: b.photo_url,
+        is_main: !!b.is_main,
         ...licenseFields(b),
         created_at: b.created_at,
       })),
