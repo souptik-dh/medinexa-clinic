@@ -4,6 +4,7 @@ import { pool } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
+import { tradeLicenseLockedError } from "@api/lib/licenses";
 
 const bodySchema = z.object({
   trade_license_number: z.string().trim().min(1).max(100),
@@ -20,6 +21,23 @@ export const PUT = api({ rateLimit: 60 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner"]);
   const clinic = await getOwnedClinic(pool, ctx.params.clinicId, auth.userId);
   const body = parseBody(bodySchema, await readJson(ctx.request));
+
+  // Once verified, the number and its status are locked (see PATCH /clinics/:clinicId).
+  // Reporting the same VALID result again is harmless and returns the stored record.
+  if (clinic.trade_license_validation_status === "VALID") {
+    if (body.trade_license_number !== clinic.trade_license_number || body.status !== "VALID") {
+      throw tradeLicenseLockedError();
+    }
+    return json({
+      clinic_id: clinic.id,
+      trade_license_number: clinic.trade_license_number,
+      trade_license_validated: true,
+      trade_license_validation_status: "VALID",
+      trade_license_validated_at: clinic.trade_license_validated_at
+        ? new Date(clinic.trade_license_validated_at).toISOString()
+        : null,
+    });
+  }
 
   const validated = body.status === "VALID";
   const validatedAt = validated ? new Date() : null;

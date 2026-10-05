@@ -5,7 +5,7 @@ import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
 import { notFound, conflict } from "@api/lib/errors";
-import { licenseFields, tradeLicenseValidationFields } from "@api/lib/licenses";
+import { licenseFields, tradeLicenseLockedError, tradeLicenseValidationFields } from "@api/lib/licenses";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { clinicId } = ctx.params;
@@ -94,7 +94,13 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   // remembering to do it.
   const numberChanging =
     body.trade_license_number !== undefined && body.trade_license_number !== clinic.trade_license_number;
+  // A verified trade license number is locked: it can't be changed, and its VALID
+  // status can't be downgraded (which would otherwise unlock the number for the next
+  // request). Re-sending the same number and status is a no-op.
+  const tradeLicenseLocked = clinic.trade_license_validation_status === "VALID";
+  if (tradeLicenseLocked && numberChanging) throw tradeLicenseLockedError();
   const statusChanging =
+    !tradeLicenseLocked &&
     body.trade_license_validation_status !== undefined &&
     body.trade_license_validation_status !== clinic.trade_license_validation_status;
 
