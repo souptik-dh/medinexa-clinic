@@ -6,6 +6,7 @@ import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
 import { notFound, conflict } from "@api/lib/errors";
 import { licenseFields, tradeLicenseValidationFields } from "@api/lib/licenses";
+import { resolveTradeLicenseStatus } from "@api/lib/tradeLicense";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { clinicId } = ctx.params;
@@ -49,8 +50,8 @@ const patchSchema = z.object({
   state: z.string().trim().max(255).nullable().optional(),
   post_office: z.string().trim().max(255).nullable().optional(),
   trade_license_number: z.string().trim().min(1).max(100).optional(),
-  // Set only via a prior POST /clinics/validate-trade-license call for this same
-  // number — see the reset-on-change note below.
+  // From a prior POST /clinics/validate-trade-license call for this same number. A
+  // claimed VALID is re-verified server-side before it's stored — see below.
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).nullable().optional(),
   clinical_establishment_reg_number: z.string().trim().max(100).nullable().optional(),
@@ -99,9 +100,13 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     body.trade_license_validation_status !== clinic.trade_license_validation_status;
 
   if (body.trade_license_validation_status !== undefined && (numberChanging || statusChanging)) {
-    const validated = body.trade_license_validation_status === "VALID";
+    const number = body.trade_license_number ?? clinic.trade_license_number;
+    const status = number
+      ? await resolveTradeLicenseStatus(number, body.trade_license_validation_status)
+      : "PENDING";
+    const validated = status === "VALID";
     fields.push("trade_license_validated = ?", "trade_license_validation_status = ?", "trade_license_validated_at = ?");
-    params.push(validated, body.trade_license_validation_status, validated ? new Date() : null);
+    params.push(validated, status, validated ? new Date() : null);
   } else if (body.trade_license_validation_status === undefined && numberChanging) {
     fields.push("trade_license_validated = ?", "trade_license_validation_status = ?", "trade_license_validated_at = ?");
     params.push(false, "PENDING", null);
