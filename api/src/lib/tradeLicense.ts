@@ -24,9 +24,36 @@ const ISSUED_RE = /certificate has been generated|certificate issued/i;
 // fetch (undici) rejects outright (ERR_SSL_UNSAFE_LEGACY_RENEGOTIATION_DISABLED) —
 // so this one call goes through node:https with an Agent that opts back into it,
 // rather than the plain fetch() used for every other external call in this codebase.
+// keepAlive reuses the TLS connection across lookups, skipping a fresh handshake
+// with the (slow) portal each time.
 const legacyTlsAgent = new https.Agent({
   secureOptions: cryptoConstants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION,
+  keepAlive: true,
 });
+
+// PRDEODB sometimes stalls for many seconds; give up and let the caller report
+// PENDING ("try again") rather than leaving the user on a spinner.
+const PRDEODB_TIMEOUT_MS = 10_000;
+
+// A docket's outcome rarely changes, so repeat checks of the same number (Validate,
+// then Save, a retry, another form) are answered from memory. Issued certificates
+// are cached longer than not-found ones, which may just be a typo being fixed.
+// Failures/timeouts are never cached.
+const VALID_TTL_MS = 12 * 60 * 60 * 1000;
+const INVALID_TTL_MS = 10 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 1000;
+const resultCache = new Map<string, { result: TradeLicenseCheckResult; expiresAt: number }>();
+
+function cacheResult(key: string, result: TradeLicenseCheckResult): TradeLicenseCheckResult {
+  if (resultCache.size >= MAX_CACHE_ENTRIES) {
+    resultCache.delete(resultCache.keys().next().value!);
+  }
+  resultCache.set(key, {
+    result,
+    expiresAt: Date.now() + (result.validated ? VALID_TTL_MS : INVALID_TTL_MS),
+  });
+  return result;
+}
 
 function postForm(url: string, body: string): Promise<{ status: number; text: string }> {
   return new Promise((resolve, reject) => {
@@ -49,6 +76,9 @@ function postForm(url: string, body: string): Promise<{ status: number; text: st
       },
     );
     req.on("error", reject);
+    req.setTimeout(PRDEODB_TIMEOUT_MS, () => {
+      req.destroy(new Error(`PRDEODB timed out after ${PRDEODB_TIMEOUT_MS}ms`));
+    });
     req.write(body);
     req.end();
   });
@@ -66,19 +96,24 @@ export async function checkTradeLicense(tradeLicenseNumber: string): Promise<Tra
     return { validated: true, message: "Application found" };
   }
 
+  const key = tradeLicenseNumber.trim().toUpperCase();
+  const cached = resultCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  resultCache.delete(key);
+
   const { status, text: html } = await postForm(
     PRDEODB_URL,
     new URLSearchParams({ deptid: tradeLicenseNumber }).toString(),
   );
 
   if (NOT_FOUND_RE.test(html)) {
-    return {
+    return cacheResult(key, {
       validated: false,
       message: "The docket number was not found. Please verify the number and try again.",
-    };
+    });
   }
   if (ISSUED_RE.test(html)) {
-    return { validated: true, message: "Application found" };
+    return cacheResult(key, { validated: true, message: "Application found" });
   }
   throw new Error(`PRDEODB returned an unrecognized response (status ${status})`);
 }

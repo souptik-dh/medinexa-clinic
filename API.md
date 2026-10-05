@@ -1154,11 +1154,11 @@ Auth: `clinic_owner`, must own the clinic.
 
 ### Trade license validation
 
-A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. Validation is optional: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app no longer calls this endpoint. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
+A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. The API itself doesn't enforce validation: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app calls this endpoint from the Quick Setup clinic step (`/portal/clinic-setup/clinic`): the owner can press **Validate**, and **Save & Continue** runs the check automatically if the current number hasn't been checked yet. The app only continues on `VALID`, then sends `trade_license_validation_status: "VALID"` in the `PATCH /clinics/:clinicId` body; on `INVALID` or `PENDING` it shows the message under the field and doesn't save. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
 
 ### POST /clinics/validate-trade-license
 
-Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Proxies a lookup against the West Bengal PRDEODB acknowledgement service server-side, so the browser never talks to (or holds a session/cookie for) that third-party site directly. Stateless — doesn't touch any clinic row, since it's also used from the create-clinic form before a clinic exists yet; the caller persists the result by echoing `status` back in the next `POST /clinics` or `PATCH /clinics/:clinicId` call (see the note on those endpoints above).
+Auth: `clinic_owner` or `sys_admin`. Rate limited 200/min. Proxies a lookup against the West Bengal PRDEODB acknowledgement service server-side, so the browser never talks to (or holds a session/cookie for) that third-party site directly. Stateless — doesn't touch any clinic row, since it's also used from the create-clinic form before a clinic exists yet; the caller persists the result by echoing `status` back in the next `POST /clinics` or `PATCH /clinics/:clinicId` call (see the note on those endpoints above).
 
 **Body:** `{ "trade_license_number": "SSNOCJRKJ30370340N" }`
 
@@ -1186,7 +1186,7 @@ Rejected by PRDEODB:
 }
 ```
 
-PRDEODB unreachable or returned something unparseable:
+PRDEODB unreachable, slower than 10 s (the server gives up at that point), or returned something unparseable:
 ```json
 {
   "success": false,
@@ -1196,7 +1196,31 @@ PRDEODB unreachable or returned something unparseable:
 }
 ```
 
-**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `429 RATE_LIMITED`.
+Results are cached in server memory per number (case-insensitive): `VALID` for 12 h, `INVALID` for 10 min, so a repeat check (e.g. Validate then Save) answers instantly. `PENDING` is never cached.
+
+The client should branch on `status`, not the HTTP code: `VALID` → mark verified; `INVALID` → show a "not found" error on the field; `PENDING` → "couldn't verify right now, try again" (not the same as invalid).
+
+**Errors** (standard envelope `{ "error": { "code", "message", "field", "request_id" } }`):
+
+| HTTP | `code` | `message` | `field` |
+|---|---|---|---|
+| 400 | `VALIDATION_ERROR` | `Invalid input: expected string, received undefined` (missing) | `trade_license_number` |
+| 400 | `VALIDATION_ERROR` | `Too small: expected string to have >=1 characters` (empty / whitespace) | `trade_license_number` |
+| 400 | `VALIDATION_ERROR` | `Too big: expected string to have <=100 characters` | `trade_license_number` |
+| 401 | `UNAUTHORIZED` | `Authentication required.` | `null` |
+| 403 | `INSUFFICIENT_ROLE` | `You do not have permission to perform this action.` | `null` |
+| 429 | `RATE_LIMITED` | `Too many requests. Retry after N seconds.` | `null` |
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required.",
+    "field": null,
+    "request_id": "req_1c82ca8a"
+  }
+}
+```
 
 ### DELETE /clinics/:clinicId
 
