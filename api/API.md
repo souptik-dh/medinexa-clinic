@@ -1335,7 +1335,7 @@ Auth: `clinic_owner`, must own the clinic.
 
 ### Trade license validation
 
-A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. The API itself doesn't enforce validation: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app calls this endpoint from the Quick Setup clinic step (`/portal/clinic-setup/clinic`): the owner can press **Validate**, and **Save & Continue** runs the check automatically if the current number hasn't been checked yet. The app only continues on `VALID`, then sends `trade_license_validation_status: "VALID"` in the `PATCH /clinics/:clinicId` body; on `INVALID` or `PENDING` it shows the message under the field and doesn't save. The server never stores a client-claimed `VALID` on trust: when `POST /clinics` or `PATCH /clinics/:clinicId` receives `trade_license_validation_status: "VALID"`, it re-runs the PRDEODB lookup itself (normally an instant cache hit right after Validate) and stores its own result: `VALID`, `INVALID`, or `PENDING` if PRDEODB is unreachable. `PENDING` and `INVALID` are stored as sent. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
+A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. The API itself doesn't enforce validation: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app calls this endpoint from the Quick Setup clinic step (`/portal/clinic-setup/clinic`): the owner can press **Validate**, and **Save & Continue** runs the check automatically if the current number hasn't been checked yet. The app only continues on `VALID`, then sends `trade_license_validation_status: "VALID"` in the `PATCH /clinics/:clinicId` body; on `INVALID` or `PENDING` it shows the message under the field and doesn't save. `POST /clinics` and `PATCH /clinics/:clinicId` store `trade_license_validation_status` as sent, without re-checking it. PRDEODB drops connections from the API server's (non-Indian datacenter) IP, so the mobile app checks the number against PRDEODB directly from the device and sends the result; this endpoint remains available but the mobile app no longer calls it. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
 
 ### POST /clinics/validate-trade-license
 
@@ -1413,6 +1413,29 @@ The client should branch on `status`, not the HTTP code: `VALID` → mark verifi
   }
 }
 ```
+
+### PUT /clinics/:clinicId/trade-license-validation
+
+Auth: `clinic_owner`, must own the clinic. Rate limited 60/min. Saves the result of a trade license check as soon as it finishes, without waiting for the rest of the clinic form. The mobile app calls this right after its on-device PRDEODB lookup returns `VALID` or `INVALID` (it doesn't call it for `PENDING`). The number is written together with the status, so the stored status always belongs to the number it was checked for. The status is stored as sent, the same trust model as `trade_license_validation_status` on `PATCH /clinics/:clinicId`.
+
+**Body:**
+```json
+{ "trade_license_number": "SSNOCJRKJ30370340N", "status": "VALID" }
+```
+`status` is one of `VALID`, `INVALID`, `PENDING`. `VALID` sets `trade_license_validated = true` and `trade_license_validated_at` to now; anything else clears both.
+
+**Response `200`**
+```json
+{
+  "clinic_id": "c_123",
+  "trade_license_number": "SSNOCJRKJ30370340N",
+  "trade_license_validated": true,
+  "trade_license_validation_status": "VALID",
+  "trade_license_validated_at": "2026-10-05T09:50:00.000Z"
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR` (missing/empty `trade_license_number`, or `status` not one of the three values), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`, `429 RATE_LIMITED`.
 
 ### DELETE /clinics/:clinicId
 

@@ -201,27 +201,6 @@ async function postForm(url: string, body: string): Promise<{ status: number; te
 // since PRDEODB is a flaky legacy government portal.
 const BYPASS_TRADE_LICENSE_NUMBER = "DDROCJERJ47540346U";
 
-export type TradeLicenseValidationStatus = "PENDING" | "VALID" | "INVALID";
-
-// What POST /clinics and PATCH /clinics/:id store when the client sends a
-// trade_license_validation_status. A client-claimed VALID is never stored on its
-// word: the server re-runs the lookup (normally a cache hit, since the client just
-// called POST /clinics/validate-trade-license for this number) and stores its own
-// result, PENDING if PRDEODB can't be reached. PENDING/INVALID are downgrades the
-// client may always ask for, so they're stored as given.
-export async function resolveTradeLicenseStatus(
-  tradeLicenseNumber: string,
-  requested: TradeLicenseValidationStatus,
-): Promise<TradeLicenseValidationStatus> {
-  if (requested !== "VALID") return requested;
-  try {
-    return (await checkTradeLicense(tradeLicenseNumber)).validated ? "VALID" : "INVALID";
-  } catch (err) {
-    console.error("[trade-license] re-verification on save failed:", err);
-    return "PENDING";
-  }
-}
-
 export async function checkTradeLicense(tradeLicenseNumber: string): Promise<TradeLicenseCheckResult> {
   const number = tradeLicenseNumber.trim();
   if (

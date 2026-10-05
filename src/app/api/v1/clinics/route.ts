@@ -6,7 +6,6 @@ import { decodeCursor } from "@api/lib/http";
 import { fetchPage } from "@api/lib/pagination";
 import { requireRoles } from "@api/lib/auth";
 import { newId } from "@api/lib/ids";
-import { resolveTradeLicenseStatus } from "@api/lib/tradeLicense";
 
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
@@ -130,7 +129,8 @@ const createSchema = z.object({
   post_office: z.string().trim().max(255).optional().nullable(),
   trade_license_number: z.string().trim().min(1).max(100),
   // Optional — validation is no longer required to create a clinic. Defaults to
-  // PENDING; a claimed VALID is re-verified server-side before it's stored.
+  // PENDING. Stored as sent: the mobile app checks PRDEODB from the device, since the
+  // portal drops connections from this server's (non-Indian datacenter) IP.
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).optional().nullable(),
   clinical_establishment_reg_number: z.string().trim().max(100).optional().nullable(),
@@ -140,10 +140,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner"]);
   const body = parseBody(createSchema, await readJson(ctx.request));
 
-  const validationStatus = await resolveTradeLicenseStatus(
-    body.trade_license_number,
-    body.trade_license_validation_status ?? "PENDING",
-  );
+  const validationStatus = body.trade_license_validation_status ?? "PENDING";
   const validated = validationStatus === "VALID";
   const validatedAt = validated ? new Date() : null;
 
