@@ -124,7 +124,7 @@ export default function AcceptDoctorInviteForm() {
   useEffect(() => {
     if (!done) return;
     const timer = setTimeout(() => {
-      router.push("/signin");
+      router.push("/");
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [done, router]);
@@ -234,7 +234,7 @@ export default function AcceptDoctorInviteForm() {
                     {t("auth.accountActivated")}
                   </p>
                   <p className="mt-1 text-sm text-success-700/80 dark:text-success-500/80">
-                    {t("auth.redirectingToSignIn")}
+                    {t("auth.redirectingToHome")}
                   </p>
                 </div>
               </div>

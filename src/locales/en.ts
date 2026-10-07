@@ -131,6 +131,7 @@ const en = {
     registrationNoPlaceholder: "NMC registration number",
     accountActivated: "Account activated successfully",
     redirectingToSignIn: "Redirecting to sign in\u2026",
+    redirectingToHome: "Redirecting to the home page\u2026",
     pleaseFillRequired: "Please fill in all required fields.",
     unableToSignIn: "Unable to sign in",
     unableToRequestOtp: "Unable to request an OTP",

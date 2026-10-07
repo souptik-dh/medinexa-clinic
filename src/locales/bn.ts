@@ -122,6 +122,7 @@ const bn = {
     "registrationNoPlaceholder": "এনএমসি রেজিস্ট্রেশন নম্বর",
     "accountActivated": "অ্যাকাউন্ট সফলভাবে সক্রিয় হয়েছে",
     "redirectingToSignIn": "লগ ইনে পুনর্নির্দেশিত হচ্ছে…",
+    "redirectingToHome": "হোমপেজে পুনর্নির্দেশিত হচ্ছে…",
     "pleaseFillRequired": "অনুগ্রহ করে সমস্ত প্রয়োজনীয় ক্ষেত্র পূরণ করুন।",
     "unableToSignIn": "লগ ইন করা যায়নি",
     "unableToRequestOtp": "ওটিপি অনুরোধ করা যায়নি",
