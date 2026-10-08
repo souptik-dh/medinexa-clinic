@@ -125,7 +125,7 @@ const en = {
       "Restricted access. Sign in to the Jido Healthcare platform console.",
     acceptInviteTitle: "Accept your invitation",
     acceptInviteDesc:
-      "Verify the mobile number on your invite with a one-time code to activate your account. Setting a password is optional.",
+      "Verify the mobile number / email on your invite with a one-time code to activate your account. Setting a password is optional.",
     inviteCode: "Invite code",
     inviteCodePlaceholder: "Paste the code from your email or SMS",
     registrationNo: "Registration no. (optional)",
