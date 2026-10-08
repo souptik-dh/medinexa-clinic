@@ -75,6 +75,7 @@ const bn = {
     "back": "পিছনে",
     "enterOtpSentTo": "{email}-এ পাঠানো কোড প্রবেশ করুন।",
     "enterOtpSentToPhone": "+91{phone}-এ পাঠানো কোড প্রবেশ করুন।",
+    "enterOtpSentToPhoneAndEmail": "+91{phone} এবং {email}-এ পাঠানো কোড প্রবেশ করুন।",
     "sixDigitCode": "৬ সংখ্যার কোড",
     "createAccount": "শুরু করতে আপনার ক্লিনিক মালিকের অ্যাকাউন্ট তৈরি করুন",
     "firstNamePlaceholder": "আপনার প্রথম নাম প্রবেশ করুন",

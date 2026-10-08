@@ -79,6 +79,7 @@ const en = {
     back: "Back",
     enterOtpSentTo: "Enter the code sent to {email}.",
     enterOtpSentToPhone: "Enter the code sent to +91{phone}.",
+    enterOtpSentToPhoneAndEmail: "Enter the code sent to +91{phone} and {email}.",
     sixDigitCode: "6-digit code",
     createAccount: "Create your clinic owner account to get started",
     firstNamePlaceholder: "Enter your first name",
