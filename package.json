@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "db:migrate": "node --env-file=.env api/scripts/db-migrate.mjs",
     "db:set-clinic-owner-passwords": "node --env-file=.env api/scripts/set-clinic-owner-passwords.mjs",
-    "db:truncate-all": "node --env-file=.env api/scripts/truncate-all-tables.mjs",
+    "db:wipe-clinic-data": "node --env-file=.env api/scripts/wipe-clinic-data.mjs",
+    "db:truncate-all":"node --env-file=.env api/scripts/truncate-all-tables.mjs",
     "db:create-super-admin": "node --env-file=.env api/scripts/create-super-admin.mjs",
     "db:seed-demo": "node --env-file=.env api/scripts/seed-demo-data.mjs"
   },

@@ -1441,6 +1441,42 @@ Once the clinic's status is `VALID`, the number and status are locked: reporting
 
 **Errors:** `400 VALIDATION_ERROR` (missing/empty `trade_license_number`, or `status` not one of the three values), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`, `429 RATE_LIMITED`.
 
+### POST /clinics/:clinicId/photo/signature
+
+Auth: `clinic_owner`, must own the clinic. Returns a Cloudinary upload grant for the clinic profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "clinics/<uuid>"`.
+
+Upload the file directly to `upload_url` as `multipart/form-data` with fields `file`, `public_id`, `timestamp`, `api_key`, `allowed_formats`, `signature`, then call `POST /clinics/:clinicId/photo` to persist.
+
+**Errors:** `404 CLINIC_NOT_FOUND`.
+
+### POST /clinics/:clinicId/photo
+
+Auth: `clinic_owner`, must own the clinic. Persists the clinic profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "clinics/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /clinics/:clinicId/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/clinics/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+The clinic's `photo_url` is also returned by `GET /clinics`, `GET /clinics/mine`, `GET /clinics/:clinicId` and `PATCH /clinics/:clinicId`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`, `404 CLINIC_NOT_FOUND`.
+
 ### DELETE /clinics/:clinicId
 
 Auth: `clinic_owner`, must own the clinic. Soft-delete.

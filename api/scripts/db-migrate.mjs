@@ -1528,6 +1528,15 @@ try {
     console.log('Applied migration: branches.is_main + uniq_branches_main');
   }
 
+  const [clinicPhotoCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinics' AND COLUMN_NAME = 'photo_url'`,
+  );
+  if (Number(clinicPhotoCols[0].cnt) === 0) {
+    await conn.query(`ALTER TABLE clinics ADD COLUMN photo_url VARCHAR(500) NULL AFTER description`);
+    console.log('Applied migration: clinics.photo_url');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

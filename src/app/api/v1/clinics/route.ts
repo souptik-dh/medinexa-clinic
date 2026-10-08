@@ -84,7 +84,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
 
   const { rows, nextCursor } = await fetchPage({
     db: pool,
-    select: `SELECT c.id, c.name, c.description,
+    select: `SELECT c.id, c.name, c.description, c.photo_url,
                     (SELECT COUNT(*) FROM branches b WHERE b.clinic_id = c.id AND b.deleted_at IS NULL) AS branch_count,
                     EXISTS (
                       SELECT 1 FROM doctor_branch_assignments dba
@@ -109,6 +109,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
       id: r.id,
       name: r.name,
       description: r.description,
+      photo_url: r.photo_url ?? null,
       branch_count: Number(r.branch_count),
       has_doctor: !!r.has_doctor,
       has_lab_tests: !!r.has_lab_tests,
@@ -177,6 +178,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       id,
       name: body.name,
       description: body.description ?? null,
+      photo_url: null,
       nearby_location: body.nearby_location ?? null,
       city: body.city ?? null,
       district: body.district ?? null,

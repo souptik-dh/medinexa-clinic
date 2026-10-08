@@ -4,7 +4,7 @@ import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { parseBody } from "@api/lib/validators";
-import { assertPublicId, cloudinaryImageUrl, getCloudinary } from "@api/lib/cloudinary";
+import { assertPublicId, cloudinaryImageUrl, deleteCloudinaryAsset, getCloudinary } from "@api/lib/cloudinary";
 
 const schema = z.object({
   public_id: z.string().trim().min(1).max(255),
@@ -13,7 +13,7 @@ const schema = z.object({
 export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["doctor"]);
   const [rows] = await pool.query<Row[]>(
-    `SELECT id FROM doctors WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, photo_url FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [auth.doctorId],
   );
   if (!rows[0]) throw notFound("DOCTOR_NOT_FOUND", "Doctor profile not found.");
@@ -23,5 +23,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const photoUrl = cloudinaryImageUrl(getCloudinary().cloudName, publicId);
 
   await pool.query(`UPDATE doctors SET photo_url = ? WHERE id = ?`, [photoUrl, auth.doctorId]);
+  if (rows[0].photo_url !== photoUrl) await deleteCloudinaryAsset(rows[0].photo_url);
   return json({ photo_url: photoUrl });
 });

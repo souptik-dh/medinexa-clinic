@@ -3,7 +3,7 @@ import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
-import { uploadDocumentToCloudinary } from "@api/lib/cloudinary";
+import { deleteCloudinaryAsset, uploadDocumentToCloudinary } from "@api/lib/cloudinary";
 
 const CERTIFICATE_MIMES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -49,10 +49,14 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     CERTIFICATE_MIMES,
   );
 
+  const [doctors] = await pool.query<Row[]>(`SELECT certificate_url FROM doctors WHERE id = ?`, [
+    assignment.doctor_id,
+  ]);
   await pool.query(`UPDATE doctors SET certificate_url = ? WHERE id = ?`, [
     uploaded.url,
     assignment.doctor_id,
   ]);
+  await deleteCloudinaryAsset(doctors[0]?.certificate_url);
 
   return json({ certificate_url: uploaded.url });
 });

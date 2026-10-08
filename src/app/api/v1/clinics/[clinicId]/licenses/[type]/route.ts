@@ -2,7 +2,7 @@ import { api, json } from "@api/lib/http";
 import { pool } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
-import { uploadDocumentToCloudinary } from "@api/lib/cloudinary";
+import { deleteCloudinaryAsset, uploadDocumentToCloudinary } from "@api/lib/cloudinary";
 import { licenseColumns } from "@api/lib/licenses";
 
 const LICENSE_MIMES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -22,5 +22,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   );
 
   await pool.query(`UPDATE clinics SET ${urlColumn} = ? WHERE id = ?`, [uploaded.url, clinic.id]);
+  await deleteCloudinaryAsset(clinic[urlColumn]);
   return json({ type: ctx.params.type, url: uploaded.url });
 });

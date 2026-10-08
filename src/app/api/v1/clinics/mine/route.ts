@@ -30,6 +30,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       id: clinic.id,
       name: clinic.name,
       description: clinic.description,
+      photo_url: clinic.photo_url ?? null,
       nearby_location: clinic.nearby_location,
       city: clinic.city,
       district: clinic.district,

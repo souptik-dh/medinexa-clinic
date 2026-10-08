@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS clinics (
   id CHAR(36) NOT NULL,
   name VARCHAR(255) NOT NULL,
   description TEXT NULL,
+  photo_url VARCHAR(500) NULL,
   nearby_location VARCHAR(500) NULL,
   city VARCHAR(255) NULL,
   district VARCHAR(255) NULL,

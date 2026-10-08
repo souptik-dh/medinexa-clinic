@@ -127,3 +127,60 @@ export async function uploadDocumentToCloudinary(
 
   return { url: data.secure_url, publicId: data.public_id, size: file.size, mime: file.type };
 }
+
+// Folders this app uploads into. Only assets under one of these (named <folder>/<uuid>)
+// are ever deleted, so shared assets like the email icon can't be removed by accident.
+const OWNED_FOLDERS = [
+  "patients",
+  "doctors",
+  "doctors/certificates",
+  "doctor-invites/certificates",
+  "branches",
+  "branches/gallery",
+  "branches/licenses",
+  "clinics",
+  "clinics/licenses",
+  "patient-document",
+];
+
+/**
+ * Deletes the Cloudinary asset behind a URL this app stored (photo, gallery image,
+ * license, certificate, document). Best-effort: it never throws, since the DB row
+ * has already moved on and a leftover file is harmless — failures are only logged.
+ */
+export async function deleteCloudinaryAsset(url: string | null | undefined): Promise<void> {
+  if (!url) return;
+  try {
+    const { cloudName, apiKey, apiSecret } = getCloudinary();
+    const m = url.match(
+      /^https?:\/\/res\.cloudinary\.com\/([^/]+)\/(image|raw|video)\/upload\/(?:v\d+\/)?(.+)$/,
+    );
+    if (!m || m[1] !== cloudName) return;
+    const resourceType = m[2];
+    // Image/video public_ids carry no extension; raw ones keep it.
+    const publicId = resourceType === "raw" ? m[3] : m[3].replace(/\.[a-z0-9]+$/i, "");
+    const fileName = publicId.slice(publicId.lastIndexOf("/") + 1).replace(/\.[a-z0-9]+$/i, "");
+    if (!OWNED_FOLDERS.some((f) => publicId.startsWith(`${f}/`)) || !UUID_RE.test(fileName)) return;
+
+    const timestamp = Math.floor(Date.now() / 1000);
+    const toSign = `invalidate=true&public_id=${publicId}&timestamp=${timestamp}`;
+    const signature = createHash("sha1").update(`${toSign}${apiSecret}`).digest("hex");
+    const body = new FormData();
+    body.append("public_id", publicId);
+    body.append("invalidate", "true");
+    body.append("api_key", apiKey);
+    body.append("timestamp", String(timestamp));
+    body.append("signature", signature);
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/destroy`, {
+      method: "POST",
+      body,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data?.result !== "ok" && data?.result !== "not found")) {
+      console.error(`[cloudinary] destroy ${publicId} failed:`, data?.error?.message ?? data?.result ?? res.statusText);
+    }
+  } catch (err) {
+    console.error(`[cloudinary] destroy for ${url} failed:`, err);
+  }
+}
