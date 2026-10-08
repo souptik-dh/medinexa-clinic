@@ -12,7 +12,8 @@ import { notifyBranchStaff, createClinicUserNotification, branchContactEmails, s
 import {
   todayInTz,
   weekdayInTz,
-  currentTimeKeyInTz,
+  hasSlotEndedInTz,
+  BOOKING_TIME_ENDED_MESSAGE,
   findNextSequentialSlot,
   getBranchSchedule,
   isWeekdayOpen,
@@ -252,6 +253,20 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       );
     }
 
+    // Every generated key across all of today's templates (a doctor can have several
+    // ranges per weekday with different durations/capacities, not just templates[0]).
+    const capacityMap = buildSlotCapacityMap(templates);
+
+    // Booking end-time rule: once every slot of today has ended in the branch's tz the
+    // day is closed for new bookings (all roles) — reported as BOOKING_TIME_ENDED rather
+    // than DOCTOR_FULLY_BOOKED so the client can tell "too late" from "no capacity".
+    if (
+      capacityMap.size > 0 &&
+      [...capacityMap.entries()].every(([key, c]) => hasSlotEndedInTz(body.date, key, c.durationMinutes, tz))
+    ) {
+      throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "time");
+    }
+
     // Patients cannot book once the doctor's final slot for the day is within 30
     // minutes (fixed or sequential schedule alike); reception/clinic-owner walk-in
     // bookings are exempt, mirroring the patient-only checks above.
@@ -263,10 +278,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     }
 
     const isSequential = template.slot_type === "sequential";
-    // A doctor can have several ranges on the same weekday (e.g. morning + evening)
-    // with different durations/capacities, so every generated key across all of
-    // today's templates — not just templates[0] — must be considered.
-    const capacityMap = buildSlotCapacityMap(templates);
     let scheduledTime: string;
 
     if (isSequential) {
@@ -288,8 +299,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           "The requested time is not an available slot for this doctor.",
         );
       }
-      if (body.date === today && body.time <= currentTimeKeyInTz(tz)) {
-        throw unprocessable("DATE_IN_PAST", "This time slot has already passed.");
+      // A slot can be booked until its END (start + duration) in the branch's tz.
+      if (hasSlotEndedInTz(body.date, body.time, capacityMap.get(body.time)!.durationMinutes, tz)) {
+        throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "time");
       }
       scheduledTime = body.time;
     }

@@ -19,7 +19,8 @@ import {
 } from "@api/lib/notifications";
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
-import { badRequest, conflict, notFound } from "@api/lib/errors";
+import { badRequest, conflict, notFound, unprocessable } from "@api/lib/errors";
+import { todayInTz, BOOKING_TIME_ENDED_MESSAGE } from "@api/lib/availability";
 import { resolveServicePatient } from "@api/lib/patient-identity";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
@@ -127,8 +128,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    if (body.appointment_date < today) {
+    // "Today" is the branch's date, not the server's UTC date.
+    const tz = String(branch.timezone);
+    if (body.appointment_date < todayInTz(tz)) {
       throw badRequest("VALIDATION_ERROR", "Cannot book for a past date.");
     }
 
@@ -138,8 +140,12 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       body.branch_lab_test_id,
       body.appointment_date,
       Number(blt.duration_minutes),
+      tz,
     );
     const requestedSlot = slots.find((s) => s.start === body.start_time);
+    if (requestedSlot?.ended) {
+      throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "start_time");
+    }
     if (!requestedSlot || !requestedSlot.available) {
       throw conflict("SLOT_NOT_AVAILABLE", "The selected time slot is not available.");
     }

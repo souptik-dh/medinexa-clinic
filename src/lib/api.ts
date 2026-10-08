@@ -724,6 +724,8 @@ export type AvailabilityStatus =
   | "leave"
   | "unavailable"
   | "fully_booked"
+  | "booking_closed"
+  | "booking_time_ended"
   | "outside_schedule"
   | "past";
 
@@ -738,7 +740,7 @@ export interface AvailabilityResponse {
   status?: AvailabilityStatus;
   is_bookable?: boolean;
   leave?: AvailabilityLeave | null;
-  slots: { time: string; available: boolean; slot_type: SlotType }[];
+  slots: { time: string; end?: string; ended?: boolean; available: boolean; slot_type: SlotType }[];
 }
 
 export interface AvailabilityPeriod {

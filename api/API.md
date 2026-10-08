@@ -2868,7 +2868,9 @@ Two modes, selected by which query params are present:
 }
 ```
 
-`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one. `capacity` is that slot template range's `max_patients` and `remaining` is `capacity` minus current non-cancelled bookings at that exact time (added additively; `available` is simply `remaining > 0` and stays correct for clients that ignore the new fields).
+`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | booking_closed | booking_time_ended | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one. `capacity` is that slot template range's `max_patients` and `remaining` is `capacity` minus current non-cancelled bookings at that exact time (added additively; `available` is simply `remaining > 0` and stays correct for clients that ignore the new fields).
+
+**Booking end-time rule.** Each slot also carries `end` (`time` + slot duration, `HH:MM`, branch timezone) and `ended`. On the branch's current date, a slot is `ended: true` (and `available: false`, `remaining: 0`) from the exact minute its `end` is reached — a slot that has started but not yet ended stays bookable. When every slot of today has ended, `status` is `booking_time_ended`. `POST /appointments` enforces the same rule for every role and returns `422 BOOKING_TIME_ENDED` ("Booking is no longer available because the booking time has ended.").
 
 **Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day.
 
@@ -3760,7 +3762,7 @@ resolved server-side:
 
 The server never trusts the client's disabled-calendar rendering — every check below re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned, so a direct API call can't book a leave day, a branch-closed day, or a day outside the doctor's schedule. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the requested slot's end time — or, for `sequential`, every slot's end — has already passed in the branch's timezone), `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
 ### GET /appointments
 
@@ -4060,14 +4062,14 @@ Auth: any authenticated user. Returns available time slots for a given date. Rat
 {
   "date": "2026-08-25",
   "slots": [
-    { "start": "09:00", "end": "09:30", "available": true },
-    { "start": "09:30", "end": "10:00", "available": false },
-    { "start": "10:00", "end": "10:30", "available": true }
+    { "start": "09:00", "end": "09:30", "ended": false, "available": true },
+    { "start": "09:30", "end": "10:00", "ended": false, "available": false },
+    { "start": "10:00", "end": "10:30", "ended": false, "available": true }
   ]
 }
 ```
 
-Slots are generated from `lab_test_schedules` for the branch, filtered against branch closures and existing non-cancelled appointments. Each slot's `duration_minutes` comes from the branch lab test config.
+Slots are generated from `lab_test_schedules` for the branch, filtered against branch closures and existing non-cancelled appointments. Each slot's `duration_minutes` comes from the branch lab test config. On the branch's current date (branch timezone), a slot whose `end` has been reached is returned with `ended: true` and `available: false` — it can no longer be booked.
 
 **Errors:** `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `400 VALIDATION_ERROR` (missing/invalid `date`), `422 DATE_IN_PAST`.
 
@@ -4134,7 +4136,7 @@ self/family-member/reception resolution rules.
 
 **Response `201`** — LabTestAppointment object (`status: "PENDING"`), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the slot's end time has already passed in the branch's timezone), `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
 
 #### GET /patient/lab-test-appointments
 
@@ -5998,6 +6000,7 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `CLINIC_ALREADY_DEACTIVATED` / `CLINIC_NOT_DEACTIVATED` | 409 | Clinic deactivation state doesn't match the requested action |
 | `PAYMENT_ALREADY_VERIFIED` / `PAYMENT_FAILED` | 409 | Subscription payment already `PAID` / already `FAILED` — cannot be re-verified |
 | `OUTSIDE_DOCTOR_AVAILABILITY` / `DATE_IN_PAST` / `OUTSIDE_SCHEDULE` | 422 | Booking rules violated |
+| `BOOKING_TIME_ENDED` | 422 | Today's slot end time has already passed in the branch's timezone — "Booking is no longer available because the booking time has ended." |
 | `MAIN_BRANCH_EXISTS` | 409 | `POST /clinics/:clinicId/branches` with `is_main: true` when the clinic already has a main branch |
 | `PRESCRIPTION_REQUIRED` | 422 | Lab test requires a prescription but none was provided |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |

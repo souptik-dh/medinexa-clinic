@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import { hasSlotEndedInTz } from "@api/lib/availability";
 
 type Db = Pool;
 type Row = RowDataPacket;
@@ -6,6 +7,8 @@ type Row = RowDataPacket;
 interface TimeSlot {
   start: string;
   end: string;
+  /** True once the slot's end has passed today in the branch's tz — never bookable. */
+  ended: boolean;
   available: boolean;
 }
 
@@ -26,6 +29,7 @@ export async function generateLabTestSlots(
   branchTestId: string,
   date: string,
   durationMinutes: number,
+  tz: string,
 ): Promise<TimeSlot[]> {
   const dateObj = new Date(date + "T00:00:00Z");
   const weekday = dateObj.getUTCDay();
@@ -70,10 +74,14 @@ export async function generateLabTestSlots(
         (b) => slotStart < b.end && slotEnd > b.start,
       );
 
+      const start = minutesToTime(slotStart);
+      const ended = hasSlotEndedInTz(date, start, durationMinutes, tz);
+
       slots.push({
-        start: minutesToTime(slotStart),
+        start,
         end: minutesToTime(slotEnd),
-        available: !isBooked,
+        ended,
+        available: !isBooked && !ended,
       });
     }
   }
