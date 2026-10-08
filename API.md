@@ -1747,6 +1747,11 @@ Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member i
 
 ```json
 {
+  "user": {
+    "id": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+    "name": "Priya Sharma",
+    "photo_url": null
+  },
   "clinic": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Sunrise Health Clinic"
@@ -1763,6 +1768,72 @@ Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member i
 ```
 
 **Errors:** `404 BRANCH_NOT_FOUND` if the account has no active branch assignment.
+
+### POST /clinic-owners/me/photo/signature
+
+Auth: `clinic_owner`. Returns a Cloudinary upload grant for the owner's own profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "clinic-owners/<uuid>"`.
+
+Upload the file directly to `upload_url` as `multipart/form-data` with fields `file`, `public_id`, `timestamp`, `api_key`, `allowed_formats`, `signature`, then call `POST /clinic-owners/me/photo` to persist.
+
+### POST /clinic-owners/me/photo
+
+Auth: `clinic_owner`. Persists the owner's profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "clinic-owners/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /clinic-owners/me/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/clinic-owners/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+Also returned as `photo_url` by `GET /clinic-owners/me` and `GET /auth/me`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`.
+
+### POST /branch-staff/me/photo/signature
+
+Auth: `branch_staff`. Returns a Cloudinary upload grant for the staff member's own profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "branch-staff/<uuid>"`.
+
+### POST /branch-staff/me/photo
+
+Auth: `branch_staff`. Persists the staff member's profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "branch-staff/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /branch-staff/me/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/branch-staff/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+Also returned as `user.photo_url` by `GET /branch-staff/me` and as `photo_url` by `GET /auth/me`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`.
 
 ### GET /branches/:id/staff
 

@@ -24,8 +24,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const permissions = await loadStaffPermissions(pool, auth.branchId, auth.userId);
+  const [users] = await pool.query<Row[]>(`SELECT id, name, photo_url FROM users WHERE id = ?`, [auth.userId]);
 
   return json({
+    user: { id: auth.userId, name: users[0]?.name ?? null, photo_url: users[0]?.photo_url ?? null },
     clinic: { id: row.clinic_id, name: row.clinic_name },
     branch: {
       id: row.branch_id,

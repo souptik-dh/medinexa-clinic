@@ -140,6 +140,8 @@ const OWNED_FOLDERS = [
   "branches/licenses",
   "clinics",
   "clinics/licenses",
+  "clinic-owners",
+  "branch-staff",
   "patient-document",
 ];
 
