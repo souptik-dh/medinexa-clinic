@@ -132,7 +132,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       await sendEmail(
         doctorEmail,
         `Dr. ${doctorName}, you've been added to ${branch.name}`,
-        `You have been added to ${branch.name} under ${clinicName}. You can now manage your schedule and appointments at this branch using your existing MediBook account.`,
+        `You have been added to ${branch.name} under ${clinicName}. You can now manage your schedule and appointments at this branch using your existing Jido Healthcare account.`,
         branchAccessEmailHtml({
           doctorName,
           branchName: branch.name,
@@ -330,14 +330,14 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
   // Send the invitation via email (if present) and/or SMS (if phone present).
   if (body.email) {
-    const inviteBody = `You've been invited to join ${branch.name} on MediBook.\n\nAccept your invitation here: ${acceptUrl}\n\nYour one-time invite code is: ${inviteCode}\n\nThis code expires in 24 hours.`;
+    const inviteBody = `You've been invited to join ${branch.name} on Jido Healthcare.\n\nAccept your invitation here: ${acceptUrl}\n\nYour one-time invite code is: ${inviteCode}\n\nThis code expires in 24 hours.`;
     await sendEmail(
       body.email,
       `Dr. ${body.name}, you've been invited to ${branch.name}`,
       inviteBody,
       inviteEmailHtml({
         heading: "Clinic Join Invitation",
-        intro: `You've been invited to join ${branch.name} on MediBook. Use the details below to accept your invitation and complete setup.`,
+        intro: `You've been invited to join ${branch.name} on Jido Healthcare. Use the details below to accept your invitation and complete setup.`,
         code: inviteCode,
         codeLabel: "Your One-Time Invite Code",
         ctaLabel: "Accept Invitation",

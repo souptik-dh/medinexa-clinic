@@ -1,6 +1,6 @@
 # Jido Healthcare — REST API Reference
 
-Live implementation reference for the MediBook API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
+Live implementation reference for the Jido Healthcare API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
 
 - **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://healthcare.jido.co.in/api/v1` (prod)
 - **Format:** JSON only (`Content-Type: application/json`), except legacy upload endpoints (certificates, prescription scans, medical documents) and clinic/branch license uploads which use `multipart/form-data`, and photo uploads which use a two-step Cloudinary flow (see [File uploads](#file-uploads)).

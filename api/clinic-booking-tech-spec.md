@@ -1,4 +1,4 @@
-# MediBook — Clinic / Branch / Doctor / Patient Booking System
+# Jido Healthcare — Clinic / Branch / Doctor / Patient Booking System
 ## Technical Specification (v2.0 — API-First)
 
 **Status:** Draft for development

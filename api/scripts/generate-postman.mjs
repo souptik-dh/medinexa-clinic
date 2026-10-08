@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, "..", "postman");
-const OUT_FILE = path.join(OUT_DIR, "MediBook-API.postman_collection.json");
+const OUT_FILE = path.join(OUT_DIR, "Jido Healthcare-API.postman_collection.json");
 
 const BASE_URL = "http://localhost:3000/api/v1";
 

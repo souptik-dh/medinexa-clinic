@@ -1,4 +1,4 @@
--- MediBook schema (MySQL 8, utf8mb4, all timestamps UTC)
+-- Jido Healthcare schema (MySQL 8, utf8mb4, all timestamps UTC)
 -- Mirrors the resource contract in clinic-booking-tech-spec.md §6.
 
 CREATE TABLE IF NOT EXISTS users (

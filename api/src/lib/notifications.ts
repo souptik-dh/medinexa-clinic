@@ -224,20 +224,20 @@ export function pushContentFor(
         title: "Subscription expiring soon",
         body:
           typeof payload.days_left === "number"
-            ? `Your MediBook subscription expires in ${payload.days_left} day${payload.days_left === 1 ? "" : "s"}. Renew now to keep your clinic online.`
-            : "Your MediBook subscription is expiring soon. Renew now to keep your clinic online.",
+            ? `Your Jido Healthcare subscription expires in ${payload.days_left} day${payload.days_left === 1 ? "" : "s"}. Renew now to keep your clinic online.`
+            : "Your Jido Healthcare subscription is expiring soon. Renew now to keep your clinic online.",
       };
     case "subscription_expired":
       return {
         title: "Subscription expired",
-        body: "Your MediBook subscription has expired. Clinic operations are paused until you renew.",
+        body: "Your Jido Healthcare subscription has expired. Clinic operations are paused until you renew.",
       };
     case "subscription_activated":
       return {
         title: "Subscription active",
         body: typeof payload.period_end === "string"
-          ? `Your MediBook subscription is active through ${String(payload.period_end).slice(0, 10)}.`
-          : "Your MediBook subscription is active. Welcome aboard!",
+          ? `Your Jido Healthcare subscription is active through ${String(payload.period_end).slice(0, 10)}.`
+          : "Your Jido Healthcare subscription is active. Welcome aboard!",
       };
     case "subscription_deactivated":
       return {
@@ -693,7 +693,7 @@ export function branchAccessEmailHtml(opts: {
 You have been successfully added to <strong>${escapeHtml(opts.branchName)}</strong> under <strong>${escapeHtml(opts.clinicName)}</strong>.
 </p>
 <p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">
-You can now manage your schedule and appointments at this branch using your existing MediBook account. No further action is required.
+You can now manage your schedule and appointments at this branch using your existing Jido Healthcare account. No further action is required.
 </p>
 <p style="color:#94a3b8;font-size:13px;margin:0;">If you have any questions, please contact the clinic administrator.</p>`;
   return emailShell(appIconImg(), body);
@@ -1120,6 +1120,6 @@ export async function sendInviteWhatsapp(opts: {
   clinicName: string;
   inviteUrl: string;
 }): Promise<boolean> {
-  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`;
+  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on Jido Healthcare. Accept your invitation here: ${opts.inviteUrl}`;
   return sendWhatsapp(opts.phone, text);
 }
