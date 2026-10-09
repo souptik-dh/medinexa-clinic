@@ -1,5 +1,6 @@
 import { api, json } from "@api/lib/http";
 import { pool, type Row } from "@api/lib/db";
+import { loadPatientLinks } from "@api/lib/patient-links";
 import { requireRoles } from "@api/lib/auth";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { badRequest } from "@api/lib/errors";
@@ -82,8 +83,12 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
 
+  // Accounts that book for each patient — how a relative without their own phone is
+  // reached, and what they are to that account ("Spouse of Anuvab").
+  const { profiles } = await loadPatientLinks(pool, items.map((r) => String(r.id)));
+
   return json({
-    items: items.map(serializePatient),
+    items: items.map((r) => ({ ...serializePatient(r), profiles: profiles.get(String(r.id)) ?? [] })),
     has_more: hasMore,
   });
 });

@@ -21,7 +21,7 @@ import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest, conflict, notFound, unprocessable } from "@api/lib/errors";
 import { todayInTz, BOOKING_TIME_ENDED_MESSAGE } from "@api/lib/availability";
-import { resolveServicePatient } from "@api/lib/patient-identity";
+import { resolveServicePatient, type ResolvedServicePatient } from "@api/lib/patient-identity";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -30,12 +30,19 @@ const patientDetailsSchema = z.object({
   // instead of registering a new one. Ignored for the "patient" role — a patient
   // account can never point a booking at an arbitrary patient_id it doesn't control.
   patient_id: z.string().uuid().optional(),
+  // Reception only: the Patient App account (profile) the booking belongs to — picked
+  // via /patients/lookup — or, for a new walk-in, the profile's name. The entered
+  // phone is the profile's. Profile and patient are stored apart (patient-identity.ts).
+  profile_user_id: z.string().uuid().optional(),
+  profile_name: z.string().trim().max(255).optional().nullable(),
   relationship: z.enum(["self", "spouse", "child", "parent", "sibling", "friend", "other"]).default("self"),
   name: z.string().trim().min(1).max(255),
   // Normalized to +91XXXXXXXXXX so downstream SMS/WhatsApp dispatch (which needs the
   // country code for both the SMS gateway and WhatsApp's chatId) doesn't reject a
   // plain 10-digit number typed by staff at booking time.
-  phone: phoneSchema,
+  // Optional when a known person is picked (patient_id / profile_user_id) or for an app
+  // user's family member (defaults to the account's phone); required for a new walk-in.
+  phone: phoneSchema.optional().nullable(),
   age: z.number().int().min(0).max(150),
   gender: z.enum(["male", "female", "other", "prefer_not_to_say"]),
 });
@@ -160,7 +167,11 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       throw conflict("DUPLICATE_BOOKING", "You already have a booking for this slot.");
     }
 
-    const patientDetails = body.patient_details;
+    let patientDetails = body.patient_details;
+    if (auth.role !== "patient" && !patientDetails.patient_id && !patientDetails.profile_user_id && !patientDetails.phone) {
+      throw badRequest("VALIDATION_ERROR", "phone is required for a new patient.", "phone");
+    }
+    let resolved: ResolvedServicePatient | null = null;
 
     const appointmentId = newId();
     const appointmentNumber = generateAppointmentNumber();
@@ -211,19 +222,23 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       );
 
       const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
+      resolved = servicePatient;
       await conn.query(
         `INSERT INTO lab_test_appointment_patients
-           (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, appointment_id, patient_id, booking_source, booked_by, profile_user_id, profile_name,
+            relationship, name, phone, age, gender)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId(),
           appointmentId,
           servicePatient.patientId,
           servicePatient.bookingSource,
           servicePatient.bookedBy,
-          patientDetails.relationship,
-          patientDetails.name,
-          patientDetails.phone ?? null,
+          servicePatient.profileUserId,
+          servicePatient.profileName,
+          servicePatient.relationship,
+          servicePatient.name,
+          servicePatient.phone,
           patientDetails.age ?? null,
           patientDetails.gender ?? null,
         ],
@@ -232,9 +247,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       if (body.prescription_id) {
         await conn.query(
           `INSERT INTO lab_test_prescriptions (id, patient_id, appointment_id, file_name, file_url, mime_type, file_size, uploaded_at)
-           SELECT id, patient_id, ?, file_name, file_url, mime_type, size_bytes, uploaded_at
+           SELECT id, ?, ?, file_name, file_url, mime_type, size_bytes, uploaded_at
            FROM medical_documents WHERE id = ? AND patient_id = ?`,
-          [appointmentId, body.prescription_id, auth.userId],
+          [servicePatient.patientId ?? auth.userId, appointmentId, body.prescription_id, auth.userId],
         );
       }
 
@@ -251,8 +266,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         date: body.appointment_date,
         time: body.start_time,
         branch_name: branch.name,
-        visitor_name: patientDetails.name,
-        visitor_relationship: patientDetails.relationship,
+        visitor_name: servicePatient.name,
+        visitor_relationship: servicePatient.relationship,
       };
       await notifyBranchStaff(conn, body.branch_id, "lab_test_booked", notifyPayload);
       await createClinicUserNotification(conn, branch.owner_user_id, "lab_test_booked", notifyPayload, body.branch_id);
@@ -275,7 +290,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
               ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
               ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
               ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-              ltap.booked_by AS visitor_booked_by
+              ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
          FROM lab_test_appointments a
          JOIN lab_tests lt ON lt.id = a.test_id
          JOIN branches b ON b.id = a.branch_id
@@ -287,6 +302,11 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     );
 
     const appointment = saved[0];
+    // Assigned inside the insert transaction's callback, which TS can't follow.
+    const done = resolved as ResolvedServicePatient | null;
+    if (done) {
+      patientDetails = { ...patientDetails, name: done.name, phone: done.phone, relationship: done.relationship };
+    }
     const isForSelf = patientDetails.relationship === "self";
 
     const staffEmails = await branchContactEmails(pool, body.branch_id);

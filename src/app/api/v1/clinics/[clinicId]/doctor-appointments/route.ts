@@ -135,14 +135,17 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
         [patientIds, clinicId],
       ),
       pool.query<Row[]>(
-        `SELECT lta.id, lta.patient_id, lta.appointment_number, lta.appointment_date, lta.start_time,
+        `SELECT lta.id, COALESCE(ltap.patient_id, lta.patient_id) AS patient_id, lta.appointment_number,
+                lta.appointment_date, lta.start_time,
                 lta.status, lta.service_mode, lta.payment_status, lta.completed_at,
                 lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
                 b.name AS branch_name, b.photo_url AS branch_photo_url
            FROM lab_test_appointments lta
            JOIN lab_tests lt ON lt.id = lta.test_id
            JOIN branches b ON b.id = lta.branch_id
-          WHERE lta.patient_id IN (?) AND lta.clinic_id = ?
+           LEFT JOIN lab_test_appointment_patients ltap ON ltap.appointment_id = lta.id
+          -- The person the test was for, not the account that booked it (staff or a relative).
+          WHERE COALESCE(ltap.patient_id, lta.patient_id) IN (?) AND lta.clinic_id = ?
           ORDER BY lta.appointment_date DESC, lta.start_time DESC`,
         [patientIds, clinicId],
       ),

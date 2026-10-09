@@ -3278,7 +3278,7 @@ patient (registered via the app, or added by reception at another branch) can be
 `POST /lab-test-appointments` — instead of creating a duplicate record. Not branch-scoped, since
 patients aren't owned by a clinic/branch.
 
-**Query:** `?phone=<exact>` or `?q=<partial name/phone/email>` — provide at least one.
+**Query:** `?phone=<number>` (any format — `98765 43210`, `+91…`, `0…` — normalized to `+91XXXXXXXXXX`) or `?q=<partial name / phone / email, or Patient ID>` — provide at least one. A `q` of 4+ hex characters also matches the start of the patient id, i.e. the readable **Patient ID** (`patient_code`).
 
 **Response `200`**
 
@@ -3290,7 +3290,16 @@ patients aren't owned by a clinic/branch.
       "name": "Aisha Verma",
       "email": "aisha@example.com",
       "phone": "+919876543210",
-      "is_registered": true
+      "patient_code": "3F9D6B5E",
+      "gender": "female",
+      "date_of_birth": null,
+      "age": 34,
+      "photo_url": null,
+      "is_registered": true,
+      "family": [
+        { "id": "8c1d…", "name": "Riya Verma", "phone": null, "relationship": "child" }
+      ],
+      "profiles": []
     }
   ]
 }
@@ -3300,7 +3309,74 @@ patients aren't owned by a clinic/branch.
 never signed up in the app themselves — see `patient_details.patient_id` under
 [Appointments](#appointments) for how this resolves at booking time.
 
+`patient_code` is the readable Patient ID (first 8 characters of `id`, uppercased). `age` comes from
+`date_of_birth`, else the most recent age recorded at booking. `family` = people this account books for
+(its [family links](#booking-profile-vs-patient)); `profiles` = Patient App accounts that book for this person
+(e.g. a child with no phone of their own). Reception can pick a family member directly and book with
+`patient_details.patient_id` + `patient_details.profile_user_id`.
+
 **Errors:** `400 VALIDATION_ERROR` (neither `phone` nor `q` given).
+
+### Booking profile vs patient
+
+Every doctor and lab booking keeps two people apart:
+
+- **Booking profile** (`profile_user_id`, `profile_name`) — the Patient App account the booking belongs to:
+  the logged-in user for an app booking; for a reception booking, the account picked by staff, else the
+  account registered to the entered phone, else a new account created from `profile_name` + phone.
+- **Patient** (`patient_id`, `name`) — the person receiving the service.
+
+They are the same person for a `self` booking. A relative booked under a profile is linked to it in
+`patient_family_links` (relationship = what the patient is to the profile). A relative with no phone of their
+own gets a patient record with `phone = null` — phones are unique across accounts, so relatives sharing the
+profile's number are never merged into the profile's own record. Re-booking the same relative (same name under
+the same profile, or by `patient_id`) reuses that record; nothing is duplicated.
+
+Responses for appointments and lab test appointments carry both:
+`patient_details.{patient_id, patient_code, profile_user_id, profile_name, relationship, …}` and a top-level
+`profile: { id, name }`, alongside `booking_source` (`PATIENT_APP` | `RECEPTION`) and `booked_by` (the account
+that made the API call — staff for reception).
+
+Patient-facing notifications and emails about a booking go to the **booking profile** (never to the staff
+member who booked it); a relative with no phone is reached through the account that books for them.
+`GET /appointments`, `GET /patient/lab-test-appointments` and `GET /patients/me/appointment-summary` return the
+bookings a patient account made, is the patient of, or that belong to its profile — so a visit reception booked
+for them shows up in the app.
+
+### GET /patients/me/family
+
+Auth: `patient`. The people this account books for. Members are added automatically when the account books for
+someone else, or when reception books a relative under this account.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "8c1d…",
+      "patient_code": "8C1D2E3F",
+      "name": "Riya Dhar",
+      "phone": null,
+      "gender": "female",
+      "date_of_birth": null,
+      "age": 8,
+      "photo_url": null,
+      "relationship": "child",
+      "linked_at": "2026-10-08T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+Book a listed member again with `patient_details.patient_id` = their `id`.
+
+### DELETE /patients/me/family/:patientId
+
+Auth: `patient`. Removes the person from this account's family list (the link only — their record and past
+bookings are untouched).
+
+**Response `204`** · **Errors:** `404 PATIENT_NOT_FOUND`.
 
 ### GET /patients/me
 
@@ -3572,6 +3648,9 @@ Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `patients:view`. *
 **Query:** `?search=&type=new|old&limit=<1..100>&offset=`
 
 - `search` matches patient name, email, or phone (contains).
+- `profiles` = Patient App accounts that book for this patient (`patient_family_links`), with what the patient is to that
+  account. A relative added without their own phone has `phone: null` and is reached through a profile's `phone`.
+  `[]` when nobody else books for them.
 - `type=new` returns patients with exactly one non-cancelled appointment at this branch; `type=old` returns patients with more than one (returning patients). Omit for both.
 
 **Response `200`**
@@ -3589,7 +3668,11 @@ Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `patients:view`. *
       "visit_count": 3,
       "is_new_patient": false,
       "first_visit_date": "2026-05-01",
-      "last_visit_date": "2026-08-09"
+      "last_visit_date": "2026-08-09",
+      "is_registered": true,
+      "profiles": [
+        { "id": "8b1e…", "name": "Rahul Verma", "phone": "+919812345678", "relationship": "spouse" }
+      ]
     }
   ],
   "has_more": false
@@ -3744,25 +3827,29 @@ Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Sl
 | `date` | string | required, `YYYY-MM-DD`, not in the past |
 | `time` | string? | required and must be an aligned slot when the doctor's `slot_type` is `fixed`; omit for `sequential` doctors |
 | `patient_details` | object? | optional — omit to book for yourself (defaults to `relationship: "self"` using your own account name/phone). **Required** when `branch_staff`/`clinic_owner` book on behalf of a walk-in patient |
-| `patient_details.patient_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — selects an existing patient found via `GET /patients/lookup`, instead of creating a new one. Ignored for the `patient` role (see below) |
+| `patient_details.patient_id` | string (UUID)? | An existing patient to book. Reception: any patient found via `GET /patients/lookup`. Patient role: their own id or a member of `GET /patients/me/family` (`404 PATIENT_NOT_FOUND` otherwise) |
+| `patient_details.profile_user_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — the Patient App account (booking profile) the booking belongs to; see [Booking profile vs patient](#booking-profile-vs-patient) |
+| `patient_details.profile_name` | string? | **`branch_staff`/`clinic_owner` only**, new walk-in — the profile's name. When it differs from `name`, `relationship` must not be `self` (`422 RELATIONSHIP_REQUIRED`) |
 | `patient_details.relationship` | string? | `self` \| `spouse` \| `child` \| `parent` \| `sibling` \| `friend` \| `other`, defaults to `self` |
 | `patient_details.name` | string | required if `patient_details` is present, 1–255 chars |
-| `patient_details.phone` | string | required if `patient_details` is present, normalized to `+91XXXXXXXXXX` — the confirmation SMS/WhatsApp is sent here, never to the booking account's own phone |
+| `patient_details.phone` | string? | contact phone, normalized to `+91XXXXXXXXXX` — the confirmation SMS/WhatsApp is sent here. Reception: the profile's phone, **required for a new walk-in** (optional when `patient_id`/`profile_user_id` is given). Patient role: optional, defaults to the account's phone |
 | `patient_details.age` | number? | 0–150 |
 | `patient_details.gender` | string? | one of `male`, `female`, `other`, `prefer_not_to_say` |
 
-How `patient_details.patient_id` (the actual patient, exposed on the response as `patient.id`) is
-resolved server-side:
+How the booking profile and the patient are resolved server-side (see
+[Booking profile vs patient](#booking-profile-vs-patient)):
 
-- **`patient` role, `relationship: "self"`** (or `patient_details` omitted) — always the caller's own account. Any `patient_id` sent in the body is ignored.
-- **`patient` role, any other relationship** — the server looks up an existing patient by `patient_details.phone`; if none exists, it registers a new one (same "walk-in" account shape as reception creates — no password, `is_registered: false`). The client-supplied `patient_id` is ignored here too — a patient account can never point a booking at an arbitrary existing `patient_id` it doesn't control.
-- **`branch_staff`/`clinic_owner`** — if `patient_details.patient_id` is given, it's used directly (`404 PATIENT_NOT_FOUND` if it doesn't reference an existing patient). Otherwise, same phone lookup-or-create as above.
+- **`patient` role, `relationship: "self"`** (or `patient_details` omitted) — profile and patient are the caller's own account; a different typed name is ignored.
+- **`patient` role, `patient_id` given** — must be the caller or a linked family member (`404 PATIENT_NOT_FOUND` otherwise).
+- **`patient` role, someone else** — profile = the caller; the patient is the linked member with the same name, else the patient account of a *different* phone whose name matches, else a new record (no phone of its own when the caller's phone was given). The member is linked to the caller.
+- **`branch_staff`/`clinic_owner`, `patient_id` given** — that patient; nothing is created or changed. Profile = `profile_user_id`, else the patient's own account when they have a phone, else the account that books for them.
+- **`branch_staff`/`clinic_owner`, new walk-in** — profile = `profile_user_id`, else the patient account of `phone`, else a new account (`profile_name` + `phone`). Same name as the profile → `self`; otherwise the patient is found/created as the profile's family member with `relationship` (`422 RELATIONSHIP_REQUIRED` if `profile_name` was given, differs, and `relationship` is `self`).
 
 **Response `201`** — Appointment object (`status: "pending"`, `scheduled_time` is the server-assigned time for `sequential` bookings).
 
 The server never trusts the client's disabled-calendar rendering — every check below re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned, so a direct API call can't book a leave day, a branch-closed day, or a day outside the doctor's schedule. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the requested slot's end time — or, for `sequential`, every slot's end — has already passed in the branch's timezone), `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the requested slot's end time — or, for `sequential`, every slot's end — has already passed in the branch's timezone), `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
 ### GET /appointments
 
@@ -4123,10 +4210,12 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `home_contact_phone` | string? | max 32 |
 | `home_notes` | string? | max 500 |
 | `patient_details` | object | **required** — the patient the test is for |
-| `patient_details.patient_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — selects an existing patient found via `GET /patients/lookup`, instead of creating a new one. Ignored for the `patient` role |
+| `patient_details.patient_id` | string (UUID)? | An existing patient to book. Reception: any patient found via `GET /patients/lookup`. Patient role: their own id or a member of `GET /patients/me/family` (`404 PATIENT_NOT_FOUND` otherwise) |
+| `patient_details.profile_user_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — the Patient App account (booking profile) the booking belongs to; see [Booking profile vs patient](#booking-profile-vs-patient) |
+| `patient_details.profile_name` | string? | **`branch_staff`/`clinic_owner` only**, new walk-in — the profile's name. When it differs from `name`, `relationship` must not be `self` (`422 RELATIONSHIP_REQUIRED`) |
 | `patient_details.relationship` | string? | `self` \| `spouse` \| `child` \| `parent` \| `sibling` \| `friend` \| `other`, defaults to `self` |
 | `patient_details.name` | string | required, 1–255 chars |
-| `patient_details.phone` | string | required, normalized to `+91XXXXXXXXXX` |
+| `patient_details.phone` | string? | contact phone, normalized to `+91XXXXXXXXXX`; same rules as `POST /appointments` (required for a new reception walk-in) |
 | `patient_details.age` | number | required, 0–150 |
 | `patient_details.gender` | string | required, one of `male`, `female`, `other`, `prefer_not_to_say` |
 
@@ -4136,7 +4225,7 @@ self/family-member/reception resolution rules.
 
 **Response `201`** — LabTestAppointment object (`status: "PENDING"`), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the slot's end time has already passed in the branch's timezone), `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the slot's end time has already passed in the branch's timezone), `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
 
 #### GET /patient/lab-test-appointments
 

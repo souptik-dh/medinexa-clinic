@@ -428,6 +428,10 @@ CREATE TABLE IF NOT EXISTS appointment_patients (
   patient_id CHAR(36) NULL,
   booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP',
   booked_by CHAR(36) NULL,
+  -- The Patient App account the booking belongs to (who booked / owns it in the app),
+  -- separate from patient_id (who receives the service). NULL only for legacy rows.
+  profile_user_id CHAR(36) NULL,
+  profile_name VARCHAR(255) NULL,
   relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
   name VARCHAR(255) NOT NULL,
   phone VARCHAR(32) NULL,
@@ -437,9 +441,11 @@ CREATE TABLE IF NOT EXISTS appointment_patients (
   PRIMARY KEY (id),
   UNIQUE KEY uniq_appointment_patient (appointment_id),
   KEY idx_appt_patients_patient (patient_id),
+  KEY idx_appt_patients_profile (profile_user_id),
   CONSTRAINT fk_appt_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE,
   CONSTRAINT fk_appt_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
-  CONSTRAINT fk_appt_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_appt_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_appt_patient_details_profile FOREIGN KEY (profile_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- changed_by NULL = system/cron (e.g. the overdue-appointment auto-cancel sweep).
@@ -855,6 +861,10 @@ CREATE TABLE IF NOT EXISTS lab_test_appointment_patients (
   patient_id CHAR(36) NULL,
   booking_source ENUM('PATIENT_APP','RECEPTION') NOT NULL DEFAULT 'PATIENT_APP',
   booked_by CHAR(36) NULL,
+  -- The Patient App account the booking belongs to (who booked / owns it in the app),
+  -- separate from patient_id (who receives the service). NULL only for legacy rows.
+  profile_user_id CHAR(36) NULL,
+  profile_name VARCHAR(255) NULL,
   relationship ENUM('self','spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'self',
   name VARCHAR(255) NOT NULL,
   phone VARCHAR(32) NULL,
@@ -864,9 +874,29 @@ CREATE TABLE IF NOT EXISTS lab_test_appointment_patients (
   PRIMARY KEY (id),
   UNIQUE KEY uniq_lab_test_appointment_patient (appointment_id),
   KEY idx_lta_patients_patient (patient_id),
+  KEY idx_lta_patients_profile (profile_user_id),
   CONSTRAINT fk_lta_patient_details_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE,
   CONSTRAINT fk_lta_patient_details_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE SET NULL,
-  CONSTRAINT fk_lta_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_lta_patient_details_booked_by FOREIGN KEY (booked_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_lta_patient_details_profile FOREIGN KEY (profile_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- A Patient App profile (account) and the people it books for. A family member who
+-- has no phone of their own is a users row (role patient) with phone NULL that exists
+-- only through these links, so relatives sharing one phone are never merged into the
+-- profile's own record. relationship = what the patient is to the profile.
+CREATE TABLE IF NOT EXISTS patient_family_links (
+  id CHAR(36) NOT NULL,
+  profile_user_id CHAR(36) NOT NULL,
+  patient_id CHAR(36) NOT NULL,
+  relationship ENUM('spouse','child','parent','sibling','friend','other') NOT NULL DEFAULT 'other',
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_family_link (profile_user_id, patient_id),
+  KEY idx_family_link_patient (patient_id),
+  CONSTRAINT fk_family_link_profile FOREIGN KEY (profile_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_family_link_patient FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS lab_test_prescriptions (

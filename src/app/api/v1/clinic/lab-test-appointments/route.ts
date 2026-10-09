@@ -45,8 +45,10 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     params.push(paymentStatus.toUpperCase());
   }
   if (patientName) {
-    conditions.push("u.name LIKE ?");
-    params.push(`%${patientName}%`);
+    // The patient's name, or the booking account's (a reception booking's account is staff).
+    const like = `%${patientName.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    conditions.push("(ltap.name LIKE ? OR u.name LIKE ?)");
+    params.push(like, like);
   }
   if (appointmentNumber) {
     conditions.push("a.appointment_number = ?");
@@ -77,7 +79,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
             ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
             ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
             ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-            ltap.booked_by AS visitor_booked_by
+            ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
        FROM lab_test_appointments a
        JOIN lab_tests lt ON lt.id = a.test_id
        JOIN branches b ON b.id = a.branch_id

@@ -265,15 +265,59 @@ export function pushContentFor(
 }
 
 /**
+ * Who should receive a patient-facing notification. Callers pass the booking's
+ * account id, which for a reception booking is the staff member; the right person is
+ * the booking's profile (the Patient App account that owns it). A family member with no
+ * phone of their own is reached through the account that books for them. Returns null
+ * when the only candidate is a clinic-side account: patient messages never go to staff.
+ */
+export async function patientRecipient(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: string,
+  payload: Record<string, unknown> = {},
+): Promise<string | null> {
+  try {
+    let recipient = userId;
+    const apptId = typeof payload.appointment_id === "string" ? payload.appointment_id : null;
+    if (apptId) {
+      const table = type.startsWith("lab_test") ? "lab_test_appointment_patients" : "appointment_patients";
+      const [rows] = await db.query<RowDataPacket[]>(
+        `SELECT profile_user_id FROM ${table} WHERE appointment_id = ?`,
+        [apptId],
+      );
+      if (rows[0]?.profile_user_id) recipient = String(rows[0].profile_user_id);
+    }
+    const [users] = await db.query<RowDataPacket[]>(`SELECT role, phone FROM users WHERE id = ?`, [recipient]);
+    const user = users[0];
+    if (!user || user.role !== "patient") return null;
+    if (!user.phone) {
+      const [links] = await db.query<RowDataPacket[]>(
+        `SELECT profile_user_id FROM patient_family_links WHERE patient_id = ? ORDER BY created_at LIMIT 1`,
+        [recipient],
+      );
+      if (links[0]?.profile_user_id) recipient = String(links[0].profile_user_id);
+    }
+    return recipient;
+  } catch (err) {
+    console.error(`[notify] could not resolve recipient for ${type}:`, err);
+    return userId;
+  }
+}
+
+/**
  * Creates the in-app notification AND delivers an FCM push to every device the
  * patient is registered on. Push failures never fail the underlying request.
+ * The recipient is resolved by `patientRecipient` (the booking's profile).
  */
 export async function createPatientNotification(
   db: Pick<PoolConnection, "query">,
-  userId: string,
+  accountUserId: string,
   type: NotificationType,
   payload: Record<string, unknown> = {},
 ): Promise<void> {
+  const userId = await patientRecipient(db, accountUserId, type, payload);
+  if (!userId) return;
   await createNotification(db, userId, type, payload);
   const content = pushContentFor(type, payload);
   await sendFcmToUser(userId, {
@@ -431,10 +475,12 @@ export async function notifyClinicSide(
  */
 export async function emailPatient(
   db: Pick<PoolConnection, "query">,
-  userId: string,
+  accountUserId: string,
   type: NotificationType,
   payload: Record<string, unknown> = {},
 ): Promise<void> {
+  const userId = (await patientRecipient(db, accountUserId, type, payload)) ?? "";
+  if (!userId) return;
   try {
     const [rows] = await db.query<RowDataPacket[]>(`SELECT email FROM users WHERE id = ?`, [userId]);
     const email = asString(rows[0]?.email);

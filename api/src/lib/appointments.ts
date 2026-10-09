@@ -30,6 +30,11 @@ export type ApptStatus = (typeof APPT_STATUSES)[number];
 
 export const NON_TERMINAL = ["pending", "confirmed", "paid"];
 
+/** Readable patient ID shown to staff and patients: the first 8 characters of the id. */
+export function patientCode(id: unknown): string | null {
+  return typeof id === "string" && id.length >= 8 ? id.slice(0, 8).toUpperCase() : null;
+}
+
 export function serializeAppointment(r: Row) {
   const base = {
     id: r.id,
@@ -56,6 +61,9 @@ export function serializeAppointment(r: Row) {
       ? {
           patient_details: {
             patient_id: r.visitor_patient_id ?? null,
+            patient_code: patientCode(r.visitor_patient_id),
+            profile_user_id: r.visitor_profile_user_id ?? null,
+            profile_name: r.visitor_profile_name ?? null,
             relationship: r.visitor_relationship ?? "self",
             name: r.visitor_name,
             phone: r.visitor_phone ?? null,
@@ -65,6 +73,11 @@ export function serializeAppointment(r: Row) {
           },
           relationship: r.visitor_relationship ?? "self",
           booking_source: r.visitor_booking_source ?? null,
+          // The Patient App account the booking belongs to — separate from the patient.
+          profile:
+            r.visitor_profile_user_id !== undefined
+              ? { id: r.visitor_profile_user_id ?? null, name: r.visitor_profile_name ?? null }
+              : null,
           // The actual patient the visit is for. `id` resolves to a real users row
           // once known — null for legacy bookings that predate this field.
           patient: {
@@ -99,7 +112,9 @@ export function serializeAppointment(r: Row) {
 export function scopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
   switch (auth.role) {
     case "patient":
-      return { where: "a.patient_id = ?", params: [auth.userId] };
+      // Bookings the account made, is the patient of, or that belong to its profile
+      // (e.g. a visit reception booked for this user or one of their family).
+      return { where: "(a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?))", params: [auth.userId, auth.userId, auth.userId] };
     case "branch_staff":
       return { where: "a.branch_id = ?", params: [auth.branchId ?? "__none__"] };
     case "doctor":

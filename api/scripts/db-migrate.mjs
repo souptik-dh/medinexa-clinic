@@ -1537,6 +1537,54 @@ try {
     console.log('Applied migration: clinics.photo_url');
   }
 
+  // Booking profile vs actual patient: the Patient App account a booking belongs to
+  // (profile_user_id/profile_name) is stored apart from the person receiving the
+  // service (patient_id). patient_family_links itself comes from schema.sql above.
+  for (const [table, prefix] of [['appointment_patients', 'appt_patients'], ['lab_test_appointment_patients', 'lta_patients']]) {
+    const parent = table === 'appointment_patients' ? 'appointments' : 'lab_test_appointments';
+    const fkPrefix = table === 'appointment_patients' ? 'appt_patient_details' : 'lta_patient_details';
+    const [profileCols] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'profile_user_id'`,
+      [table],
+    );
+    if (Number(profileCols[0].cnt) === 0) {
+      await conn.query(`
+        ALTER TABLE ${table}
+          ADD COLUMN profile_user_id CHAR(36) NULL AFTER booked_by,
+          ADD COLUMN profile_name VARCHAR(255) NULL AFTER profile_user_id,
+          ADD KEY idx_${prefix}_profile (profile_user_id)
+      `);
+      // App bookings: the booking account is the profile. Reception bookings: the
+      // resolved patient is treated as their own profile (the best fact on record).
+      await conn.query(`
+        UPDATE ${table} x
+        JOIN ${parent} a ON a.id = x.appointment_id
+        SET x.profile_user_id = IF(x.booking_source = 'PATIENT_APP', a.patient_id, x.patient_id)
+      `);
+      await conn.query(`
+        UPDATE ${table} x
+        JOIN users u ON u.id = x.profile_user_id
+        SET x.profile_name = u.name
+      `);
+      await conn.query(`
+        ALTER TABLE ${table}
+          ADD CONSTRAINT fk_${fkPrefix}_profile FOREIGN KEY (profile_user_id) REFERENCES users(id) ON DELETE SET NULL
+      `);
+      // Family links implied by past app bookings for someone else.
+      await conn.query(`
+        INSERT IGNORE INTO patient_family_links (id, profile_user_id, patient_id, relationship)
+        SELECT UUID(), x.profile_user_id, x.patient_id, x.relationship
+          FROM ${table} x
+          JOIN users p ON p.id = x.patient_id AND p.role = 'patient'
+         WHERE x.booking_source = 'PATIENT_APP' AND x.relationship <> 'self'
+           AND x.patient_id IS NOT NULL AND x.profile_user_id IS NOT NULL
+           AND x.patient_id <> x.profile_user_id
+      `);
+      console.log(`Applied migration: ${table}.profile_user_id/profile_name + family links`);
+    }
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

@@ -12,8 +12,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
        SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END) AS no_show_count,
        COUNT(*) AS total_count
-     FROM appointments WHERE patient_id = ?`,
-    [auth.userId],
+     FROM appointments a WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?))`,
+    [auth.userId, auth.userId, auth.userId],
   );
 
   const [nextRows] = await pool.query<Row[]>(
@@ -23,10 +23,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
-      WHERE a.patient_id = ? AND a.status IN ('pending','confirmed','paid') AND a.scheduled_date >= CURDATE()
+      WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?)) AND a.status IN ('pending','confirmed','paid') AND a.scheduled_date >= CURDATE()
       ORDER BY a.scheduled_date ASC, a.scheduled_time ASC
       LIMIT 1`,
-    [auth.userId],
+    [auth.userId, auth.userId, auth.userId],
   );
   const next = nextRows[0];
 
@@ -37,10 +37,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
-      WHERE a.patient_id = ? AND a.status = 'completed'
+      WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?)) AND a.status = 'completed'
       ORDER BY a.scheduled_date DESC, a.scheduled_time DESC
       LIMIT 1`,
-    [auth.userId],
+    [auth.userId, auth.userId, auth.userId],
   );
   const previous = previousRows[0];
 

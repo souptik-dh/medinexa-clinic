@@ -7,8 +7,8 @@ import { badRequest, conflict, notFound, unprocessable, isUniqueViolation } from
 import { newId } from "@api/lib/ids";
 import { runIdempotent } from "@api/lib/idempotency";
 import { scopeWhere, serializeAppointment, APPT_STATUSES } from "@api/lib/appointments";
-import { resolveServicePatient } from "@api/lib/patient-identity";
-import { notifyBranchStaff, createClinicUserNotification, branchContactEmails, sendEmail, detailsEmailHtml, patientEmailHtml } from "@api/lib/notifications";
+import { resolveServicePatient, type ResolvedServicePatient, type PatientDetailsInput } from "@api/lib/patient-identity";
+import { notifyBranchStaff, patientRecipient, createClinicUserNotification, branchContactEmails, sendEmail, detailsEmailHtml, patientEmailHtml } from "@api/lib/notifications";
 import {
   todayInTz,
   weekdayInTz,
@@ -97,7 +97,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
                ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-               ap.booked_by AS visitor_booked_by,
+               ap.booked_by AS visitor_booked_by, ap.profile_user_id AS visitor_profile_user_id, ap.profile_name AS visitor_profile_name,
                (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url
           FROM appointments a
           LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
@@ -119,6 +119,11 @@ const patientDetailsSchema = z.object({
   // instead of registering a new one. Ignored for the "patient" role — a patient
   // account can never point a booking at an arbitrary patient_id it doesn't control.
   patient_id: idSchema.optional(),
+  // Reception only: the Patient App account (profile) the booking belongs to — picked
+  // via /patients/lookup — or, for a new walk-in, the profile's name. The entered
+  // phone is the profile's. Profile and patient are stored apart (patient-identity.ts).
+  profile_user_id: idSchema.optional(),
+  profile_name: z.string().trim().max(255).optional().nullable(),
   relationship: z.enum(["self", "spouse", "child", "parent", "sibling", "friend", "other"]).default("self"),
   name: z.string().trim().min(1).max(255),
   // Required (not just normalized) so a staff/owner walk-in booking can never omit the
@@ -127,7 +132,9 @@ const patientDetailsSchema = z.object({
   // instead of never reaching the actual patient. Normalized to +91XXXXXXXXXX so
   // downstream SMS/WhatsApp dispatch (which needs the country code for both the SMS
   // gateway and WhatsApp's chatId) doesn't reject a plain 10-digit number typed by staff.
-  phone: phoneSchema,
+  // Optional when a known person is picked (patient_id / profile_user_id) or for an app
+  // user's family member (defaults to the account's phone); required for a new walk-in.
+  phone: phoneSchema.optional().nullable(),
   age: z.number().int().min(0).max(150).optional().nullable(),
   gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional().nullable(),
 });
@@ -184,6 +191,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         "VALIDATION_ERROR",
         "patient_details is required when booking an appointment on behalf of a patient.",
       );
+    }
+    const pd = body.patient_details;
+    if (auth.role !== "patient" && pd && !pd.patient_id && !pd.profile_user_id && !pd.phone) {
+      throw badRequest("VALIDATION_ERROR", "phone is required for a new patient.", "phone");
     }
 
     // New bookings are rejected while the clinic's subscription is inactive.
@@ -311,13 +322,16 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
     // Defaults to the account holder's own name/phone when patient_details is omitted
     // (the common "booking for myself" case).
-    let patientDetails = body.patient_details;
-    if (!patientDetails) {
-      const self = selfRows?.[0];
-      patientDetails = { relationship: "self", name: self?.name ?? "Self", phone: self?.phone ?? null, age: null, gender: null };
-    }
+    let patientDetails: PatientDetailsInput = body.patient_details ?? {
+      relationship: "self",
+      name: selfRows?.[0]?.name ?? "Self",
+      phone: selfRows?.[0]?.phone ?? null,
+      age: null,
+      gender: null,
+    };
 
     const id = newId();
+    let resolved: ResolvedServicePatient | null = null;
     const triedTimes = new Set<string>();
     let attemptsLeft = isSequential ? 25 : 1;
     for (;;) {
@@ -351,19 +365,23 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
               ],
             );
             const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
+            resolved = servicePatient;
             await conn.query(
               `INSERT INTO appointment_patients
-                 (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (id, appointment_id, patient_id, booking_source, booked_by, profile_user_id, profile_name,
+                  relationship, name, phone, age, gender)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 newId(),
                 id,
                 servicePatient.patientId,
                 servicePatient.bookingSource,
                 servicePatient.bookedBy,
-                patientDetails.relationship,
-                patientDetails.name,
-                patientDetails.phone ?? null,
+                servicePatient.profileUserId,
+                servicePatient.profileName,
+                servicePatient.relationship,
+                servicePatient.name,
+                servicePatient.phone,
                 patientDetails.age ?? null,
                 patientDetails.gender ?? null,
               ],
@@ -376,8 +394,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
               patient_id: auth.userId,
               date: body.date,
               time: scheduledTime,
-              visitor_name: patientDetails.name,
-              visitor_relationship: patientDetails.relationship,
+              visitor_name: servicePatient.name,
+              visitor_relationship: servicePatient.relationship,
             };
             await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
             await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
@@ -412,13 +430,19 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       scheduledTime = next;
     }
 
+    // Assigned inside the insert transaction's callback, which TS can't follow.
+    const done = resolved as ResolvedServicePatient | null;
+    if (done) {
+      patientDetails = { ...patientDetails, name: done.name, phone: done.phone, relationship: done.relationship };
+    }
+
     // Independent reads — none depends on the others — so they run as one round trip.
     const [[rows], [details], recipients] = await Promise.all([
       pool.query<Row[]>(
         `SELECT a.*, ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                 ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                 ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-                ap.booked_by AS visitor_booked_by,
+                ap.booked_by AS visitor_booked_by, ap.profile_user_id AS visitor_profile_user_id, ap.profile_name AS visitor_profile_name,
                 (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url,
                 (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url
            FROM appointments a
@@ -481,10 +505,13 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       // the response on the round trips once the booking itself is committed.
       void Promise.all(recipients.map((email) => sendEmail(email, subject, emailBody, emailHtmlBody)));
 
-      if (info.patient_email) {
-        const bookedBody = `${isForSelf ? "Your" : `${patientDetails.name}'s`} appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation from the clinic.`;
-        void sendEmail(info.patient_email, "Appointment booked", bookedBody, patientEmailHtml(bookedBody));
-      }
+      // To the booking's profile (the Patient App account), never the staff member who booked it.
+      const bookedBody = `${isForSelf ? "Your" : `${patientDetails.name}'s`} appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation from the clinic.`;
+      void patientRecipient(pool, auth.userId, "new_booking", { appointment_id: id }).then(async (recipient) => {
+        if (!recipient) return;
+        const [to] = await pool.query<Row[]>(`SELECT email FROM users WHERE id = ?`, [recipient]);
+        if (to[0]?.email) await sendEmail(to[0].email, "Appointment booked", bookedBody, patientEmailHtml(bookedBody));
+      }).catch((err) => console.error("[email] appointment booked:", err));
     }
 
     return { status: 201, body: serializeAppointment(rows[0]) };

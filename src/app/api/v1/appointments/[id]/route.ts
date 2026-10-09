@@ -27,7 +27,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
             ap.gender AS visitor_gender,
             ap.patient_id AS visitor_patient_id,
             ap.booking_source AS visitor_booking_source,
-            ap.booked_by AS visitor_booked_by,
+            ap.booked_by AS visitor_booked_by, ap.profile_user_id AS visitor_profile_user_id, ap.profile_name AS visitor_profile_name,
             vu.photo_url AS visitor_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id

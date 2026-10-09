@@ -2,6 +2,7 @@ import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import { conflict, notFound } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
 import type { AuthContext } from "@api/lib/auth";
+import { patientCode } from "@api/lib/appointments";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -132,6 +133,9 @@ export function serializeLabTestAppointment(r: Row) {
   if (r.visitor_name !== undefined) {
     base.patient_details = {
       patient_id: r.visitor_patient_id ?? null,
+      patient_code: patientCode(r.visitor_patient_id),
+      profile_user_id: r.visitor_profile_user_id ?? null,
+      profile_name: r.visitor_profile_name ?? null,
       relationship: r.visitor_relationship ?? "self",
       name: r.visitor_name,
       phone: r.visitor_phone ?? null,
@@ -141,6 +145,11 @@ export function serializeLabTestAppointment(r: Row) {
     };
     base.relationship = r.visitor_relationship ?? "self";
     base.booking_source = r.visitor_booking_source ?? null;
+    // The Patient App account the booking belongs to — separate from the patient.
+    base.profile =
+      r.visitor_profile_user_id !== undefined
+        ? { id: r.visitor_profile_user_id ?? null, name: r.visitor_profile_name ?? null }
+        : null;
     // The actual patient the test is for. `id` resolves to a real users row once
     // known — null for legacy bookings that predate this field.
     base.patient = {
@@ -265,7 +274,8 @@ export function labTestOwnerScopeWhere(auth: AuthContext): { where: string; para
 export function labApptScopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
   switch (auth.role) {
     case "patient":
-      return { where: "a.patient_id = ?", params: [auth.userId] };
+      // Bookings the account made, is the patient of, or that belong to its profile.
+      return { where: "(a.patient_id = ? OR a.id IN (SELECT appointment_id FROM lab_test_appointment_patients WHERE patient_id = ? OR profile_user_id = ?))", params: [auth.userId, auth.userId, auth.userId] };
     case "branch_staff":
       return { where: "a.branch_id = ?", params: [auth.branchId ?? "__none__"] };
     case "clinic_owner":
@@ -363,7 +373,7 @@ export async function getLabTestAppointmentInScope(
             ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
             ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
             ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-            ltap.booked_by AS visitor_booked_by
+            ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
        FROM lab_test_appointments a
        JOIN lab_tests lt ON lt.id = a.test_id
        JOIN branches b ON b.id = a.branch_id
