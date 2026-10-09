@@ -54,6 +54,35 @@ function isDateBookable(
   return !closed;
 }
 
+// Bookability of the picked date, derived from the per-date availability
+// grid. The booker never picks a time (the clinic assigns it when
+// confirming), so slots only tell us whether the date can take a booking.
+type DateStatus = "bookable" | "closed" | "ended" | "full";
+
+function getDateStatus(availability: LabTestAvailabilityResponse): DateStatus {
+  const { slots } = availability;
+  if (slots.length === 0) return "closed";
+  if (slots.every((s) => s.ended)) return "ended";
+  if (!slots.some((s) => s.available)) return "full";
+  return "bookable";
+}
+
+// Server error codes for POST /lab-test-appointments date problems, mapped
+// to the same wording the booker sees from the date-status hint.
+const BOOKING_ERROR_KEYS: Record<string, string> = {
+  DATE_IN_PAST: "bookLabTestModal.dateInPast",
+  OUTSIDE_SCHEDULE: "bookLabTestModal.dateClosed",
+  BOOKING_TIME_ENDED: "bookLabTestModal.dateEnded",
+  DATE_FULLY_BOOKED: "bookLabTestModal.dateFull",
+  DUPLICATE_BOOKING: "bookLabTestModal.duplicateBooking",
+};
+
+const DATE_STATUS_KEYS: Record<Exclude<DateStatus, "bookable">, string> = {
+  closed: "bookLabTestModal.dateClosed",
+  ended: "bookLabTestModal.dateEnded",
+  full: "bookLabTestModal.dateFull",
+};
+
 const RELATIONSHIPS: PatientRelationship[] = [
   "self",
   "spouse",
@@ -100,7 +129,6 @@ export default function BookLabTestModal({
   const [availability, setAvailability] = useState<LabTestAvailabilityResponse | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
-  const [selectedTime, setSelectedTime] = useState("");
   // Clinic-schedule-derived day availability, for greying out non-bookable
   // dates directly in the calendar - branch-wide, so it only depends on the
   // chosen branch, not on which specific lab test is selected.
@@ -129,7 +157,6 @@ export default function BookLabTestModal({
     setTestId("");
     setDate(today());
     setAvailability(null);
-    setSelectedTime("");
     setOperatingDays([]);
     setLabSchedules([]);
     setClosures([]);
@@ -154,7 +181,6 @@ export default function BookLabTestModal({
     setTests([]);
     setTestId("");
     setAvailability(null);
-    setSelectedTime("");
     setAvailError(null);
     if (!branch) return;
     let active = true;
@@ -262,7 +288,7 @@ export default function BookLabTestModal({
     }
     setAvailLoading(true);
     setAvailError(null);
-    setSelectedTime("");
+    setAvailability(null);
     try {
       const res = await branchLabTestsApi.availability(branch.id, testId, date);
       if (!isLatestAvail(token)) return;
@@ -280,6 +306,12 @@ export default function BookLabTestModal({
     loadAvailability();
   }, [loadAvailability]);
 
+  // null while unknown (loading / failed / nothing picked) - the server
+  // re-validates the date on submit either way.
+  const dateStatus: DateStatus | null =
+    !availLoading && availability ? getDateStatus(availability) : null;
+  const dateBlocked = dateStatus !== null && dateStatus !== "bookable";
+
   const submit = async () => {
     if (!branch) {
       setFormError(t("bookAppointmentModal.pleaseSelectBranch"));
@@ -293,8 +325,8 @@ export default function BookLabTestModal({
       setFormError(t("bookAppointmentModal.pleaseSelectDate"));
       return;
     }
-    if (!selectedTime) {
-      setFormError(t("bookAppointmentModal.pleaseSelectTimeSlot"));
+    if (dateStatus && dateStatus !== "bookable") {
+      setFormError(t(DATE_STATUS_KEYS[dateStatus]));
       return;
     }
     if (test?.prescription_required) {
@@ -327,7 +359,6 @@ export default function BookLabTestModal({
             branch_lab_test_id: testId,
             service_mode: "CLINIC",
             appointment_date: date,
-            start_time: selectedTime,
             payment_method: "PAY_AT_CLINIC",
             patient_notes: notes.trim() || undefined,
             patient_details: {
@@ -340,18 +371,18 @@ export default function BookLabTestModal({
           },
           crypto.randomUUID()
         );
-        toast.success(t("bookLabTestModal.labTestBookedFor", { name: patientName.trim(), time: selectedTime }));
+        toast.success(t("bookLabTestModal.labTestRequestedFor", { name: patientName.trim(), date }));
         onBooked?.(created);
         onClose();
       } catch (err) {
-        // Patient details are kept so the user can pick another slot and retry.
-        const message =
-          err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
-            ? t("bookAppointmentModal.slotJustTaken")
-            : getErrorMessage(err, t("bookLabTestModal.unableToBook"));
+        // Patient details are kept so the user can pick another date and retry.
+        const errorKey = err instanceof ApiError ? BOOKING_ERROR_KEYS[err.code] : undefined;
+        const message = errorKey
+          ? t(errorKey)
+          : getErrorMessage(err, t("bookLabTestModal.unableToBook"));
         setFormError(message);
         toast.error(message);
-        // Refresh slots so a just-taken slot no longer looks available.
+        // Refresh the date status so a just-filled/closed date shows as such.
         loadAvailability();
       }
     });
@@ -443,7 +474,7 @@ export default function BookLabTestModal({
             {/* Date */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("schedule.date")}
+                {t("bookLabTestModal.bookingDate")}
               </label>
               {!testId ? (
                 <div className="flex h-24 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500">
@@ -485,18 +516,11 @@ export default function BookLabTestModal({
               )}
             </div>
 
-            {/* Time slot */}
+            {/* Date status - the clinic assigns the test time on confirmation */}
             {testId && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  {t("bookAppointmentModal.timeSlot")}
-                </label>
                 {availLoading ? (
-                  <div className="flex flex-wrap gap-2">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <Skeleton key={i} className="h-8 w-16 rounded-lg" />
-                    ))}
-                  </div>
+                  <Skeleton className="h-10 w-full rounded-lg" />
                 ) : availError ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
@@ -508,31 +532,18 @@ export default function BookLabTestModal({
                       {t("common.retry")}
                     </button>
                   </div>
-                ) : !availability || availability.slots.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {t("bookAppointmentModal.noBookableSlots")}
+                ) : dateStatus && dateStatus !== "bookable" ? (
+                  <p className="rounded-lg border border-error-500/30 bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                    {t(DATE_STATUS_KEYS[dateStatus])}
                   </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {availability.slots.map((slot) => (
-                      <button
-                        key={slot.start}
-                        type="button"
-                        disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.start)}
-                        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                          selectedTime === slot.start
-                            ? "border-brand-500 bg-brand-500 text-white"
-                            : slot.available
-                              ? "border-success-500/30 bg-success-50 text-success-700 hover:border-brand-400 dark:bg-success-500/10 dark:text-success-500"
-                              : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
-                        }`}
-                      >
-                        {slot.start}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                ) : dateStatus === "bookable" ? (
+                  <p className="rounded-lg border border-success-500/30 bg-success-50 px-3 py-2 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
+                    {t("bookLabTestModal.dateBookable")}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {t("bookLabTestModal.timeAssignedByClinic")}
+                </p>
               </div>
             )}
           </div>
@@ -646,7 +657,7 @@ export default function BookLabTestModal({
           <button
             type="button"
             onClick={submit}
-            disabled={isSubmitting || !branch || !testId}
+            disabled={isSubmitting || !branch || !testId || availLoading || dateBlocked}
             className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
             {isSubmitting ? t("bookLabTestModal.booking") : t("bookLabTestModal.bookLabTest")}

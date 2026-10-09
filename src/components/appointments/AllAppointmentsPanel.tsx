@@ -731,7 +731,7 @@ export default function AllAppointmentsPanel() {
                             {appt.appointment_date}
                           </p>
                           <span className="text-gray-500 text-theme-xs dark:text-gray-400">
-                            {appt.start_time}
+                            {appt.start_time ?? t("labTests.timeNotAssigned")}
                           </span>
                         </TableCell>
                         <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
@@ -756,7 +756,7 @@ export default function AllAppointmentsPanel() {
                               {t("appointments.view")}
                             </Link>
                             {canLabApprove(appt) && can("lab_appointments:approve") && (
-                              <LabActionLink href={`/lab-test-appointments/${appt.id}/approve`} label={t("labTests.approve")} color="brand" />
+                              <LabActionLink href={`/lab-test-appointments/${appt.id}/approve`} label={t("labTests.confirmBooking")} color="brand" />
                             )}
                             {canLabReject(appt) && can("lab_appointments:reject") && (
                               <LabActionLink href={`/lab-test-appointments/${appt.id}/reject`} label={t("labTests.reject")} color="error" />

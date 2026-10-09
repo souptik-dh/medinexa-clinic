@@ -64,7 +64,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           { label: "Appointment Number", value: appointment.appointment_number },
           { label: "Test", value: appointment.test_name },
           { label: "Branch", value: appointment.branch_name },
-          { label: "Date & Time", value: `${appointment.appointment_date} at ${appointment.start_time}` },
+          { label: "Date & Time", value: `${appointment.appointment_date}${appointment.start_time ? ` at ${appointment.start_time}` : ""}` },
           { label: "Reason", value: body.reason },
         ],
       }),

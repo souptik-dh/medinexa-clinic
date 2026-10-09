@@ -133,7 +133,10 @@ export default function LabTestAppointmentDetailPage() {
                   {detail.appointment_number}
                 </p>
                 <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                  {detail.appointment_date} at {detail.start_time} - {detail.service_mode}
+                  {detail.start_time
+                    ? `${detail.appointment_date} at ${detail.start_time}`
+                    : `${detail.appointment_date} - ${t("labTests.timeNotAssigned")}`}{" "}
+                  - {detail.service_mode}
                 </p>
               </div>
               <Badge size="sm" color={labTestAppointmentStatusColor(detail.status)}>
@@ -281,7 +284,7 @@ export default function LabTestAppointmentDetailPage() {
                   href={`/lab-test-appointments/${id}/approve`}
                   className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600"
                 >
-                  Approve
+                  Confirm Booking
                 </Link>
               )}
               {canPay && (

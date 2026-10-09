@@ -180,10 +180,13 @@ export function pushContentFor(
       const precautions = Array.isArray(payload.precautions)
         ? payload.precautions.filter((p): p is string => typeof p === "string")
         : [];
+      // "Medinova Diagnostic Center – Salt Lake" — the clinic, and the branch when it differs.
+      const clinic = asString(payload.clinic_name);
+      const place = clinic && branch && clinic !== branch ? `${clinic} – ${branch}` : clinic || branch;
       return {
         title: "Lab test confirmed",
         body: testName
-          ? `Your lab test${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` on ${when}` : ""} has been confirmed.${precautions.length > 0 ? ` Precautions: ${precautions.join(", ")}` : ""}`
+          ? `Your lab test${apptNoSuffix} (${testName})${place ? ` at ${place}` : ""}${when ? ` on ${when}` : ""} has been confirmed.${precautions.length > 0 ? ` Precautions: ${precautions.join(", ")}` : ""}`
           : when
             ? `Your lab test appointment for ${when} has been confirmed.`
             : "Your lab test appointment has been confirmed.",

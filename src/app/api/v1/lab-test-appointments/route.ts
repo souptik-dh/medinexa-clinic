@@ -8,7 +8,7 @@ import {
   serializeLabTestAppointment,
   auditLabAction,
 } from "@api/lib/lab-tests";
-import { generateLabTestSlots } from "@api/lib/lab-test-availability";
+import { assertLabDateBookable } from "@api/lib/lab-test-availability";
 import {
   notifyBranchStaff,
   createClinicUserNotification,
@@ -20,7 +20,7 @@ import {
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest, conflict, notFound, unprocessable } from "@api/lib/errors";
-import { todayInTz, BOOKING_TIME_ENDED_MESSAGE } from "@api/lib/availability";
+import { todayInTz } from "@api/lib/availability";
 import { resolveServicePatient, type ResolvedServicePatient } from "@api/lib/patient-identity";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
@@ -52,7 +52,9 @@ const createSchema = z.object({
   branch_lab_test_id: z.string().uuid(),
   service_mode: z.enum(["CLINIC", "HOME"]),
   appointment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/),
+  // No longer chosen by the booker — the clinic assigns the time when it confirms.
+  // Still accepted (and ignored) so older app versions keep working.
+  start_time: z.string().optional(),
   prescription_id: z.string().uuid().optional(),
   referring_doctor_name: z.string().trim().min(1).max(255).optional(),
   patient_notes: z.string().max(1000).optional(),
@@ -138,10 +140,12 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     // "Today" is the branch's date, not the server's UTC date.
     const tz = String(branch.timezone);
     if (body.appointment_date < todayInTz(tz)) {
-      throw badRequest("VALIDATION_ERROR", "Cannot book for a past date.");
+      throw unprocessable("DATE_IN_PAST", "Cannot book for a past date.", "appointment_date");
     }
 
-    const slots = await generateLabTestSlots(
+    // The date must still be bookable: lab hours that day, today's hours not over,
+    // and at least one time the clinic can still assign.
+    await assertLabDateBookable(
       pool,
       body.branch_id,
       body.branch_lab_test_id,
@@ -149,23 +153,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       Number(blt.duration_minutes),
       tz,
     );
-    const requestedSlot = slots.find((s) => s.start === body.start_time);
-    if (requestedSlot?.ended) {
-      throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "start_time");
-    }
-    if (!requestedSlot || !requestedSlot.available) {
-      throw conflict("SLOT_NOT_AVAILABLE", "The selected time slot is not available.");
-    }
-
-    const [existingAppt] = await pool.query<RowDataPacket[]>(
-      `SELECT id FROM lab_test_appointments
-       WHERE patient_id = ? AND branch_lab_test_id = ? AND appointment_date = ? AND start_time = ?
-         AND status NOT IN ('CANCELLED', 'REJECTED')`,
-      [auth.userId, body.branch_lab_test_id, body.appointment_date, body.start_time],
-    );
-    if (existingAppt.length > 0) {
-      throw conflict("DUPLICATE_BOOKING", "You already have a booking for this slot.");
-    }
 
     let patientDetails = body.patient_details;
     if (auth.role !== "patient" && !patientDetails.patient_id && !patientDetails.profile_user_id && !patientDetails.phone) {
@@ -176,11 +163,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const appointmentId = newId();
     const appointmentNumber = generateAppointmentNumber();
     const durationMinutes = Number(blt.duration_minutes);
-    const endMinutes =
-      parseInt(body.start_time.split(":")[0]) * 60 +
-      parseInt(body.start_time.split(":")[1]) +
-      durationMinutes;
-    const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
 
     await withTransaction(async (conn) => {
       await conn.query(
@@ -202,8 +184,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           blt.test_id,
           body.service_mode,
           body.appointment_date,
-          body.start_time,
-          endTime,
+          null, // start_time — assigned by the clinic on confirm
+          null, // end_time
           durationMinutes,
           blt.price,
           blt.currency,
@@ -223,6 +205,22 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
       const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
       resolved = servicePatient;
+
+      // One active booking per patient, test and date (the time is assigned later, so
+      // the date is the unit). Throwing here rolls the insert back.
+      if (servicePatient.patientId) {
+        const [dupes] = await conn.query<RowDataPacket[]>(
+          `SELECT a.id FROM lab_test_appointments a
+             JOIN lab_test_appointment_patients p ON p.appointment_id = a.id
+            WHERE p.patient_id = ? AND a.branch_lab_test_id = ? AND a.appointment_date = ?
+              AND a.id <> ? AND a.status NOT IN ('CANCELLED', 'REJECTED')
+            LIMIT 1`,
+          [servicePatient.patientId, body.branch_lab_test_id, body.appointment_date, appointmentId],
+        );
+        if (dupes.length > 0) {
+          throw conflict("DUPLICATE_BOOKING", "This patient already has a booking for this test on the selected date.");
+        }
+      }
       await conn.query(
         `INSERT INTO lab_test_appointment_patients
            (id, appointment_id, patient_id, booking_source, booked_by, profile_user_id, profile_name,
@@ -264,7 +262,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         appointment_number: appointmentNumber,
         test_name: blt.test_name,
         date: body.appointment_date,
-        time: body.start_time,
         branch_name: branch.name,
         visitor_name: servicePatient.name,
         visitor_relationship: servicePatient.relationship,
@@ -276,7 +273,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         branch_id: body.branch_id,
         branch_lab_test_id: body.branch_lab_test_id,
         appointment_date: body.appointment_date,
-        start_time: body.start_time,
         service_mode: body.service_mode,
       });
     });
@@ -327,10 +323,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           : [{ label: "Booked By", value: appointment.patient_name ?? "-", sub: `${appointment.patient_email ?? "-"} · Phone: ${appointment.patient_phone ?? "-"}` }]),
         { label: "Test", value: blt.test_name },
         { label: "Branch", value: branch.name },
-        { label: "Date & Time", value: `${body.appointment_date} at ${body.start_time}`, sub: body.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
+        { label: "Booking Date", value: body.appointment_date, sub: body.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
         { label: "Payment", value: body.payment_method === "ONLINE" ? "Online (Pending)" : "Pay at Clinic" },
       ],
-      note: "Please review the prescription (if uploaded) and approve or reject this booking.",
+      note: "Please review the prescription (if uploaded), then confirm the booking and assign the test time — or reject it.",
     });
 
     for (const email of staffEmails) {
@@ -341,7 +337,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       test_name: blt.test_name,
       branch_name: branch.name,
       date: body.appointment_date,
-      time: body.start_time,
     });
 
     return { status: 201, body: serializeLabTestAppointment(appointment) };

@@ -28,7 +28,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     await assertBranchStaffPermission(pool, auth, appointment.branch_id, "lab_appointments:complete");
   }
 
-  if (!hasSlotPassedInTz(appointment.appointment_date, appointment.start_time, appointment.branch_timezone)) {
+  // Only APPROVED bookings complete, and confirming always sets the time; the fallback is
+  // just a guard for a row without one (completable once its day is over).
+  if (!hasSlotPassedInTz(appointment.appointment_date, appointment.start_time ?? "23:59", appointment.branch_timezone)) {
     throw conflict(
       "APPOINTMENT_NOT_YET_DUE",
       "Cannot mark as completed before the scheduled date and time have passed.",
@@ -65,7 +67,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           { label: "Appointment Number", value: appointment.appointment_number },
           { label: "Test", value: appointment.test_name },
           { label: "Branch", value: appointment.branch_name },
-          { label: "Date & Time", value: `${appointment.appointment_date} at ${appointment.start_time}` },
+          { label: "Date & Time", value: `${appointment.appointment_date}${appointment.start_time ? ` at ${appointment.start_time}` : ""}` },
         ],
       }),
     );

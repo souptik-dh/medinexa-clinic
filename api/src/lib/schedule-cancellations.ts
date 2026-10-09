@@ -135,7 +135,7 @@ export async function notifyAutoCancelledLabTestAppointments(
       await sendEmail(
         r.patient_email,
         `Lab Test Appointment Cancelled — ${r.appointment_number}`,
-        `Your ${r.test_name} appointment on ${r.appointment_date} at ${r.start_time} has been cancelled.\nReason: ${reason}`,
+        `Your ${r.test_name} appointment on ${r.appointment_date}${r.start_time ? ` at ${r.start_time}` : ""} has been cancelled.\nReason: ${reason}`,
         detailsEmailHtml({
           heading: "Lab Test Appointment Cancelled",
           intro: `Your lab test appointment has been cancelled by the clinic.`,
@@ -144,7 +144,7 @@ export async function notifyAutoCancelledLabTestAppointments(
             { label: "Appointment Number", value: r.appointment_number },
             { label: "Test", value: r.test_name },
             { label: "Branch", value: branchName },
-            { label: "Date & Time", value: `${r.appointment_date} at ${r.start_time}` },
+            { label: "Date & Time", value: `${r.appointment_date}${r.start_time ? ` at ${r.start_time}` : ""}` },
             { label: "Reason", value: reason },
           ],
         }),

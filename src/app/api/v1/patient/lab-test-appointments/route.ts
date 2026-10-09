@@ -25,12 +25,13 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
 
   const today = new Date().toISOString().slice(0, 10);
   if (upcoming === "true") {
-    conditions.push("(a.appointment_date > ? OR (a.appointment_date = ? AND a.start_time >= ?))");
+    // No time yet (awaiting the clinic's confirmation) = upcoming for its whole date.
+    conditions.push("(a.appointment_date > ? OR (a.appointment_date = ? AND (a.start_time IS NULL OR a.start_time >= ?)))");
     const now = new Date();
     params.push(today, today, `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`);
   }
   if (past === "true") {
-    conditions.push("(a.appointment_date < ? OR (a.appointment_date = ? AND a.start_time < ?))");
+    conditions.push("(a.appointment_date < ? OR (a.appointment_date = ? AND a.start_time IS NOT NULL AND a.start_time < ?))");
     const now = new Date();
     params.push(today, today, `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`);
   }

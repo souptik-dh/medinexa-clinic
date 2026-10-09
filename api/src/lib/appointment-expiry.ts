@@ -96,7 +96,8 @@ async function sweepLabTestAppointments(poolDb: Pool): Promise<Row[]> {
 
   const cancelled: Row[] = [];
   for (const appt of candidates) {
-    if (!hasSlotPassedInTz(appt.appointment_date, appt.start_time, appt.branch_timezone)) continue;
+    // A booking the clinic never confirmed has no time — it lapses once its whole day is over.
+    if (!hasSlotPassedInTz(appt.appointment_date, appt.start_time ?? "23:59", appt.branch_timezone)) continue;
     try {
       const didCancel = await withTransaction(async (conn) => {
         const [locked] = await conn.query<Row[]>(

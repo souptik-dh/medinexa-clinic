@@ -3722,7 +3722,7 @@ Slots are generated from `lab_test_schedules` for the branch, filtered against b
 
 #### POST /lab-test-appointments
 
-Auth: `patient`, `branch_staff`, `clinic_owner`. Rate limited 20/min. Header `Idempotency-Key` **required**. Creates a new lab test appointment. Double-booking is prevented at the database level via a unique constraint on `(branch_id, branch_lab_test_id, appointment_date, slot_key)` excluding cancelled slots. Staff/owner may book on behalf of a walk-in patient, but only at a branch they're scoped to; a patient account can book at any branch.
+Auth: `patient`, `branch_staff`, `clinic_owner`. Rate limited 20/min. Header `Idempotency-Key` **required**. Creates a new lab test appointment for a **date only** — the booker does not pick a time. The booking is created `PENDING` with `start_time`/`end_time` = `null`; the clinic assigns the test time when it confirms it ([approve](#post-cliniclab-test-appointmentsidapprove)). `start_time` from older clients is accepted and ignored. Staff/owner may book on behalf of a walk-in patient, but only at a branch they're scoped to; a patient account can book at any branch.
 
 `patient_details` identifies who the test is actually **for** and is **required on every booking** — including a patient booking for themself (there is no "book for myself" default/omission).
 
@@ -3736,7 +3736,6 @@ On success, an in-app `lab_test_booked` notification is created for every branch
   "branch_lab_test_id": "b2c3d4e5-...",
   "service_mode": "CLINIC",
   "appointment_date": "2026-08-25",
-  "start_time": "09:00",
   "prescription_id": null,
   "patient_notes": "Fasting since last night",
   "payment_method": "PAY_AT_CLINIC",
@@ -3755,8 +3754,7 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `branch_id` | string (UUID) | required |
 | `branch_lab_test_id` | string (UUID) | required |
 | `service_mode` | string | `CLINIC` or `HOME`, defaults to `CLINIC` |
-| `appointment_date` | string | required, `YYYY-MM-DD`, not in the past |
-| `start_time` | string | required, `HH:MM`, must be an available slot |
+| `appointment_date` | string | required, `YYYY-MM-DD` — not in the past (branch timezone); the branch must have lab hours that day (active `lab_test_schedules` for the weekday, no closure); for today, at least one slot of the day must not have ended yet; and at least one time must still be free of confirmed bookings |
 | `prescription_id` | string (UUID)? | required when `prescription_required` is `true` on the branch lab test |
 | `patient_notes` | string? | max 1000 |
 | `payment_method` | string | `PAY_AT_CLINIC` or `ONLINE`, defaults to `PAY_AT_CLINIC` |
@@ -3779,9 +3777,9 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 way as on `POST /appointments` — see [the note there](#post-appointments) for the full
 self/family-member/reception resolution rules.
 
-**Response `201`** — LabTestAppointment object (`status: "PENDING"`), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
+**Response `201`** — LabTestAppointment object (`status: "PENDING"`, `start_time`/`end_time` `null` until the clinic confirms), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the slot's end time has already passed in the branch's timezone), `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 BRANCH_TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `400 PRESCRIPTION_REQUIRED`, and for the date (field `appointment_date`): `422 DATE_IN_PAST`, `422 OUTSIDE_SCHEDULE` (no lab hours / branch closed that day), `422 BOOKING_TIME_ENDED` (today, and the lab's last slot of the day has already ended in the branch's timezone), `409 DATE_FULLY_BOOKED` (every time that day is assigned to confirmed bookings), `409 DUPLICATE_BOOKING` (the same patient already has an active booking for this test on this date).
 
 #### GET /patient/lab-test-appointments
 
@@ -4160,14 +4158,15 @@ Auth: `clinic_owner` (own clinics) or `branch_staff` (own branch, with `lab_appo
 
 #### POST /clinic/lab-test-appointments/:id/approve
 
-Auth: `clinic_owner` or `branch_staff` with `lab_appointments:approve` or `sys_admin`. Rate limited 200/min. Approves a `PENDING` appointment. Merges the branch test's `default_precautions` with any custom `precautions` passed in the request body.
+Auth: `clinic_owner` or `branch_staff` with `lab_appointments:approve` or `sys_admin`. Rate limited 200/min. "Confirm Booking": approves a `PENDING` appointment and **assigns its test time** (bookings are made for a date only). The time must fit inside the branch's lab hours for the booking date (whole test, start + `duration_minutes`), must not have already ended (branch timezone), and must not overlap another booking of the same test that already has a time — use `GET /branches/:id/lab-tests/:branchTestId/availability?date=` for the free times (`available && !ended`). Merges the branch test's `default_precautions` with any custom `precautions` passed in the request body.
 
-On success, an in-app `lab_test_approved` notification is sent to the patient and an email is sent with the appointment details.
+On success, the patient gets a `lab_test_approved` notification (in-app/push), an email and a WhatsApp message with the confirmed date **and assigned time**, the test, clinic and branch.
 
 **Request body**
 
 ```json
 {
+  "start_time": "10:30",
   "precautions": ["Fasting required for 8 hours"],
   "clinic_notes": "Patient has a pacemaker — use limb leads only"
 }
@@ -4175,12 +4174,13 @@ On success, an in-app `lab_test_approved` notification is sent to the patient an
 
 | Field | Type | Notes |
 |---|---|---|
+| `start_time` | string? | `HH:MM` (24h) — the assigned test time. **Required when the booking has no time yet** (every booking made date-only); optional for an older booking that already has one (sending it changes it) |
 | `precautions` | string[]? | optional, merged with the test's `default_precautions` |
 | `clinic_notes` | string? | max 2000 |
 
-**Response `200`** — LabTestAppointment object (`status: "APPROVED"`, `precautions` and `clinic_notes` set).
+**Response `200`** — LabTestAppointment object (`status: "APPROVED"`, `start_time`/`end_time`, `precautions` and `clinic_notes` set).
 
-**Errors:** `404 APPOINTMENT_NOT_FOUND`, `409 INVALID_STATUS_TRANSITION`.
+**Errors:** `404 APPOINTMENT_NOT_FOUND`, `409 INVALID_STATUS_TRANSITION` (already confirmed/rejected/cancelled), `400 PRESCRIPTION_REQUIRED`, `400 VALIDATION_ERROR` (field `start_time`: no time assigned, or not `HH:MM`), `422 OUTSIDE_SCHEDULE` (time outside the lab hours / branch closed that date), `422 TIME_IN_PAST` (the time has already passed), `409 SLOT_NOT_AVAILABLE` (another booking of this test already has that time).
 
 #### POST /clinic/lab-test-appointments/:id/reject
 

@@ -1003,6 +1003,9 @@ export interface LabTestAppointmentPatientDetailsInput {
 export interface LabTestAvailabilitySlot {
   start: string;
   end: string;
+  // true once the slot's time has passed today (branch timezone).
+  ended: boolean;
+  // true when not ended and not assigned to another confirmed booking.
   available: boolean;
 }
 
@@ -1032,8 +1035,10 @@ export interface LabTestAppointment {
   test_id: string;
   service_mode: LabTestAppointmentServiceMode;
   appointment_date: string;
-  start_time: string;
-  end_time: string;
+  // "HH:MM". null while the booking is PENDING without a clinic-assigned
+  // time (all new bookings); always set once APPROVED.
+  start_time: string | null;
+  end_time: string | null;
   duration_minutes: number;
   price: number;
   currency: string;
@@ -3320,7 +3325,8 @@ export const branchLabTestsApi = {
   },
 
   // Any authenticated user can call this (not clinic-scoped) - used by the
-  // walk-in booking flow to find an open slot for a given date.
+  // booking flow to check whether a date is bookable, and by the clinic
+  // confirm flow to list assignable test times.
   async availability(
     branchId: string,
     branchTestId: string,
@@ -3446,8 +3452,8 @@ export interface LabTestAppointmentCreateInput {
   branch_id: string;
   branch_lab_test_id: string;
   service_mode?: LabTestAppointmentServiceMode;
+  // Date only - the clinic assigns the test time when confirming the booking.
   appointment_date: string;
-  start_time: string;
   payment_method?: LabTestPaymentMethod;
   patient_notes?: string;
   patient_details: LabTestAppointmentPatientDetailsInput;
@@ -3493,7 +3499,9 @@ export const labTestAppointmentsApi = {
 
   async approve(
     id: string,
-    input?: { precautions?: string[]; clinic_notes?: string }
+    // start_time ("HH:MM") is the clinic-assigned test time - required when
+    // the booking has no time yet (every new booking).
+    input?: { start_time?: string; precautions?: string[]; clinic_notes?: string }
   ): Promise<LabTestAppointment> {
     return apiFetch<LabTestAppointment>(
       `/clinic/lab-test-appointments/${id}/approve`,

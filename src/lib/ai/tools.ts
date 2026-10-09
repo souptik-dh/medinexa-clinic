@@ -344,12 +344,18 @@ export const AI_TOOLS: ToolDefinition[] = [
   {
     id: "approve_lab_appointment",
     name: "Approve Lab Test Appointment",
-    description: "Approve a pending lab test appointment",
+    description: "Confirm a pending lab test appointment and assign its test time",
     category: "write",
     requiredPermissions: ["lab_appointments:approve"],
     requiresConfirmation: true,
     parameters: [
       { name: "appointmentId", type: "string", required: true, description: "The lab test appointment ID" },
+      {
+        name: "startTime",
+        type: "string",
+        required: false,
+        description: "Clinic-assigned test time (HH:MM) - required by the server when the booking has no time yet",
+      },
     ],
     timeout: 10000,
   },
@@ -362,6 +368,7 @@ export const AI_TOOLS: ToolDefinition[] = [
     requiresConfirmation: true,
     parameters: [
       { name: "appointmentId", type: "string", required: true, description: "The lab test appointment ID" },
+      { name: "reason", type: "string", required: true, description: "Reason for rejection" },
     ],
     timeout: 10000,
   },

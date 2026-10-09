@@ -973,8 +973,8 @@ try {
         test_id CHAR(36) NOT NULL,
         service_mode ENUM('CLINIC','HOME') NOT NULL DEFAULT 'CLINIC',
         appointment_date DATE NOT NULL,
-        start_time VARCHAR(5) NOT NULL,
-        end_time VARCHAR(5) NOT NULL,
+        start_time VARCHAR(5) NULL,
+        end_time VARCHAR(5) NULL,
         duration_minutes SMALLINT NOT NULL,
         price DECIMAL(10,2) NOT NULL,
         currency CHAR(3) NOT NULL DEFAULT 'INR',
@@ -1192,6 +1192,22 @@ try {
   if (labStatusLogChangedByCols[0] && labStatusLogChangedByCols[0].IS_NULLABLE === 'NO') {
     await conn.query(`ALTER TABLE lab_test_appointment_status_log MODIFY COLUMN changed_by CHAR(36) NULL`);
     console.log('Applied migration: lab_test_appointment_status_log.changed_by nullable (system/cron entries)');
+  }
+
+  // Lab bookings: the patient picks the date only; the clinic assigns the time when it
+  // confirms, so start/end stay NULL while PENDING. Existing rows keep their times.
+  const [labApptTimeCols] = await conn.query(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointments'
+        AND COLUMN_NAME IN ('start_time', 'end_time')`,
+  );
+  if (labApptTimeCols.some((c) => c.IS_NULLABLE === 'NO')) {
+    await conn.query(
+      `ALTER TABLE lab_test_appointments
+         MODIFY COLUMN start_time VARCHAR(5) NULL,
+         MODIFY COLUMN end_time VARCHAR(5) NULL`,
+    );
+    console.log('Applied migration: lab_test_appointments.start_time/end_time nullable (clinic assigns time on confirm)');
   }
 
   // ── Phone-based authentication migrations ──────────────────────────────

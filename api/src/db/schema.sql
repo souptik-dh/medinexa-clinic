@@ -806,8 +806,9 @@ CREATE TABLE IF NOT EXISTS lab_test_appointments (
   test_id CHAR(36) NOT NULL,
   service_mode ENUM('CLINIC','HOME') NOT NULL DEFAULT 'CLINIC',
   appointment_date DATE NOT NULL,
-  start_time VARCHAR(5) NOT NULL,
-  end_time VARCHAR(5) NOT NULL,
+  -- NULL until the clinic assigns the test time when confirming (patients pick the date only).
+  start_time VARCHAR(5) NULL,
+  end_time VARCHAR(5) NULL,
   duration_minutes SMALLINT NOT NULL,
   price DECIMAL(10,2) NOT NULL,
   currency CHAR(3) NOT NULL DEFAULT 'INR',
