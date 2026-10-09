@@ -2,7 +2,7 @@ import { api, json, requestOrigin } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool, withTransaction } from "@api/lib/db";
 import { newId } from "@api/lib/ids";
-import { badRequest } from "@api/lib/errors";
+import { badRequest, notFound } from "@api/lib/errors";
 import { uploadDocumentToCloudinary } from "@api/lib/cloudinary";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
@@ -58,6 +58,13 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       ? descriptionRaw.trim().slice(0, 2000)
       : null;
   const requestedBranchId = typeof form.get("branch_id") === "string" ? (form.get("branch_id") as string) : null;
+  // A PRESCRIPTION for a lab booking made at reception: attached to that booking so it
+  // counts as the booking's prescription (needed to confirm a prescription-required test).
+  const rawLabAppt = form.get("lab_test_appointment_id");
+  const labAppointmentId = typeof rawLabAppt === "string" && rawLabAppt.trim() ? rawLabAppt.trim() : null;
+  if (labAppointmentId && documentType !== "PRESCRIPTION") {
+    throw badRequest("VALIDATION_ERROR", "Only a prescription can be attached to a lab booking.", "document_type");
+  }
 
   // clinic_id/branch_id are resolved+verified server-side (never trusted from the
   // client) — pinned to the staff member's own branch, or checked against the
@@ -68,6 +75,22 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     await assertBranchStaffPermission(pool, auth, branchId, "patient_documents:upload");
   }
   await assertClinicOperational(pool, clinicId);
+
+  if (labAppointmentId) {
+    // Same clinic/branch, and the document's patient is the one the test is for.
+    const [labRows] = await pool.query<RowDataPacket[]>(
+      `SELECT a.id, a.branch_id, a.clinic_id, a.patient_id, ltap.patient_id AS visitor_patient_id
+         FROM lab_test_appointments a
+         LEFT JOIN lab_test_appointment_patients ltap ON ltap.appointment_id = a.id
+        WHERE a.id = ?`,
+      [labAppointmentId],
+    );
+    const lab = labRows[0];
+    const samePatient = lab && (lab.visitor_patient_id ?? lab.patient_id) === patientId;
+    if (!lab || lab.clinic_id !== clinicId || lab.branch_id !== branchId || !samePatient) {
+      throw notFound("APPOINTMENT_NOT_FOUND", "Lab test appointment not found.");
+    }
+  }
 
   const file = form.get("file");
   // Uploaded to Cloudinary rather than local disk — this API is served from Render,
@@ -107,6 +130,18 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       deliveredAt: new Date(),
       attemptedBy: auth.userId,
     });
+    if (labAppointmentId) {
+      await conn.query(
+        `INSERT INTO lab_test_prescriptions (id, patient_id, appointment_id, file_name, file_url, mime_type, file_size)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, patientId, labAppointmentId, originalName, saved.url, saved.mime, saved.size],
+      );
+      // The first prescription attached becomes the booking's prescription.
+      await conn.query(
+        `UPDATE lab_test_appointments SET prescription_id = COALESCE(prescription_id, ?) WHERE id = ?`,
+        [id, labAppointmentId],
+      );
+    }
     await auditPatientDocumentAction(conn, auth.userId, "document_uploaded", id, {
       patient_id: patientId,
       clinic_id: clinicId,

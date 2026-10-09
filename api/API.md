@@ -4198,7 +4198,7 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `branch_lab_test_id` | string (UUID) | required |
 | `service_mode` | string | `CLINIC` or `HOME`, defaults to `CLINIC` |
 | `appointment_date` | string | required, `YYYY-MM-DD` — not in the past (branch timezone); the branch must have lab hours that day (active `lab_test_schedules` for the weekday, no closure); for today, at least one slot of the day must not have ended yet; and at least one time must still be free of confirmed bookings |
-| `prescription_id` | string (UUID)? | required when `prescription_required` is `true` on the branch lab test |
+| `prescription_id` | string (UUID)? | **patient role:** required when `prescription_required` is `true` on the branch lab test (`400 PRESCRIPTION_REQUIRED`). **Reception (`branch_staff`/`clinic_owner`):** optional — attach the prescription right after booking via `POST /patient-documents/upload` with `lab_test_appointment_id`; the booking can't be confirmed until it has one |
 | `referring_doctor_name` | string? | optional, 1–255 chars — free-text name of the doctor who referred the test, independent of any doctor account in the system |
 | `patient_notes` | string? | max 1000 |
 | `payment_method` | string | `PAY_AT_CLINIC` or `ONLINE`, defaults to `PAY_AT_CLINIC` |
@@ -5043,6 +5043,9 @@ document_type    required — LAB_REPORT | PRESCRIPTION | OTHER
 title            required, 1–255 chars
 description      optional, max 2000 chars
 branch_id        clinic_owner only — which of their branches issued this; ignored for branch_staff
+lab_test_appointment_id  optional, PRESCRIPTION only — attach it to this lab booking (same clinic/branch, and
+                 patient_id must be the patient the test is for). The first one attached becomes the
+                 booking's `prescription_id`, which confirming a prescription-required test needs
 file             required — PDF, JPG, JPEG, or PNG, ≤ 20MB
 ```
 
@@ -5052,7 +5055,7 @@ On success, `status` is set to `GENERATED`, an `APP` delivery row is recorded as
 
 **Response `201`** — PatientDocument object.
 
-**Errors:** `400 VALIDATION_ERROR`, `400 FILE_REQUIRED` / `FILE_EMPTY`, `404 PATIENT_NOT_FOUND`, `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`, `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
+**Errors:** `400 VALIDATION_ERROR` (incl. `lab_test_appointment_id` with a non-PRESCRIPTION type), `400 FILE_REQUIRED` / `FILE_EMPTY`, `404 PATIENT_NOT_FOUND`, `404 BRANCH_NOT_FOUND`, `404 APPOINTMENT_NOT_FOUND` (`lab_test_appointment_id` not in this branch, or for another patient), `403 PERMISSION_DENIED`, `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
 
 ### GET /patient-documents/patient/:patientId
 

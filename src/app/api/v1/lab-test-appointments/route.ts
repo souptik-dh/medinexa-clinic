@@ -127,7 +127,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       throw badRequest("SERVICE_MODE_NOT_SUPPORTED", "Clinic visit is not available for this test.");
     }
 
-    if (blt.prescription_required && !body.prescription_id) {
+    // A patient attaches their uploaded prescription here. Reception has the paper
+    // prescription in hand and attaches it right after booking (POST /patient-documents/upload
+    // with lab_test_appointment_id) — the booking can't be confirmed until it is.
+    if (blt.prescription_required && !body.prescription_id && auth.role === "patient") {
       throw badRequest("PRESCRIPTION_REQUIRED", "Prescription is required for this test.");
     }
 
