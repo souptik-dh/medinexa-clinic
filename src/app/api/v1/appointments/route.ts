@@ -80,6 +80,17 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     params.push(dateTo);
   }
 
+  // When the payment was collected — ISO timestamps, so the client can ask for its
+  // own local day ("collected today") regardless of the visit date.
+  for (const [key, op] of [["paid_from", ">="], ["paid_to", "<"]] as const) {
+    const raw = sp.get(key);
+    if (!raw) continue;
+    const at = new Date(raw);
+    if (Number.isNaN(at.getTime())) throw badRequest("VALIDATION_ERROR", `${key} must be an ISO timestamp.`);
+    whereParts.push(`EXISTS (SELECT 1 FROM payments p WHERE p.appointment_id = a.id AND p.collected_at ${op} ?)`);
+    params.push(at.toISOString().slice(0, 23).replace("T", " "));
+  }
+
   // Filters live inside the derived table (rather than as fetchPage's `where`) so the
   // outer query only ever sees one set of `created_at`/`id` columns — appointment_patients
   // has its own `id`/`created_at`, which would otherwise make the cursor clause ambiguous.
@@ -94,6 +105,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
                (SELECT b.photo_url FROM branches b WHERE b.id = a.branch_id) AS branch_photo_url,
                (SELECT b.phone FROM branches b WHERE b.id = a.branch_id) AS branch_phone,
                (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url,
+               (SELECT MAX(p.collected_at) FROM payments p WHERE p.appointment_id = a.id) AS paid_at,
                ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,

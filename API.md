@@ -3414,7 +3414,7 @@ The server never trusts the client's disabled-calendar rendering — every check
 
 Auth: any authenticated role. Scope auto-applied: `patient` → own; `branch_staff` → own branch; `doctor` → own; `clinic_owner` → own clinics. Paginated.
 
-**Query:** `?clinic_id=&doctor_id=&branch_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, `doctor_id` to one doctor and `branch_id` to one branch, on top of whatever scope already applies.
+**Query:** `?clinic_id=&doctor_id=&branch_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, `doctor_id` to one doctor and `branch_id` to one branch, on top of whatever scope already applies. `paid_from` / `paid_to` (ISO timestamps; from inclusive, to exclusive) keep only appointments with a payment collected in that window, whatever the visit date. Each item includes `paid_at`, when the latest payment was collected, or `null` if none was recorded.
 
 **Response `200`**
 

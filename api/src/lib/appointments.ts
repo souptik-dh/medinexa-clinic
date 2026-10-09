@@ -51,6 +51,8 @@ export function serializeAppointment(r: Row) {
     payment_method: r.payment_method,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    // When the payment was collected (latest payments row); null if none recorded.
+    paid_at: r.paid_at ?? null,
   };
   const withPatientDetails = {
     ...base,
