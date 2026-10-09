@@ -4671,6 +4671,59 @@ Called by the clinic app right after it opens the print-ready view / triggers th
 
 **Errors:** `404 PATIENT_DOCUMENT_NOT_FOUND`, `403 PERMISSION_DENIED`.
 
+### GET /clinic/prescriptions
+
+Auth: `clinic_owner` (own clinics) or `branch_staff` (own branch). Every prescription the clinic can see, newest upload first, merged from three places:
+
+| `source` | What it is |
+| --- | --- |
+| `clinic_upload` | `PRESCRIPTION` [patient documents](#patient-documents-lab-reports--prescriptions) uploaded by staff/owner, including ones attached to a lab booking |
+| `lab_booking` | A prescription the patient attached to a lab-test booking from the patient app |
+| `patient_upload` | A `prescription` [medical document](#medical-documents) the patient uploaded themselves, for patients with a non-cancelled doctor appointment or a lab booking in scope. A file already listed as a `lab_booking` isn't repeated |
+
+Branch staff see `clinic_upload` and `patient_upload` only with `patient_documents:view`, and `lab_booking` only with `lab_appointments:view`. With neither: `403 PERMISSION_DENIED`.
+
+**Query:** `?source=` (optional; one source or a comma-separated list, e.g. `lab_booking,patient_upload`), `?q=` (patient name, file name, title or lab booking number), `?clinic_id=`, `?branch_id=` (owner only; staff are pinned to their branch), `?limit=` (default 20, max 100), `?cursor=`.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "65c71540-…",
+      "source": "lab_booking",
+      "title": null,
+      "description": null,
+      "file_name": "prescription.png",
+      "mime_type": "image/png",
+      "file_size": 261257,
+      "file_url": "https://healthcare.jido.co.in/api/v1/files/medical-doc-….png?expires=…&sig=…",
+      "uploaded_at": "2026-10-09T11:14:27.832Z",
+      "uploaded_by_name": null,
+      "patient": { "id": "0b7a…", "name": "Basanta Hazra", "photo_url": null },
+      "branch": { "id": "5e13…", "name": "Medinova Diagnostic Center" },
+      "lab_appointment": {
+        "id": "138f…",
+        "appointment_number": "LAB20261009BIGFH7",
+        "appointment_date": "2026-10-14",
+        "status": "APPROVED",
+        "test_name": "CRP"
+      }
+    }
+  ],
+  "counts": { "clinic_upload": 1, "lab_booking": 1, "patient_upload": 0, "total": 2 },
+  "allowed_sources": ["clinic_upload", "lab_booking", "patient_upload"],
+  "next_cursor": null
+}
+```
+
+- `file_url` is a freshly signed link, valid for 15 minutes. For `clinic_upload` it is the patient-document preview link, and `id` works with the other `/patient-documents/:id` endpoints (download, print, email).
+- `branch` is `null` for `patient_upload`, and `lab_appointment` is `null` when the prescription isn't attached to a lab booking.
+- `counts` covers every source the caller may see, with `q`/`branch_id` applied but not `source`, so filter tabs can show their totals.
+
+**Errors:** `400 VALIDATION_ERROR` (field `source`), `403 PERMISSION_DENIED`.
+
 ---
 
 ## Medications
