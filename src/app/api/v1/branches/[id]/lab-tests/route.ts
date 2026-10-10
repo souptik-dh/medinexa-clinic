@@ -2,6 +2,7 @@ import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { serializeBranchLabTest } from "@api/lib/lab-tests";
+import { withTestPrecautions } from "@api/lib/lab-test-precautions";
 import { badRequest, notFound } from "@api/lib/errors";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
@@ -42,5 +43,5 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     params,
   );
 
-  return json({ items: (rows as any[]).map(serializeBranchLabTest) });
+  return json({ items: await withTestPrecautions(pool, (rows as any[]).map(serializeBranchLabTest), "test_id") });
 });

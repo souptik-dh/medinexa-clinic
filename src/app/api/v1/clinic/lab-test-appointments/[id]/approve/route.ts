@@ -8,6 +8,7 @@ import {
   auditLabAction,
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import {
   createPatientNotification,
   branchContactEmails,
@@ -180,5 +181,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     },
   });
 
-  return json(serializeLabTestAppointment(updated));
+  const [result] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(updated)]);
+  return json(result);
 });

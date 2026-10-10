@@ -916,6 +916,53 @@ CREATE TABLE IF NOT EXISTS lab_test_prescriptions (
   CONSTRAINT fk_ltp_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- Master list of preparation instructions (fasting, sample collection, ...), shared by
+-- every clinic and seeded by db-migrate.mjs. Clinics tick the ones that apply per test.
+CREATE TABLE IF NOT EXISTS lab_test_precautions (
+  id CHAR(36) NOT NULL,
+  name VARCHAR(150) NOT NULL,
+  description VARCHAR(1000) NOT NULL,
+  category VARCHAR(100) NOT NULL,
+  sort_order SMALLINT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_lab_test_precaution_name (name),
+  KEY idx_ltpr_active (is_active)
+) ENGINE=InnoDB;
+
+-- Precautions a clinic selected for one of its lab tests.
+CREATE TABLE IF NOT EXISTS lab_test_precaution_mappings (
+  id CHAR(36) NOT NULL,
+  lab_test_id CHAR(36) NOT NULL,
+  precaution_id CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_ltpm_test_precaution (lab_test_id, precaution_id),
+  KEY idx_ltpm_precaution (precaution_id),
+  CONSTRAINT fk_ltpm_test FOREIGN KEY (lab_test_id) REFERENCES lab_tests(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ltpm_precaution FOREIGN KEY (precaution_id) REFERENCES lab_test_precautions(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- The test's precautions copied onto a booking when it is made, so the patient, clinic
+-- and staff all see the same instructions even if the test's selection changes later.
+CREATE TABLE IF NOT EXISTS lab_test_appointment_precautions (
+  id CHAR(36) NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  source_precaution_id CHAR(36) NULL,
+  name VARCHAR(150) NOT NULL,
+  description VARCHAR(1000) NOT NULL,
+  category VARCHAR(100) NULL,
+  sort_order SMALLINT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_ltaprec_appointment (appointment_id),
+  CONSTRAINT fk_ltaprec_appointment FOREIGN KEY (appointment_id) REFERENCES lab_test_appointments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ltaprec_source FOREIGN KEY (source_precaution_id) REFERENCES lab_test_precautions(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 -- changed_by NULL = system/cron (e.g. the overdue-appointment auto-cancel sweep).
 CREATE TABLE IF NOT EXISTS lab_test_appointment_status_log (
   id CHAR(36) NOT NULL,

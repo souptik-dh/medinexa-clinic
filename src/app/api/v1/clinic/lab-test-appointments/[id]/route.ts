@@ -2,6 +2,7 @@ import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { getLabTestAppointmentInScope, serializeLabTestAppointment } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import type { RowDataPacket } from "mysql2/promise";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
@@ -20,8 +21,10 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     [id],
   );
 
+  const [appointment] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(row)]);
+
   return json({
-    ...serializeLabTestAppointment(row),
+    ...appointment,
     prescriptions: prescriptionRows.map((r) => ({
       id: r.id,
       file_name: r.file_name,

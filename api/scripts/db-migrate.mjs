@@ -1601,6 +1601,38 @@ try {
     }
   }
 
+  // Lab test precautions master list (table from schema.sql). INSERT IGNORE on the
+  // unique name: re-runs add new entries but never overwrite edited ones.
+  const labTestPrecautions = [
+    ['Fasting Required', 'Follow the prescribed fasting duration before the test, if instructed.', 'Fasting'],
+    ['Fasting Not Required', 'No fasting is required for this test unless otherwise instructed.', 'Fasting'],
+    ['Morning Sample Preferred', 'Provide the sample in the morning if recommended for this test.', 'Sample Timing'],
+    ['First-Morning Urine', 'Collect the first urine passed after waking up, if instructed.', 'Urine Sample'],
+    ['Midstream Urine Sample', 'Collect the middle portion of the urine stream in a sterile container.', 'Urine Sample'],
+    ['Sterile Container Required', 'Use the appropriate sterile sample container.', 'Sample Collection'],
+    ['Avoid Heavy Exercise', 'Avoid strenuous exercise for the period specified by the laboratory or clinician.', 'Lifestyle'],
+    ['Avoid Alcohol', 'Avoid alcohol for the instructed period before the test, if applicable.', 'Lifestyle'],
+    ['Inform About Medications', 'Inform the doctor or laboratory staff about current medicines and supplements. Do not stop prescribed medicines without medical advice.', 'Medication'],
+    ['Inform About Supplements', 'Disclose vitamins, supplements, and other products that may affect test results.', 'Medication'],
+    ['Inform About Pregnancy', 'Inform the healthcare professional if pregnant or if pregnancy is possible, when relevant.', 'Medical Information'],
+    ['Menstrual Period Information', 'Inform the laboratory if menstruation may affect the test or sample collection.', 'Medical Information'],
+    ['Avoid Certain Foods', 'Follow the specific dietary restrictions provided by the laboratory or doctor.', 'Diet'],
+    ['Adequate Hydration', 'Maintain the recommended hydration level unless fluid restriction has been advised.', 'Hydration'],
+    ['Stool Sample Instructions', 'Collect the stool sample in the designated container without contamination.', 'Stool Sample'],
+    ['Sputum Sample Instructions', "Follow the laboratory's instructions for collecting a sputum sample.", 'Respiratory Sample'],
+    ['Bring Previous Reports', 'Bring relevant previous laboratory reports if requested.', 'Documents'],
+    ["Doctor's Prescription Required", 'Carry a valid prescription when required for the test.', 'Documents'],
+    ['Avoid Contamination', 'Ensure the sample is not contaminated by water, other substances, or unsuitable containers.', 'Sample Collection'],
+    ['Follow Laboratory Instructions', 'Follow any additional test-specific instructions provided by the laboratory.', 'General'],
+  ];
+  const [precautionInsert] = await conn.query(
+    `INSERT IGNORE INTO lab_test_precautions (id, name, description, category, sort_order) VALUES ?`,
+    [labTestPrecautions.map(([name, description, category], i) => [randomUUID(), name, description, category, (i + 1) * 10])],
+  );
+  if (precautionInsert.affectedRows > 0) {
+    console.log(`Seeded ${precautionInsert.affectedRows} lab test precautions`);
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

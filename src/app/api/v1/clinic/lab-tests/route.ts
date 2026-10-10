@@ -1,10 +1,11 @@
 import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
-import { pool } from "@api/lib/db";
+import { pool, withTransaction } from "@api/lib/db";
 import { newId } from "@api/lib/ids";
 import { parseBody } from "@api/lib/validators";
 import { serializeLabTest, generateUniqueLabTestCode, auditLabAction } from "@api/lib/lab-tests";
 import { getOwnedClinic } from "@api/lib/scope";
+import { replaceTestPrecautions, withTestPrecautions } from "@api/lib/lab-test-precautions";
 import { parsePagination } from "@api/lib/validators";
 import { encodeCursor, decodeCursor } from "@api/lib/http";
 import { z } from "zod";
@@ -71,7 +72,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const items = hasMore ? rows.slice(0, limit) : rows;
   const nextCursor = hasMore && items.length > 0 ? encodeCursor({ created_at: items[items.length - 1].created_at, id: items[items.length - 1].id }) : null;
 
-  return json({ items: items.map(serializeLabTest), next_cursor: nextCursor });
+  return json({ items: await withTestPrecautions(pool, items.map(serializeLabTest), "id"), next_cursor: nextCursor });
 });
 
 const createSchema = z.object({
@@ -84,6 +85,8 @@ const createSchema = z.object({
   category: z.string().min(1).max(100),
   instructions: z.string().max(2000).nullable().optional(),
   default_precautions: z.array(z.string().max(500)).optional(),
+  // Master precautions that apply to this test (GET /lab-test-precautions).
+  precaution_ids: z.array(z.string().uuid()).max(100).optional(),
 });
 
 export const POST = api({ rateLimit: 200 }, async (ctx) => {
@@ -98,25 +101,29 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const code = body.code?.trim() || (await generateUniqueLabTestCode(pool, body.clinic_id, body.category));
 
   const id = newId();
-  await pool.query(
-    `INSERT INTO lab_tests (id, clinic_id, name, code, description, category, instructions, default_precautions, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-    [
-      id,
-      body.clinic_id,
-      name,
-      code,
-      body.description ?? null,
-      body.category,
-      body.instructions ?? null,
-      body.default_precautions ? JSON.stringify(body.default_precautions) : null,
-    ],
-  );
+  await withTransaction(async (conn) => {
+    await conn.query(
+      `INSERT INTO lab_tests (id, clinic_id, name, code, description, category, instructions, default_precautions, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+      [
+        id,
+        body.clinic_id,
+        name,
+        code,
+        body.description ?? null,
+        body.category,
+        body.instructions ?? null,
+        body.default_precautions ? JSON.stringify(body.default_precautions) : null,
+      ],
+    );
+    if (body.precaution_ids) await replaceTestPrecautions(conn, id, body.precaution_ids);
+  });
 
   await auditLabAction(pool, auth.userId, "lab_test_created", id, {
     clinic_id: body.clinic_id,
     name: body.name,
     code: body.code,
+    precaution_ids: body.precaution_ids,
   });
 
   const [row] = await pool.query<RowDataPacket[]>(
@@ -124,5 +131,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     [id],
   );
 
-  return json(serializeLabTest(row[0]), 201);
+  const [created] = await withTestPrecautions(pool, [serializeLabTest(row[0])], "id");
+  return json(created, 201);
 });

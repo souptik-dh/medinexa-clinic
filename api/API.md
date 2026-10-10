@@ -3985,6 +3985,28 @@ Clinics can additionally pre-register named categories with a display **badge co
 
 `service_mode` ∈ `CLINIC | HOME` — `HOME` triggers home collection and requires address fields on the appointment.
 
+### Lab test precautions
+
+Preparation instructions (fasting, sample collection, medication information, …) come from one shared master list, `lab_test_precautions`, seeded by `db-migrate.mjs`. A clinic selects the ones that apply to each of its lab tests (`lab_test_precaution_mappings`). When a booking is created, the test's selected **active** precautions are copied onto it (`lab_test_appointment_precautions`), so the patient, clinic and staff all see the same instructions, and later changes to the test never rewrite an existing booking.
+
+`LabTestPrecaution`:
+
+```json
+{ "id": "5b1c…", "name": "Fasting Required", "description": "Follow the prescribed fasting duration before the test, if instructed.", "category": "Fasting" }
+```
+
+On a booking's copy, `id` is the master precaution it came from (`null` if that entry was since deleted).
+
+| Where | Field |
+|---|---|
+| `GET /lab-test-precautions` (`clinic_owner`, `branch_staff`, `sys_admin`; 120/min) | `{ items: LabTestPrecaution[] }`: the active master list, in display order |
+| `POST /clinic/lab-tests`, `PUT /clinic/lab-tests/:id` | request `precaution_ids?: string[]` (UUIDs, max 100). On `PUT`, it replaces the selection; `[]` clears it; omit it to leave the selection unchanged. Duplicates are ignored. Each id must exist (`422 PRECAUTION_NOT_FOUND`), and an inactive precaution can't be newly selected (`422 PRECAUTION_INACTIVE`) |
+| `LabTest` (`GET /clinic/lab-tests`, create/update responses) | `precautions: LabTestPrecaution[]`: the test's selected active precautions |
+| Branch lab test (`GET /branches/:id/lab-tests`, `GET /branches/:id/lab-tests/:branchTestId`, `GET /clinic/branches/:branchId/lab-tests`) | `precautions: LabTestPrecaution[]`: shown to the patient/reception before booking |
+| `LabTestAppointment` (create response; patient and clinic list and detail; approve, reject, complete and cancel responses) | `test_precautions: LabTestPrecaution[]`: the booking's own copy. Separate from `precautions` (string[]), the free-text extras the clinic may add on approve |
+
+`default_precautions` on `LabTest` is the older free-text list. It is still accepted and returned, but the apps no longer show it.
+
 ### Serialized objects
 
 #### LabTest
@@ -4342,6 +4364,7 @@ Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Creates a new lab test
 | `category` | string | required, 1–100, free text — see [categories](#lab-test-categories) |
 | `instructions` | string? | max 2000 |
 | `default_precautions` | string[]? | array of strings, max 50 items, each max 255 chars |
+| `precaution_ids` | string[]? | master precaution UUIDs — see [lab test precautions](#lab-test-precautions) |
 
 **Response `201`** — LabTest object.
 

@@ -4,6 +4,7 @@ import { pool } from "@api/lib/db";
 import { newId } from "@api/lib/ids";
 import { parseBody } from "@api/lib/validators";
 import { serializeBranchLabTest, auditLabAction } from "@api/lib/lab-tests";
+import { withTestPrecautions } from "@api/lib/lab-test-precautions";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { badRequest, notFound } from "@api/lib/errors";
 import { z } from "zod";
@@ -35,7 +36,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     params,
   );
 
-  return json({ items: (rows as any[]).map(serializeBranchLabTest) });
+  return json({ items: await withTestPrecautions(pool, (rows as any[]).map(serializeBranchLabTest), "test_id") });
 });
 
 const createSchema = z.object({

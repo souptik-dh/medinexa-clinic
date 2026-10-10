@@ -9,6 +9,7 @@ import {
   auditLabAction,
 } from "@api/lib/lab-tests";
 import { assertLabDateBookable } from "@api/lib/lab-test-availability";
+import { snapshotAppointmentPrecautions, withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import {
   notifyBranchStaff,
   createClinicUserNotification,
@@ -245,6 +246,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         ],
       );
 
+      // The test's precautions as they are now — later edits to the test don't change this booking.
+      await snapshotAppointmentPrecautions(conn, appointmentId, blt.test_id);
+
       if (body.prescription_id) {
         await conn.query(
           `INSERT INTO lab_test_prescriptions (id, patient_id, appointment_id, file_name, file_url, mime_type, file_size, uploaded_at)
@@ -342,7 +346,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       date: body.appointment_date,
     });
 
-    return { status: 201, body: serializeLabTestAppointment(appointment) };
+    const [created] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(appointment)]);
+    return { status: 201, body: created };
   });
 
   return json(result.body, result.status);

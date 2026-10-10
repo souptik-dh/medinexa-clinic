@@ -2,6 +2,7 @@ import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { serializeLabTestAppointment, labApptScopeWhere } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import { parsePagination } from "@api/lib/validators";
 import { encodeCursor, decodeCursor } from "@api/lib/http";
 import type { RowDataPacket } from "mysql2/promise";
@@ -78,7 +79,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const nextCursor = hasMore && items.length > 0 ? encodeCursor({ offset: offset + items.length }) : null;
 
   return json({
-    items: items.map(serializeLabTestAppointment),
+    items: await withAppointmentPrecautions(pool, items.map(serializeLabTestAppointment)),
     next_cursor: nextCursor,
   });
 });
