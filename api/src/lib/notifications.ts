@@ -13,12 +13,14 @@ export type NotificationType =
   | "staff_joined"
   | "appointment_cancelled"
   | "appointment_rescheduled"
+  | "appointment_reminder"
   | "lab_test_booked"
   | "lab_test_approved"
   | "lab_test_rejected"
   | "lab_test_cancelled"
   | "lab_test_completed"
   | "lab_test_payment_success"
+  | "lab_test_reminder"
   | "subscription_expiring"
   | "subscription_expired"
   | "subscription_activated"
@@ -91,6 +93,12 @@ function truncate(text: string, max: number): string {
 
 function money(amount: unknown, currency: unknown): string | null {
   return typeof amount === "number" ? `${amount}${typeof currency === "string" ? ` ${currency}` : ""}` : null;
+}
+
+/** "tomorrow" / "in 3 days" for a reminder's days_before. */
+function daysAway(daysBefore: unknown): string | null {
+  if (typeof daysBefore !== "number") return null;
+  return daysBefore === 1 ? "tomorrow" : `in ${daysBefore} days`;
 }
 
 /** Maps an in-app notification type to a user-facing push title/body. */
@@ -169,6 +177,26 @@ export function pushContentFor(
       return {
         title: "Appointment rescheduled",
         body: `Please reschedule your appointment${doctor ? ` with ${doctorAt}` : ""} — the doctor's availability changed${oldWhen ? `, so your visit on ${oldWhen}` : ""}${newWhen ? ` has been moved to ${newWhen}` : ""}.${reasonSuffix}`,
+      };
+    }
+    case "appointment_reminder": {
+      const away = daysAway(payload.days_before);
+      return {
+        title: "Appointment reminder",
+        body: `Reminder: your appointment${doctor ? ` with ${doctorAt}` : ""} is ${away ?? "coming up"}${when ? ` (${when})` : ""}. Please arrive a few minutes early.`,
+      };
+    }
+    case "lab_test_reminder": {
+      const away = daysAway(payload.days_before);
+      const precautions = asStringList(payload.precautions);
+      const clinic = asString(payload.clinic_name);
+      const place = clinic && branch && clinic !== branch ? `${clinic} – ${branch}` : clinic || branch;
+      const homeVisit = payload.service_mode === "HOME";
+      return {
+        title: "Lab test reminder",
+        body:
+          `Reminder: your lab test${apptNoSuffix}${testName ? ` (${testName})` : ""}${homeVisit ? " home collection" : place ? ` at ${place}` : ""} is ${away ?? "coming up"}${when ? ` (${when})` : ""}.` +
+          (precautions.length > 0 ? ` Please follow these precautions before your test: ${precautions.join("; ")}` : ""),
       };
     }
     case "lab_test_booked": {

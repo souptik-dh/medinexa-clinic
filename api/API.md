@@ -6070,6 +6070,18 @@ The sweep: cancels any doctor appointment still `pending`/`confirmed`, or lab te
 
 **Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
 
+### POST /super-admin/system/send-appointment-reminders
+
+Rate limited `30/min`. Sends patients their upcoming-appointment reminders. **Not** run in-process — trigger it once a day (ideally in the morning, branch time) from an external scheduler.
+
+Auth: **either** header `x-cron-secret` exactly matching the server's `CRON_SECRET` env var (for an external scheduler, no bearer token needed), **or** a Super Admin bearer token. If `CRON_SECRET` isn't configured, only the Super Admin path works.
+
+**Response `200`** — `{ "message": "Appointment reminder sweep complete.", "result": { "doctorReminders": 4, "labTestReminders": 2 } }`
+
+The sweep: for every `confirmed`/`paid` doctor appointment and `APPROVED` lab test appointment that is 1–3 days away (branch timezone), the patient gets an `appointment_reminder` / `lab_test_reminder` notification — in-app, FCM push and email — once per day, so a booking made well ahead is reminded on each of the last 3 days and a short-notice booking still gets the day-before one. Bookings made the same day are skipped. Lab reminders include the booking's test precautions plus any the clinic added on confirmation. Each send is recorded in `appointment_reminders` (unique per appointment and day), so repeated runs never double-send. A Super-Admin-triggered sweep is audit-logged (`appointments.reminder_sweep_triggered`); a cron-secret-triggered one is not.
+
+**Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
+
 ---
 
 ## Webhooks

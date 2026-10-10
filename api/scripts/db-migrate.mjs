@@ -1633,6 +1633,21 @@ try {
     console.log(`Seeded ${precautionInsert.affectedRows} lab test precautions`);
   }
 
+  // appointment_reminders first shipped without status (every row was a sent reminder).
+  const [reminderStatusCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_reminders' AND COLUMN_NAME = 'status'`,
+  );
+  if (Number(reminderStatusCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE appointment_reminders
+         ADD COLUMN status ENUM('scheduled','sent') NOT NULL DEFAULT 'sent' AFTER days_before,
+         MODIFY COLUMN sent_at DATETIME(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+         ADD KEY idx_appointment_reminders_status (status, reminder_date)`,
+    );
+    console.log('Applied migration: appointment_reminders.status');
+  }
+
   console.log('Schema applied successfully.');
 } finally {
   await conn.end();

@@ -17,6 +17,7 @@ import {
   sendEmail,
   detailsEmailHtml,
   emailPatient,
+  createPatientNotification,
 } from "@api/lib/notifications";
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
@@ -344,6 +345,15 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       await sendEmail(email, emailSubject, "", emailBody);
     }
     await emailPatient(pool, appointment.patient_id, "lab_test_booked", {
+      appointment_number: appointmentNumber,
+      test_name: blt.test_name,
+      branch_name: branch.name,
+      date: body.appointment_date,
+      precautions,
+    });
+    // In-app + push, so the precautions also reach the patient's phone.
+    await createPatientNotification(pool, appointment.patient_id, "lab_test_booked", {
+      appointment_id: appointmentId,
       appointment_number: appointmentNumber,
       test_name: blt.test_name,
       branch_name: branch.name,

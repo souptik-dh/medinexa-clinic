@@ -1267,3 +1267,21 @@ CREATE TABLE IF NOT EXISTS patient_document_deliveries (
   CONSTRAINT fk_pdd_document FOREIGN KEY (document_id) REFERENCES patient_documents(id) ON DELETE CASCADE,
   CONSTRAINT fk_pdd_attempted_by FOREIGN KEY (attempted_by) REFERENCES users(id)
 ) ENGINE=InnoDB;
+
+-- One row per appointment reminder (doctor and lab), keyed by the branch-local date
+-- it is for. 'scheduled' rows are the plan for current bookings (seeded by
+-- api/scripts/seed-appointment-reminders.mjs); the cron marks a row 'sent', or inserts
+-- it as 'sent', only when it wins that claim, so it can run any number of times a day
+-- without double-sending.
+CREATE TABLE IF NOT EXISTS appointment_reminders (
+  id CHAR(36) NOT NULL,
+  appointment_kind ENUM('doctor','lab') NOT NULL,
+  appointment_id CHAR(36) NOT NULL,
+  reminder_date DATE NOT NULL,
+  days_before TINYINT UNSIGNED NOT NULL,
+  status ENUM('scheduled','sent') NOT NULL DEFAULT 'sent',
+  sent_at DATETIME(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_appointment_reminders_status (status, reminder_date),
+  UNIQUE KEY uniq_appointment_reminder (appointment_kind, appointment_id, reminder_date)
+) ENGINE=InnoDB;
