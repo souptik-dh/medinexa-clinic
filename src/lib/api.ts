@@ -24,6 +24,24 @@ export interface User {
   role: UserRole;
   branch_id?: string | null;
   permissions?: BranchStaffPermission[];
+  photo_url?: string | null;
+}
+
+// GET /auth/me — the signed-in user's own account profile (any role).
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  phone_verified: boolean;
+  photo_url: string | null;
+  role: UserRole;
+}
+
+// PATCH /auth/me response — same profile plus a pending email-change flag.
+export interface UserProfileUpdateResponse extends UserProfile {
+  pending_email?: string | null;
+  message?: string;
 }
 
 export interface AuthTokens {
@@ -871,6 +889,14 @@ export type AppointmentDetail = Appointment;
 // patient_details. `name` is required by the API whenever patient_details is
 // sent; everything else is optional.
 export interface AppointmentPatientDetailsInput {
+  // Set when the booking is for an existing patient picked via
+  // patientsApi.lookup(). The server resolves name/phone/age/gender from the
+  // linked profile, so those fields may be omitted.
+  patient_id?: string | null;
+  // The Patient App account (users.id) this booking belongs to. Sent together
+  // with `profile_name` to book on behalf of one of the account's profiles.
+  profile_user_id?: string | null;
+  profile_name?: string | null;
   relationship?: PatientRelationship;
   name: string;
   phone?: string | null;
@@ -963,6 +989,8 @@ export interface LabTest {
   category: LabTestCategory;
   instructions: string | null;
   default_precautions: string[];
+  /** Master precautions the clinic selected for this test (GET /lab-test-precautions). */
+  precautions: LabTestPrecaution[];
   status: LabTestStatus;
   created_at: string;
   updated_at: string;
@@ -983,6 +1011,8 @@ export interface BranchLabTest {
   clinic_available: boolean;
   home_collection_available: boolean;
   prescription_required: boolean;
+  /** The lab test's precautions (from its master-list selection), for display. */
+  precautions?: LabTestPrecaution[];
   status: LabTestStatus;
   created_at: string;
   updated_at: string;
@@ -993,6 +1023,11 @@ export interface BranchLabTest {
 // (there is no "book for myself" default/omission). Unlike
 // AppointmentPatientDetailsInput, phone/age/gender are all required here too.
 export interface LabTestAppointmentPatientDetailsInput {
+  // Set when the test is booked for an existing patient picked via
+  // patientsApi.lookup(); phone/age/gender are still required by the API.
+  patient_id?: string | null;
+  profile_user_id?: string | null;
+  profile_name?: string | null;
   relationship?: PatientRelationship;
   name: string;
   phone: string;
@@ -1025,6 +1060,15 @@ export interface LabTestSchedule {
   updated_at: string;
 }
 
+// A booking's own copy of a test precaution. `id` is the master precaution it
+// came from (null if the master entry was deleted after the booking was made).
+export interface LabTestBookingPrecaution {
+  id: string | null;
+  name: string;
+  description: string;
+  category: string | null;
+}
+
 export interface LabTestAppointment {
   id: string;
   appointment_number: string;
@@ -1049,6 +1093,8 @@ export interface LabTestAppointment {
   patient_notes: string | null;
   clinic_notes: string | null;
   precautions: string[] | null;
+  // The test's precautions as they were when this booking was made (its own copy).
+  test_precautions?: LabTestBookingPrecaution[];
   status: LabTestAppointmentStatus;
   approved_by: string | null;
   approved_at: string | null;
@@ -1777,6 +1823,26 @@ export const authApi = {
     });
   },
 
+  // Completes a phone-number change: the new number must first be OTP-verified
+  // via sendVerifyPhoneOtp, then this applies it to the signed-in account.
+  async verifyPhoneChange(phone: string, otp: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/verify-phone", {
+      method: "POST",
+      body: JSON.stringify({ phone, otp }),
+    });
+  },
+
+  // Sets/resets the signed-in user's password (works for any role).
+  async setPassword(
+    newPassword: string,
+    confirmPassword: string
+  ): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>("/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({ new_password: newPassword, confirm_password: confirmPassword }),
+    });
+  },
+
   // ── Password reset (2-step OTP by phone) ─────────────────────────────
   async forgotPassword(phone: string): Promise<{ message: string }> {
     return apiFetch<{ message: string }>("/auth/forgot-password", {
@@ -1844,6 +1910,24 @@ export const authApi = {
     });
   },
 
+  async me(): Promise<UserProfile> {
+    return apiFetch<UserProfile>("/auth/me");
+  },
+
+  // `name` applies directly; phone/email are login identities and are verified
+  // separately (OTP / confirmation link) — a changed email comes back as
+  // `pending_email` and is applied only once that link is opened.
+  async updateMe(input: {
+    name?: string;
+    phone?: string | null;
+    email?: string | null;
+  }): Promise<UserProfileUpdateResponse> {
+    return apiFetch<UserProfileUpdateResponse>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
   async refresh(input: { refresh_token: string }): Promise<AuthTokens> {
     return apiFetch<AuthTokens>("/auth/refresh", {
       method: "POST",
@@ -1856,6 +1940,29 @@ export const authApi = {
     return apiFetch<void>("/auth/logout", {
       method: "POST",
       body: JSON.stringify(input),
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Own profile photo (clinic owner / branch staff)
+// ---------------------------------------------------------------------------
+
+// Both roles have their own profile photo at POST /{role}/me/photo[/signature].
+export type ProfilePhotoRole = "clinic_owner" | "branch_staff";
+
+function profilePhotoBase(role: ProfilePhotoRole): string {
+  return role === "clinic_owner" ? "/clinic-owners/me/photo" : "/branch-staff/me/photo";
+}
+
+export const profilePhotoApi = {
+  async upload(role: ProfilePhotoRole, file: File): Promise<{ photo_url: string }> {
+    const base = profilePhotoBase(role);
+    const grant = await apiFetch<PhotoUploadGrant>(`${base}/signature`, { method: "POST" });
+    await uploadFileToCloudinary(grant, file);
+    return apiFetch<{ photo_url: string }>(base, {
+      method: "POST",
+      body: JSON.stringify({ public_id: grant.public_id }),
     });
   },
 };
@@ -2742,7 +2849,47 @@ export interface PatientListParams {
   offset?: number;
 }
 
+// One side of a patient family link — who a person books for / who books for them.
+export interface PatientLink {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  relationship: string;
+}
+
+// GET /patients/lookup — a search hit used to book by patient_id instead of
+// creating a duplicate.
+export interface PatientLookupItem {
+  id: string;
+  patient_code: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  gender: string | null;
+  date_of_birth: string | null;
+  age: number | null;
+  photo_url: string | null;
+  is_registered: boolean;
+  // People this account books for.
+  family: PatientLink[];
+  // Accounts that book for this person.
+  profiles: PatientLink[];
+}
+
+export interface PatientLookupResponse {
+  items: PatientLookupItem[];
+}
+
 export const patientsApi = {
+  // Find an existing patient by name, phone (any format) or Patient ID before
+  // booking, so reception books by patient_id rather than duplicating them.
+  async lookup(params: { q?: string; phone?: string }): Promise<PatientLookupResponse> {
+    return apiFetch<PatientLookupResponse>(
+      `/patients/lookup${query({ q: params.q, phone: params.phone })}`
+    );
+  },
+
+
   async listByBranch(
     branchId: string,
     params: PatientListParams = {}
@@ -3268,9 +3415,21 @@ export const labTestsApi = {
   async create(
     // name/code are optional — omit both to quick-create from just a category;
     // the backend derives them from it (see API.md).
-    input: Omit<LabTest, "id" | "status" | "created_at" | "updated_at" | "name" | "code"> & {
+    input: Omit<
+      LabTest,
+      | "id"
+      | "status"
+      | "created_at"
+      | "updated_at"
+      | "name"
+      | "code"
+      | "precautions"
+      | "default_precautions"
+    > & {
       name?: string;
       code?: string;
+      /** Replaces the test's selected precautions; [] clears them. */
+      precaution_ids?: string[];
     }
   ): Promise<LabTest> {
     return apiFetch<LabTest>("/clinic/lab-tests", {
@@ -3281,7 +3440,10 @@ export const labTestsApi = {
 
   async update(
     id: string,
-    input: Partial<Omit<LabTest, "id" | "clinic_id" | "status" | "created_at" | "updated_at">>
+    input: Partial<Omit<LabTest, "id" | "clinic_id" | "status" | "created_at" | "updated_at" | "precautions">> & {
+      /** Replaces the test's selected precautions; [] clears them, omit to leave. */
+      precaution_ids?: string[];
+    }
   ): Promise<LabTest> {
     return apiFetch<LabTest>(`/clinic/lab-tests/${id}`, {
       method: "PUT",
@@ -3310,6 +3472,25 @@ export const labTestsApi = {
       "/clinic/lab-tests/categories",
       { method: "POST", body: JSON.stringify({ categories: names }) }
     );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Lab test precautions (master list)
+// ---------------------------------------------------------------------------
+
+export interface LabTestPrecaution {
+  id: string;
+  name: string;
+  description: string;
+  category: string | null;
+}
+
+export const labTestPrecautionsApi = {
+  // The active master list clinics pick from when configuring a test or when
+  // adding precautions while confirming a booking.
+  async list(): Promise<{ items: LabTestPrecaution[] }> {
+    return apiFetch<{ items: LabTestPrecaution[] }>("/lab-test-precautions");
   },
 };
 
@@ -3456,6 +3637,8 @@ export interface LabTestAppointmentCreateInput {
   appointment_date: string;
   payment_method?: LabTestPaymentMethod;
   patient_notes?: string;
+  // Free-text name of the referring doctor (staff-recorded, optional).
+  referring_doctor_name?: string;
   patient_details: LabTestAppointmentPatientDetailsInput;
 }
 

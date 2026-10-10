@@ -1,11 +1,15 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Modal } from "@/components/ui/modal";
 import { SelectSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import DatePicker from "@/components/form/date-picker";
+import BookingPatientPicker, {
+  BookingPatientPickerHandle,
+} from "@/components/appointments/BookingPatientPicker";
+import LabTestPrecautionsList from "@/components/lab-tests/LabTestPrecautionsList";
 import {
   ApiError,
   BranchClosure,
@@ -14,7 +18,6 @@ import {
   LabTestAppointment,
   LabTestAvailabilityResponse,
   LabTestSchedule,
-  PatientRelationship,
   branchLabTestsApi,
   branchScheduleApi,
   labTestAppointmentsApi,
@@ -83,18 +86,6 @@ const DATE_STATUS_KEYS: Record<Exclude<DateStatus, "bookable">, string> = {
   full: "bookLabTestModal.dateFull",
 };
 
-const RELATIONSHIPS: PatientRelationship[] = [
-  "self",
-  "spouse",
-  "child",
-  "parent",
-  "sibling",
-  "friend",
-  "other",
-];
-
-const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
-
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
@@ -137,11 +128,8 @@ export default function BookLabTestModal({
   const [closures, setClosures] = useState<BranchClosure[]>([]);
   const [scheduleLoaded, setScheduleLoaded] = useState(false);
 
-  const [relationship, setRelationship] = useState<PatientRelationship>("self");
-  const [patientName, setPatientName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState("");
+  const patientPickerRef = useRef<BookingPatientPickerHandle>(null);
+  const [referringDoctor, setReferringDoctor] = useState("");
   const [notes, setNotes] = useState("");
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -161,11 +149,8 @@ export default function BookLabTestModal({
     setLabSchedules([]);
     setClosures([]);
     setScheduleLoaded(false);
-    setRelationship("self");
-    setPatientName("");
-    setPhone("");
-    setAge("");
-    setGender("");
+    patientPickerRef.current?.reset();
+    setReferringDoctor("");
     setNotes("");
     setFormError(null);
     setTestsError(null);
@@ -333,26 +318,22 @@ export default function BookLabTestModal({
       setFormError(t("bookLabTestModal.prescriptionRequiredNotSupported"));
       return;
     }
-    if (!patientName.trim()) {
-      setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
-      return;
-    }
-    if (!phone.trim()) {
-      setFormError(t("bookLabTestModal.pleaseEnterPatientPhone"));
-      return;
-    }
-    if (age.trim() === "" || Number.isNaN(Number(age))) {
-      setFormError(t("bookLabTestModal.pleaseEnterPatientAge"));
-      return;
-    }
-    if (!gender) {
-      setFormError(t("bookLabTestModal.pleaseSelectPatientGender"));
+    const patientError = patientPickerRef.current?.validate();
+    if (patientError) {
+      setFormError(patientError);
       return;
     }
     // Locked: a repeated click while the booking is in flight is a no-op.
     await runSubmit(async () => {
       setFormError(null);
       try {
+        const base = patientPickerRef.current!.buildDetails();
+        const patientDetails = {
+          ...base,
+          phone: base.phone ?? "",
+          age: base.age ?? 0,
+          gender: base.gender ?? "",
+        };
         const created = await labTestAppointmentsApi.create(
           {
             branch_id: branch.id,
@@ -360,18 +341,13 @@ export default function BookLabTestModal({
             service_mode: "CLINIC",
             appointment_date: date,
             payment_method: "PAY_AT_CLINIC",
+            referring_doctor_name: referringDoctor.trim() || undefined,
             patient_notes: notes.trim() || undefined,
-            patient_details: {
-              relationship,
-              name: patientName.trim(),
-              phone: phone.trim(),
-              age: Number(age),
-              gender,
-            },
+            patient_details: patientDetails,
           },
           crypto.randomUUID()
         );
-        toast.success(t("bookLabTestModal.labTestRequestedFor", { name: patientName.trim(), date }));
+        toast.success(t("bookLabTestModal.labTestRequestedFor", { name: patientDetails.name, date }));
         onBooked?.(created);
         onClose();
       } catch (err) {
@@ -380,7 +356,9 @@ export default function BookLabTestModal({
         const message = errorKey
           ? t(errorKey)
           : getErrorMessage(err, t("bookLabTestModal.unableToBook"));
-        setFormError(message);
+        if (!patientPickerRef.current?.applyServerError(err, message)) {
+          setFormError(message);
+        }
         toast.error(message);
         // Refresh the date status so a just-filled/closed date shows as such.
         loadAvailability();
@@ -469,6 +447,14 @@ export default function BookLabTestModal({
                   )}
                 </div>
               )}
+              {test && test.precautions && test.precautions.length > 0 && (
+                <div className="mt-3">
+                  <LabTestPrecautionsList
+                    precautions={test.precautions}
+                    hint={t("labTestPrecautions.bookingHint")}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Date */}
@@ -553,76 +539,18 @@ export default function BookLabTestModal({
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
               {t("bookAppointmentModal.patientDetails")}
             </h6>
+            <BookingPatientPicker ref={patientPickerRef} disabled={isSubmitting} requirePhone />
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.relationship")}
-              </label>
-              <select
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value as PatientRelationship)}
-                className={inputClass}
-              >
-                {RELATIONSHIPS.map((r) => (
-                  <option key={r} value={r}>
-                    {r === "self" ? t("appointments.self") : r.charAt(0).toUpperCase() + r.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.name")} <span className="text-error-500">*</span>
+                {t("bookLabTestModal.referringDoctor")}
               </label>
               <input
                 type="text"
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                placeholder={t("bookAppointmentModal.visitorFullName")}
+                value={referringDoctor}
+                onChange={(e) => setReferringDoctor(e.target.value)}
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.phone")} <span className="text-error-500">*</span>
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.age")} <span className="text-error-500">*</span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={150}
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.genderLabel")} <span className="text-error-500">*</span>
-              </label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">{t("bookLabTestModal.selectGender")}</option>
-                {GENDERS.map((g) => (
-                  <option key={g} value={g}>
-                    {g === "prefer_not_to_say"
-                      ? t("bookAppointmentModal.preferNotToSay")
-                      : g.charAt(0).toUpperCase() + g.slice(1)}
-                  </option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">

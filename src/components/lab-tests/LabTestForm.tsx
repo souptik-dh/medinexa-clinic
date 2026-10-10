@@ -5,6 +5,7 @@ import { LabTestCategory, labTestsApi } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
+import LabTestPrecautionsPicker from "@/components/lab-tests/LabTestPrecautionsPicker";
 
 // Fixed-category legacy values, kept as starting suggestions for a clinic
 // with no lab tests yet. Category itself is free text (see labTestsApi.categories()).
@@ -39,7 +40,8 @@ export interface LabTestFormValues {
   description: string;
   category: LabTestCategory;
   instructions: string;
-  default_precautions: string;
+  /** Selected master precaution ids (GET /lab-test-precautions). */
+  precaution_ids: string[];
 }
 
 export const EMPTY_LAB_TEST_FORM: LabTestFormValues = {
@@ -48,7 +50,7 @@ export const EMPTY_LAB_TEST_FORM: LabTestFormValues = {
   description: "",
   category: "",
   instructions: "",
-  default_precautions: "",
+  precaution_ids: [],
 };
 
 interface LabTestFormProps {
@@ -68,7 +70,7 @@ interface LabTestFormProps {
     description: string | null;
     category: LabTestCategory;
     instructions: string | null;
-    default_precautions: string[];
+    precaution_ids: string[];
   }) => Promise<void>;
   /** Lets an embedding drawer block closing while a save is in flight. */
   onPendingChange?: (pending: boolean) => void;
@@ -109,8 +111,12 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       .catch(() => {});
   }, []);
 
-  const updateField = (field: keyof LabTestFormValues, value: string) => {
+  const updateField = (field: keyof Omit<LabTestFormValues, "precaution_ids">, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const setPrecautions = (ids: string[]) => {
+    setForm((prev) => ({ ...prev, precaution_ids: ids }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,18 +135,6 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       setError(t("labTestForm.categoryRequired"));
       return;
     }
-    const precautions = form.default_precautions
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (precautions.length > 50) {
-      setError(t("labTestForm.maxPrecautions"));
-      return;
-    }
-    if (precautions.some((p) => p.length > 255)) {
-      setError(t("labTestForm.precautionTooLong"));
-      return;
-    }
     if (saved) return;
     // Locked: a repeated Enter/click while saving is a no-op.
     await runSave(async () => {
@@ -151,7 +145,7 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
           description: form.description.trim() || null,
           category: form.category.trim(),
           instructions: form.instructions.trim() || null,
-          default_precautions: precautions,
+          precaution_ids: form.precaution_ids,
         });
         setSaved(true);
       } catch {
@@ -269,18 +263,11 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
             className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            {t("labTestForm.precautions")}
-          </label>
-          <input
-            type="text"
-            value={form.default_precautions}
-            onChange={(e) => updateField("default_precautions", e.target.value)}
-            placeholder={t("labTestForm.precautionsPlaceholder")}
-            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          />
-        </div>
+        <LabTestPrecautionsPicker
+          selected={form.precaution_ids}
+          onChange={setPrecautions}
+          disabled={isSaving || saved}
+        />
       </div>
       <div className="mt-6 flex items-center justify-end gap-3">
         <button

@@ -279,7 +279,17 @@ export default function LabTestAppointmentsPanel() {
                       {appt.patient?.name ?? "—"}
                     </TableCell>
                     <TableCell className="py-3 text-gray-500 text-theme-sm dark:text-gray-400">
-                      {appt.test?.name ?? "—"}
+                      <p className="text-gray-800 text-theme-sm dark:text-white/90">
+                        {appt.test?.name ?? "—"}
+                      </p>
+                      {appt.test_precautions && appt.test_precautions.length > 0 && (
+                        <span
+                          title={appt.test_precautions.map((p) => p.name).join(", ")}
+                          className="mt-0.5 block max-w-[220px] truncate text-theme-xs text-brand-500 dark:text-brand-400"
+                        >
+                          {t("labTestForm.precautions")}: {appt.test_precautions.map((p) => p.name).join(", ")}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="py-3">
                       <p className="text-gray-800 text-theme-sm dark:text-white/90">

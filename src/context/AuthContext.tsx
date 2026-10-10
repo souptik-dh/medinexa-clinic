@@ -51,6 +51,8 @@ interface AuthContextValue {
   staffClinic: BranchStaffMe["clinic"] | null;
   staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
+  /** Merge a profile patch into the cached user (after PATCH /auth/me or a photo upload). */
+  updateUser: (patch: Partial<User>) => Promise<void>;
   /** Clinic owner login step 1: sends OTP to phone. */
   sendOwnerLoginOtp: (phone: string) => Promise<string>;
   /** Clinic owner login step 2: verifies OTP, stores session. */
@@ -220,6 +222,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  // Merges a profile patch into the cached signed-in user and re-persists it —
+  // used after PATCH /auth/me or a profile-photo upload so the UI updates at
+  // once without a fresh login.
+  const updateUser = useCallback(async (patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      void setStoredUser(next);
+      return next;
+    });
+  }, []);
 
   const sendOwnerLoginOtp = useCallback(async (phone: string) => {
     try {
@@ -437,6 +451,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         staffClinic,
         staffBranch,
         can,
+        updateUser,
         sendOwnerLoginOtp,
         verifyOwnerOtp,
         loginOwnerWithPassword,

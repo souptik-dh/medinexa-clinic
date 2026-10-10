@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Modal } from "@/components/ui/modal";
@@ -7,13 +7,15 @@ import { SelectSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import DatePicker from "@/components/form/date-picker";
+import BookingPatientPicker, {
+  BookingPatientPickerHandle,
+} from "@/components/appointments/BookingPatientPicker";
 import {
   ApiError,
   Appointment,
   AvailabilityRangeResponse,
   AvailabilityResponse,
   BranchDoctor,
-  PatientRelationship,
   appointmentsApi,
   doctorsApi,
 } from "@/lib/api";
@@ -24,18 +26,6 @@ import { useTranslation } from "@/hooks/useTranslation";
 // How far ahead to fetch the doctor's day-level availability for greying out
 // non-bookable dates in the calendar - matches the availability-range endpoint's cap.
 const CALENDAR_RANGE_DAYS = 60;
-
-const RELATIONSHIPS: PatientRelationship[] = [
-  "self",
-  "spouse",
-  "child",
-  "parent",
-  "sibling",
-  "friend",
-  "other",
-];
-
-const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
 
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -77,11 +67,7 @@ export default function BookAppointmentModal({
   const [calendarAvailability, setCalendarAvailability] =
     useState<AvailabilityRangeResponse | null>(null);
 
-  const [relationship, setRelationship] = useState<PatientRelationship>("self");
-  const [patientName, setPatientName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState("");
+  const patientPickerRef = useRef<BookingPatientPickerHandle>(null);
 
   const [formError, setFormError] = useState<string | null>(null);
   // Ref-locked so a double click / repeated Enter can never book twice.
@@ -97,11 +83,7 @@ export default function BookAppointmentModal({
     setAvailability(null);
     setSelectedTime("");
     setCalendarAvailability(null);
-    setRelationship("self");
-    setPatientName("");
-    setPhone("");
-    setAge("");
-    setGender("");
+    patientPickerRef.current?.reset();
     setFormError(null);
     setDoctorsError(null);
     setAvailError(null);
@@ -263,32 +245,28 @@ export default function BookAppointmentModal({
       setFormError(t("bookAppointmentModal.pleaseSelectTimeSlot"));
       return;
     }
-    if (!patientName.trim()) {
-      setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
+    const patientError = patientPickerRef.current?.validate();
+    if (patientError) {
+      setFormError(patientError);
       return;
     }
     if (isBooking) return;
     setFormError(null);
     await runBooking(async () => {
       try {
+        const patientDetails = patientPickerRef.current!.buildDetails();
         const created = await appointmentsApi.create(
           {
             doctor_id: doctorId,
             branch_id: branch.id,
             date,
             ...(doctor && doctor.slot_type === "fixed" ? { time: selectedTime } : {}),
-            patient_details: {
-              relationship,
-              name: patientName.trim(),
-              phone: phone.trim() || null,
-              age: age.trim() === "" ? null : Number(age),
-              gender: gender || null,
-            },
+            patient_details: patientDetails,
           },
           crypto.randomUUID()
         );
         toast.success(
-          t("bookAppointmentModal.appointmentBookedFor", { name: created.patient_details?.name ?? patientName.trim() }) +
+          t("bookAppointmentModal.appointmentBookedFor", { name: created.patient_details?.name ?? patientDetails.name }) +
             (created.scheduled_time ? t("bookAppointmentModal.atTime", { time: created.scheduled_time }) : "")
         );
         onBooked?.(created);
@@ -299,7 +277,9 @@ export default function BookAppointmentModal({
           err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
             ? t("bookAppointmentModal.slotJustTaken")
             : getErrorMessage(err, t("bookAppointmentModal.unableToBook"));
-        setFormError(message);
+        if (!patientPickerRef.current?.applyServerError(err, message)) {
+          setFormError(message);
+        }
         toast.error(message);
         // Refresh slots so a just-taken slot no longer looks available.
         loadAvailability();
@@ -499,77 +479,7 @@ export default function BookAppointmentModal({
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
               {t("bookAppointmentModal.patientDetails")}
             </h6>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.relationship")}
-              </label>
-              <select
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value as PatientRelationship)}
-                className={inputClass}
-              >
-                {RELATIONSHIPS.map((r) => (
-                  <option key={r} value={r}>
-                    {r === "self" ? t("appointments.self") : r.charAt(0).toUpperCase() + r.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.name")} <span className="text-error-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                placeholder={t("bookAppointmentModal.visitorFullName")}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.phone")}
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder={t("common.optional")}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.age")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={150}
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                placeholder={t("common.optional")}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.genderLabel")}
-              </label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">{t("bookAppointmentModal.preferNotToSay")}</option>
-                {GENDERS.filter((g) => g !== "prefer_not_to_say").map((g) => (
-                  <option key={g} value={g}>
-                    {g.charAt(0).toUpperCase() + g.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <BookingPatientPicker ref={patientPickerRef} disabled={isBooking} />
           </div>
 
           {formError && (

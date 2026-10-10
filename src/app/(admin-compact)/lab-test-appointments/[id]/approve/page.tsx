@@ -7,8 +7,10 @@ import {
   ApiError,
   LabTestAppointmentDetail,
   LabTestAvailabilityResponse,
+  LabTestPrecaution,
   branchLabTestsApi,
   labTestAppointmentsApi,
+  labTestPrecautionsApi,
 } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton, SelectSkeleton } from "@/components/ui/skeleton/Skeleton";
@@ -31,6 +33,9 @@ export default function ApproveLabTestAppointmentPage() {
   const [loading, setLoading] = useState(true);
   const [precautions, setPrecautions] = useState("");
   const [notes, setNotes] = useState("");
+  // Master list of active precautions the clinic can attach to the booking.
+  const [precautionOptions, setPrecautionOptions] = useState<LabTestPrecaution[]>([]);
+  const [selectedPrecautions, setSelectedPrecautions] = useState<string[]>([]);
   // Clinic-assigned test time ("HH:MM"). New bookings arrive without one;
   // an older booking that already carries a time starts with it selected.
   const [startTime, setStartTime] = useState("");
@@ -55,6 +60,20 @@ export default function ApproveLabTestAppointmentPage() {
       .catch((err) => setError(getErrorMessage(err, "Failed to load appointment")))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    // Non-fatal: without the master list the free-text field still works.
+    labTestPrecautionsApi
+      .list()
+      .then((res) => setPrecautionOptions(res.items))
+      .catch(() => setPrecautionOptions([]));
+  }, []);
+
+  const togglePrecaution = (name: string) => {
+    setSelectedPrecautions((prev) =>
+      prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]
+    );
+  };
 
   const loadAvailability = useCallback(async () => {
     if (!appt) return;
@@ -109,11 +128,11 @@ export default function ApproveLabTestAppointmentPage() {
       setError(null);
       setTimeError(null);
       try {
+        const extra = precautions.split(",").map((p) => p.trim()).filter(Boolean);
+        const combined = [...selectedPrecautions, ...extra];
         await labTestAppointmentsApi.approve(id, {
           start_time: startTime,
-          precautions: precautions
-            ? precautions.split(",").map((p) => p.trim()).filter(Boolean)
-            : undefined,
+          precautions: combined.length ? combined : undefined,
           clinic_notes: notes || undefined,
         });
         toast.success(`Lab booking confirmed for ${appt?.appointment_date ?? ""} at ${startTime}.`);
@@ -209,6 +228,33 @@ export default function ApproveLabTestAppointmentPage() {
                 <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                   The patient is notified of the assigned date and time.
                 </p>
+              </div>
+            )}
+            {precautionOptions.length > 0 && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                  Common Precautions
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {precautionOptions.map((p) => {
+                    const on = selectedPrecautions.includes(p.name);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        title={p.description || undefined}
+                        onClick={() => togglePrecaution(p.name)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          on
+                            ? "border-brand-500 bg-brand-500 text-white"
+                            : "border-gray-300 bg-white text-gray-600 hover:border-brand-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                        }`}
+                      >
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
             <div>

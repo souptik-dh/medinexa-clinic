@@ -293,7 +293,46 @@ const bn = {
     "labDateTime": "তারিখ ও সময়",
     "labAmount": "অর্থের পরিমাণ",
     "labPayment": "অর্থপ্রদান",
-    "searchPlaceholder": "অনুসন্ধান..."
+    "searchPlaceholder": "অনুসন্ধান...",
+    "searchPatientHint": "নাম, ফোন বা রোগী আইডি দিয়ে অনুসন্ধান করুন",
+    "profileName": "পূর্ণ নাম",
+    "profileNameRequired": "অনুগ্রহ করে রোগীর নাম লিখুন",
+    "profilePhone": "ফোন নম্বর",
+    "patientNameRequired": "অনুগ্রহ করে রোগীর নাম লিখুন",
+    "patientAgeRequired": "অনুগ্রহ করে রোগীর বয়স লিখুন",
+    "patientGenderRequired": "অনুগ্রহ করে রোগীর লিঙ্গ নির্বাচন করুন",
+    "relationshipRequired": "অনুগ্রহ করে একটি সম্পর্ক নির্বাচন করুন",
+    "patientLookupFailed": "রোগী অনুসন্ধান করা যায়নি। আবার চেষ্টা করুন।",
+    "noPatientsFound": "মিলে যাওয়া কোনো রোগী পাওয়া যায়নি।",
+    "bookingFor": "যার জন্য বুক করা হচ্ছে",
+    "someoneNew": "নতুন কেউ",
+    "sameAsProfile": "অ্যাকাউন্টধারীই রোগী",
+    "changePatient": "পরিবর্তন",
+    "registeredPatient": "নিবন্ধিত",
+    "patientIdLabel": "রোগী আইডি",
+    "relSelf": "আমি নিজে",
+    "relSpouse": "স্বামী/স্ত্রী",
+    "relChild": "সন্তান",
+    "relParent": "পিতা/মাতা",
+    "relSibling": "ভাইবোন",
+    "relFriend": "বন্ধু"
+  },
+  "patientDetail": {
+    "male": "পুরুষ",
+    "female": "মহিলা",
+    "other": "অন্য"
+  },
+  "validation": {
+    "required": "{field} আবশ্যক",
+    "invalidMobile": "একটি বৈধ মোবাইল নম্বর লিখুন",
+    "range": "{field} অবশ্যই {min} এবং {max} এর মধ্যে হতে হবে"
+  },
+  "apiErrors": {
+    "code": {
+      "PATIENT_NOT_FOUND": "সেই রোগীকে পাওয়া যায়নি। আবার অনুসন্ধান করুন।",
+      "PROFILE_NOT_FOUND": "সেই প্রোফাইল পাওয়া যায়নি। আবার অনুসন্ধান করুন।",
+      "PHONE_ALREADY_REGISTERED": "এই ফোন নম্বরটি ইতিমধ্যে অন্য অ্যাকাউন্টে নিবন্ধিত।"
+    }
   },
   "patients": {
     "title": "রোগী",
@@ -740,7 +779,13 @@ const bn = {
     "saveChanges": "পরিবর্তন সংরক্ষণ করুন",
     "saving": "সংরক্ষণ করা হচ্ছে...",
     "saved": "পরিবর্তন সফলভাবে সংরক্ষিত হয়েছে।",
-    "failedToSave": "পরিবর্তন সংরক্ষণ করতে ব্যর্থ"
+    "failedToSave": "পরিবর্তন সংরক্ষণ করতে ব্যর্থ",
+    "clinic": "ক্লিনিক",
+    "clinicOverview": "ক্লিনিক ওভারভিউ",
+    "manageBranches": "শাখা পরিচালনা করুন",
+    "billing": "বিলিং",
+    "manageSubscription": "সদস্যতা পরিচালনা করুন",
+    "notificationSettings": "বিজ্ঞপ্তি সেটিংস"
   },
   "reports": {
     "title": "প্রতিবেদন",
@@ -753,7 +798,21 @@ const bn = {
     "generating": "তৈরি করা হচ্ছে...",
     "download": "ডাউনলোড",
     "noData": "নির্বাচিত সময়ের জন্য কোনো তথ্য পাওয়া যায়নি।",
-    "failedToGenerate": "প্রতিবেদন তৈরি করতে ব্যর্থ"
+    "failedToGenerate": "প্রতিবেদন তৈরি করতে ব্যর্থ",
+    "last7days": "শেষ ৭ দিন",
+    "thisMonth": "এই মাস",
+    "last90days": "শেষ ৯০ দিন",
+    "allTime": "সর্বকালের",
+    "loadFailed": "প্রতিবেদন লোড করা যায়নি",
+    "totalAppointments": "মোট অ্যাপয়েন্টমেন্ট",
+    "completionRate": "সম্পন্নতার হার",
+    "avgPerVisit": "প্রতি পরিশোধিত ভিজিটে গড়",
+    "byStatus": "স্থিতি অনুযায়ী",
+    "byDoctor": "চিকিৎসক অনুযায়ী",
+    "noDoctors": "এই সময়ের জন্য কোনো বুকিং নেই।",
+    "appointmentsCount": "{count} অ্যাপয়েন্টমেন্ট",
+    "ownerOnlyNotice": "প্রতিবেদন ক্লিনিক মালিকের জন্য উপলব্ধ।",
+    "selectClinicHint": "প্রতিবেদন দেখতে একটি ক্লিনিক নির্বাচন করুন।"
   },
   "calendar": {
     "title": "ক্যালেন্ডার",
@@ -767,7 +826,9 @@ const bn = {
     "time": "সময়",
     "payment": "অর্থপ্রদান",
     "notPaid": "অর্থপ্রদান করা হয়নি",
-    "manageInAppointments": "অ্যাপয়েন্টমেন্টে পরিচালনা করুন"
+    "manageInAppointments": "অ্যাপয়েন্টমেন্টে পরিচালনা করুন",
+    "loadError": "ক্যালেন্ডার লোড করা যায়নি",
+    "selectDateHint": "কোনো দিনের অ্যাপয়েন্টমেন্ট দেখতে সেদিন নির্বাচন করুন।"
   },
   "aiAssistant": {
     "title": "এআই সহায়ক",
@@ -1573,6 +1634,7 @@ const bn = {
     "availabilityFollowsSchedule": "উপলভ্যতা ক্লিনিকের সময়সূচী অনুসরণ করে — অতীতের তারিখ, বন্ধের দিন এবং শাখার বন্ধ নির্বাচনযোগ্য নয়।",
     "notes": "মন্তব্য",
     "notesPlaceholder": "ঐচ্ছিক — যেমন গত রাত থেকে উপবাস",
+    "referringDoctor": "রেফারকারী চিকিৎসক",
     "booking": "বুকিং করা হচ্ছে…",
     "bookLabTest": "ল্যাব পরীক্ষা বুকিং করুন",
     "bookingDate": "বুকিংয়ের তারিখ",
@@ -1634,6 +1696,22 @@ const bn = {
     "instructionsPlaceholder": "যেমন পরীক্ষার আগে ৮ ঘণ্টা উপবাস করুন",
     "precautions": "সতর্কতাসমূহ",
     "precautionsPlaceholder": "কমা দ্বারা পৃথক করা, যেমন ধাতব গয়না খুলুন, উপবাস প্রয়োজন"
+  },
+  "labTestPrecautions": {
+    "title": "পরীক্ষার প্রস্তুতি ও সতর্কতা",
+    "formSub": "এই পরীক্ষার জন্য রোগীদের যে নির্দেশনা মানতে হবে তা টিক দিন। কোনোটি প্রযোজ্য না হলে সব খালি রাখুন।",
+    "selectedCount": "{count}টি নির্বাচিত",
+    "clearAll": "সব মুছুন",
+    "previewLabel": "নির্বাচিত সতর্কতা",
+    "remove": "{name} সরান",
+    "searchPlaceholder": "সতর্কতা খুঁজুন",
+    "category": "বিভাগ",
+    "allCategories": "সব বিভাগ",
+    "noneAvailable": "এখনও কোনো সতর্কতা নেই।",
+    "noMatch": "আপনার অনুসন্ধানের সাথে কোনো সতর্কতা মেলেনি।",
+    "loadFailed": "সতর্কতার তালিকা লোড করা যায়নি।",
+    "bookingHint": "বুকিং নিশ্চিত করার আগে রোগীকে এগুলো জানিয়ে দিন।",
+    "confirmHint": "এই বুকিংয়ে সংরক্ষিত — নিশ্চিত করা ও নমুনা সংগ্রহের আগে দেখে নিন।"
   },
   "staffPermissions": {
     "staffMemberNotFound": "কর্মী পাওয়া যায়নি।",
@@ -1725,7 +1803,32 @@ const bn = {
     "myClinics": "আমার ক্লিনিকসমূহ",
     "manage": "পরিচালনা করুন →",
     "clinicNotSetUp": "আপনার ক্লিনিক এখনও সেট আপ করা হয়নি।",
-    "noClinicsFound": "কোনো ক্লিনিক পাওয়া যায়নি। ক্লিনিক পৃষ্ঠা থেকে একটি তৈরি করুন।"
+    "noClinicsFound": "কোনো ক্লিনিক পাওয়া যায়নি। ক্লিনিক পৃষ্ঠা থেকে একটি তৈরি করুন।",
+    "editProfile": "প্রোফাইল সম্পাদনা",
+    "fullName": "পূর্ণ নাম",
+    "emailLabel": "ইমেইল",
+    "phoneLabel": "ফোন",
+    "profileUpdated": "প্রোফাইল হালনাগাদ করা হয়েছে।",
+    "updateFailed": "প্রোফাইল হালনাগাদ করা যায়নি",
+    "emailConfirmLinkSent": "পরিবর্তন সম্পূর্ণ করতে {email} এ পাঠানো নিশ্চিতকরণ লিঙ্কটি দেখুন।",
+    "changePhone": "ফোন পরিবর্তন করুন",
+    "newPhone": "নতুন ফোন নম্বর",
+    "otpSentTo": "{phone} এ OTP পাঠানো হয়েছে",
+    "sendOtp": "OTP পাঠান",
+    "otpCode": "OTP কোড",
+    "verifyOtp": "যাচাই ও হালনাগাদ করুন",
+    "phoneUpdated": "ফোন নম্বর হালনাগাদ করা হয়েছে।",
+    "changePhoneFailed": "ফোন পরিবর্তন করা যায়নি",
+    "changePassword": "পাসওয়ার্ড পরিবর্তন করুন",
+    "newPassword": "নতুন পাসওয়ার্ড",
+    "confirmNewPassword": "নতুন পাসওয়ার্ড নিশ্চিত করুন",
+    "passwordMinLength": "কমপক্ষে ৮টি অক্ষর।",
+    "passwordMismatch": "পাসওয়ার্ড মিলছে না।",
+    "passwordUpdated": "পাসওয়ার্ড হালনাগাদ করা হয়েছে।",
+    "passwordChangeFailed": "পাসওয়ার্ড হালনাগাদ করা যায়নি",
+    "changePhoto": "ছবি পরিবর্তন করুন",
+    "photoUpdated": "প্রোফাইল ছবি হালনাগাদ করা হয়েছে।",
+    "photoFailed": "ছবি হালনাগাদ করা যায়নি"
   },
   "reviews": {
     "title": "রোগীর পর্যালোচনা",

@@ -16,6 +16,7 @@ import { getErrorMessage } from "@/lib/errorMessage";
 import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
+import LabTestPrecautionsList from "@/components/lab-tests/LabTestPrecautionsList";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -150,6 +151,12 @@ export default function LabTestAppointmentDetailPage() {
               <DetailRow label="Price" value={formatCurrency(detail.price, detail.currency)} />
               <DetailRow label="Payment" value={labTestPaymentStatusLabel(detail.payment_status)} />
             </dl>
+
+            {detail.test_precautions && detail.test_precautions.length > 0 && (
+              <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
+                <LabTestPrecautionsList precautions={detail.test_precautions} />
+              </div>
+            )}
 
             {(detail.patient_notes || detail.clinic_notes) && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">

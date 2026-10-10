@@ -301,7 +301,7 @@ export default function LabTestsPanel() {
               description: editingTest.description ?? "",
               category: editingTest.category,
               instructions: editingTest.instructions ?? "",
-              default_precautions: (editingTest.default_precautions ?? []).join(", "),
+              precaution_ids: (editingTest.precautions ?? []).map((p) => p.id),
             }}
             submitLabel={t("labTestsPage.update")}
             onCancel={() => setEditingTest(null)}
