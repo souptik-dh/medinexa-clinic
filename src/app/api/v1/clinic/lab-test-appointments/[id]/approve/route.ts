@@ -8,7 +8,7 @@ import {
   auditLabAction,
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
-import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
+import { loadAppointmentPrecautions, precautionLines, withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import {
   createPatientNotification,
   branchContactEmails,
@@ -112,6 +112,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     throw err;
   }
 
+  // The test's precautions (the booking's copy) plus any the clinic added while confirming.
+  const testPrecautions = precautionLines((await loadAppointmentPrecautions(pool, [id])).get(id) ?? []);
+  const allPrecautions = [...testPrecautions, ...finalPrecautions];
+
   await createPatientNotification(pool, appointment.patient_id, "lab_test_approved", {
     appointment_id: id,
     appointment_number: appointment.appointment_number,
@@ -120,7 +124,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     time: startTime,
     branch_name: appointment.branch_name,
     clinic_name: appointment.clinic_name,
-    precautions: finalPrecautions,
+    precautions: allPrecautions,
   });
 
   const emailHtml = detailsEmailHtml({
@@ -133,7 +137,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       { label: "Branch", value: appointment.branch_name },
       { label: "Date & Time", value: `${appointment.appointment_date} at ${startTime}`, sub: appointment.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
       { label: "Payment", value: appointment.payment_status === "PAID" ? "Paid" : "Pay at Clinic" },
-      ...(finalPrecautions.length > 0 ? [{ label: "Precautions", value: finalPrecautions.join("\n") }] : []),
+      ...(allPrecautions.length > 0 ? [{ label: "Precautions", value: allPrecautions.join("\n") }] : []),
       ...(body.clinic_notes ? [{ label: "Clinic Notes", value: body.clinic_notes }] : []),
     ],
   });
@@ -144,11 +148,15 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   // Lab booking confirmation is the only non-OTP lab message patients receive on WhatsApp.
   const patientPhone = appointment.visitor_phone || appointment.patient_phone;
   if (patientPhone) {
-    const confirmText = personalizeForPatient(
-      `Your lab test appointment ${appointment.appointment_number} (${appointment.test_name}) at ${appointment.branch_name} on ${appointment.appointment_date} at ${startTime} has been confirmed.`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
+    const confirmText =
+      personalizeForPatient(
+        `Your lab test appointment ${appointment.appointment_number} (${appointment.test_name}) at ${appointment.branch_name} on ${appointment.appointment_date} at ${startTime} has been confirmed.`,
+        appointment.visitor_name,
+        appointment.visitor_relationship,
+      ) +
+      (allPrecautions.length > 0
+        ? `\n\nPlease follow these precautions before your test:\n${allPrecautions.map((p) => `• ${p}`).join("\n")}`
+        : "");
     await sendBookingConfirmationWhatsapp(patientPhone, confirmText);
   }
 

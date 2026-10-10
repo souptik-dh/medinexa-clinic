@@ -9,7 +9,7 @@ import {
   auditLabAction,
 } from "@api/lib/lab-tests";
 import { assertLabDateBookable } from "@api/lib/lab-test-availability";
-import { snapshotAppointmentPrecautions, withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
+import { precautionLines, snapshotAppointmentPrecautions, withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import {
   notifyBranchStaff,
   createClinicUserNotification,
@@ -313,6 +313,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const isForSelf = patientDetails.relationship === "self";
 
     const staffEmails = await branchContactEmails(pool, body.branch_id);
+    // The booking's own copy of the test's precautions, sent with the booking notifications.
+    const [created] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(appointment)]);
+    const precautions = precautionLines(created.test_precautions);
 
     const emailSubject = `New Lab Test Booking — ${appointmentNumber}`;
     const emailBody = detailsEmailHtml({
@@ -332,6 +335,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         { label: "Branch", value: branch.name },
         { label: "Booking Date", value: body.appointment_date, sub: body.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
         { label: "Payment", value: body.payment_method === "ONLINE" ? "Online (Pending)" : "Pay at Clinic" },
+        ...(precautions.length > 0 ? [{ label: "Test Precautions", value: precautions.join("\n") }] : []),
       ],
       note: "Please review the prescription (if uploaded), then confirm the booking and assign the test time — or reject it.",
     });
@@ -344,9 +348,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       test_name: blt.test_name,
       branch_name: branch.name,
       date: body.appointment_date,
+      precautions,
     });
 
-    const [created] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(appointment)]);
     return { status: 201, body: created };
   });
 

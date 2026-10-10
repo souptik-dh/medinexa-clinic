@@ -81,6 +81,10 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+}
+
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
@@ -167,29 +171,31 @@ export function pushContentFor(
         body: `Please reschedule your appointment${doctor ? ` with ${doctorAt}` : ""} — the doctor's availability changed${oldWhen ? `, so your visit on ${oldWhen}` : ""}${newWhen ? ` has been moved to ${newWhen}` : ""}.${reasonSuffix}`,
       };
     }
-    case "lab_test_booked":
+    case "lab_test_booked": {
+      const precautions = asStringList(payload.precautions);
       return {
         title: "Lab test booked",
-        body: testName
+        body: (testName
           ? `Your lab test booking${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` for ${when}` : ""} has been submitted.`
           : when
             ? `Your lab test booking for ${when} has been submitted.`
-            : "Your lab test booking has been submitted.",
+            : "Your lab test booking has been submitted.") +
+          (precautions.length > 0 ? ` Please follow these precautions before your test: ${precautions.join("; ")}` : ""),
       };
+    }
     case "lab_test_approved": {
-      const precautions = Array.isArray(payload.precautions)
-        ? payload.precautions.filter((p): p is string => typeof p === "string")
-        : [];
+      const precautions = asStringList(payload.precautions);
       // "Medinova Diagnostic Center – Salt Lake" — the clinic, and the branch when it differs.
       const clinic = asString(payload.clinic_name);
       const place = clinic && branch && clinic !== branch ? `${clinic} – ${branch}` : clinic || branch;
       return {
         title: "Lab test confirmed",
-        body: testName
-          ? `Your lab test${apptNoSuffix} (${testName})${place ? ` at ${place}` : ""}${when ? ` on ${when}` : ""} has been confirmed.${precautions.length > 0 ? ` Precautions: ${precautions.join(", ")}` : ""}`
+        body: (testName
+          ? `Your lab test${apptNoSuffix} (${testName})${place ? ` at ${place}` : ""}${when ? ` on ${when}` : ""} has been confirmed.`
           : when
             ? `Your lab test appointment for ${when} has been confirmed.`
-            : "Your lab test appointment has been confirmed.",
+            : "Your lab test appointment has been confirmed.") +
+          (precautions.length > 0 ? ` Precautions: ${precautions.join("; ")}` : ""),
       };
     }
     case "lab_test_rejected":
@@ -708,7 +714,7 @@ export function detailsEmailHtml(opts: {
       (row, i) => `<tr>
 <td style="padding:${i === 0 ? "0" : "12px"} 0 12px 0;${i < opts.rows.length - 1 ? "border-bottom:1px solid #e2e8f0;" : ""}">
 <span style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">${escapeHtml(row.label)}</span>
-<p style="font-size:15px;color:#1e293b;font-weight:700;margin:4px 0 0;">${escapeHtml(row.value)}</p>
+<p style="font-size:15px;color:#1e293b;font-weight:700;margin:4px 0 0;white-space:pre-line;">${escapeHtml(row.value)}</p>
 ${row.sub ? `<p style="font-size:13px;color:#64748b;margin:2px 0 0;">${escapeHtml(row.sub)}</p>` : ""}
 </td>
 </tr>`,

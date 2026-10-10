@@ -146,6 +146,15 @@ export async function loadAppointmentPrecautions(
   return out;
 }
 
+// One line per precaution ("Fasting: No food for 10–12 hours before the test") for
+// notification text — in-app, email and WhatsApp.
+export function precautionLines(precautions: Pick<BookingPrecaution, "name" | "description">[]): string[] {
+  return precautions.map((p) => {
+    const description = p.description?.trim();
+    return description ? `${p.name}: ${description}` : p.name;
+  });
+}
+
 // Adds `test_precautions` (the booking's own copy) to serialized lab appointments.
 // Distinct from the existing `precautions` field: free-text notes the clinic may add
 // when confirming.
