@@ -26,7 +26,8 @@ export type NotificationType =
   | "subscription_activated"
   | "subscription_deactivated"
   | "subscription_offer"
-  | "patient_document_uploaded";
+  | "patient_document_uploaded"
+  | "new_clinic_nearby";
 
 export async function createNotification(
   db: Pick<PoolConnection, "query">,

@@ -4917,10 +4917,10 @@ Auth: any authenticated role.
 **Request body**
 
 ```json
-{ "token": "f7c3b9...(FCM registration token)", "platform": "android" }
+{ "token": "f7c3b9...(FCM registration token)", "platform": "android", "language": "bn" }
 ```
 
-`platform` ∈ `android | ios`. If the token is already registered to a different user (e.g. a shared device that logged into a new account), it's reassigned to the caller.
+`platform` ∈ `android | ios`. `language` ∈ `en | bn` (optional) is the app's display language. Pushes the server composes itself, such as "new clinic near you", are sent in it. Re-register whenever the user switches language. When it is omitted, the stored value is kept. If the token is already registered to a different user (e.g. a shared device that logged into a new account), it's reassigned to the caller.
 
 **Response `201`** — `{ "registered": true }`
 
@@ -5629,6 +5629,151 @@ The sweep: for every `confirmed`/`paid` doctor appointment and `APPROVED` lab te
 **Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
 
 ---
+
+### New clinic near you (automatic announcements)
+
+When a new clinic is ready, patients in its area are told about it automatically. Nothing changes in clinic registration or booking: a background sweep runs every 15 minutes, started from `instrumentation.ts`.
+
+**When a clinic is announced.** All of these must hold:
+- It was created within the last 60 days and has never been announced.
+- It is activated: its trial or subscription is not blocked (the same gate every clinic operation uses), and its trade licence is not `INVALID`.
+- It is bookable: at least one live branch has an active doctor assignment or an active lab test.
+
+A clinic that is not activated yet is left alone and picked up on a later sweep once it is. Clinics that already existed when the feature shipped are marked as announced by `db:migrate`, so they never trigger a notification.
+
+**Who is notified.** Active patient accounts that hold a phone number. Phone-less family profiles are reached through that account. A patient is notified when their registered area matches the clinic or any of its live branches by one of:
+
+| Match | Rule |
+|---|---|
+| PIN code | Equal PIN code (spaces ignored) |
+| Village | Equal post office, in the same district when both districts are known |
+| Nearby location | Equal nearby-location landmark |
+| District | Equal district |
+
+Text matching ignores case and extra spaces.
+
+**What they get.**
+- An in-app notification of type `new_clinic_nearby`. Its payload holds `clinic_id`, `clinic_name`, `branch_id`, `address`, `area`, `doctors` (up to 5 `{name, specialization}`), `doctor_count`, `specializations` and `lab_test_count`. The app renders the text in its current language, and tapping it opens the clinic.
+- A push in each device's app language (see `language` on `POST /notifications/device-tokens`; English when unknown), with `data: { "type": "new_clinic_nearby", "clinic_id", "branch_id" }`. Tapping it opens the clinic details page, where the patient can book.
+- An email when the patient has one on file: name, address, doctors and lab tests, in the language of their latest device, or in both languages when that is unknown.
+
+**No duplicates.** `clinic_announcements` holds one row per clinic, claimed before anyone is contacted. `clinic_announcement_recipients` holds one row per clinic and patient, keyed on `(clinic_id, user_id)`. So a patient is never notified twice about the same clinic, even with several server processes.
+
+#### POST /super-admin/system/announce-new-clinics
+
+Runs the sweep immediately. Callable by a Super Admin, or by an external scheduler sending `x-cron-secret` = `CRON_SECRET`. Idempotent. Rate limit `30/min`.
+
+**Response `200`**
+
+```json
+{
+  "message": "Announced 1 new clinic(s).",
+  "announced": [
+    { "clinic_id": "uuid", "recipients": 42, "push_devices": 38, "push_delivered": 37, "emails_sent": 11 }
+  ],
+  "skipped_inactive": []
+}
+```
+
+### Advertisements (Patient App dashboard)
+
+Banners shown in a swipeable carousel on the Patient App dashboard — insurance companies, clinics, pharmacies, diagnostics, wellness and other sponsors. A Super Admin creates and schedules them, and can push any live ad to every patient device. An ad is **live** when `is_active` is true and the current time is inside its optional `starts_at`/`ends_at` window; nothing is mutated when a window opens or closes.
+
+Each ad has a `link_type` saying what tapping it does:
+
+| `link_type` | `link_value` | Patient App behaviour |
+|---|---|---|
+| `none` | `null` | Banner only |
+| `url` | `http(s)://…` URL | Opens in the system browser |
+| `clinic` | clinic id | Opens the clinic details page |
+| `phone` | phone number (digits, optional leading `+`) | Starts a call |
+
+`category` is one of `insurance`, `clinic`, `pharmacy`, `diagnostic`, `wellness`, `other`.
+
+`placement` picks which dashboard advertisement area shows the ad. Each area is its own carousel and is hidden when it has no live ads:
+
+| `placement` | Where on the dashboard |
+|---|---|
+| `top` | Under the greeting, above the quick actions |
+| `middle` | Between the quick actions and categories |
+| `bottom` | After categories |
+
+#### GET /advertisements
+
+Public (no auth). Returns up to 30 live ads in display order (`sort_order` ascending, then newest first). Each item includes its `placement`; pass `?placement=top|middle|bottom` to get one area only. Rate limit `120/min` per IP.
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "title": "Family health cover from ₹499/month",
+      "description": "Cashless at 10,000+ hospitals.",
+      "sponsor_name": "Star Health Insurance",
+      "category": "insurance",
+      "placement": "top",
+      "image_url": "https://res.cloudinary.com/<cloud>/image/upload/advertisements/<uuid>",
+      "cta_label": "Get a quote",
+      "link_type": "url",
+      "link_value": "https://example.com/quote"
+    }
+  ]
+}
+```
+
+#### POST /super-admin/advertisements/image/signature
+
+Super Admin. Returns a signed Cloudinary upload grant (same shape as the other `…/photo/signature` endpoints) for the `advertisements` folder. Upload the file to Cloudinary, then pass the grant's `public_id` as `image_public_id` on create/update. Rate limit `60/min`.
+
+#### POST /super-admin/advertisements
+
+Super Admin. Creates an ad. Rate limit `30/min`. Body:
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | string, 1–120 | required |
+| `image_public_id` | string | required; from the signature endpoint above |
+| `category` | enum | default `other` |
+| `placement` | `top` \| `middle` \| `bottom` | default `top` |
+| `description` | string ≤ 500 \| null | |
+| `sponsor_name` | string ≤ 150 \| null | |
+| `cta_label` | string ≤ 40 \| null | button text; the app falls back to "Learn more" |
+| `link_type` | enum | default `none` |
+| `link_value` | string \| null | required unless `link_type` is `none`; validated per type, and a `clinic` id must exist |
+| `starts_at`, `ends_at` | ISO datetime \| null | optional window; `ends_at` must be after `starts_at` |
+| `is_active` | boolean | default `true` |
+| `sort_order` | integer −1000…1000 | default `0`; lower shows first |
+
+Returns `201 { "message", "advertisement" }`. The Super Admin `advertisement` shape is the public one plus `starts_at`, `ends_at`, `is_active`, `sort_order`, `status` (`live` \| `scheduled` \| `expired` \| `inactive`), `push_sent_at`, `push_sent_count`, `linked_clinic_name`, `created_by`, `created_at`, `updated_at`.
+
+Errors: `AD_LINK_REQUIRED`, `AD_LINK_INVALID`, `CLINIC_NOT_FOUND`, `AD_SCHEDULE_INVALID`, `INVALID_PUBLIC_ID` (all `400`).
+
+#### GET /super-admin/advertisements
+
+Super Admin. Every ad (any status), in display order: `{ "items": [advertisement] }`.
+
+#### GET /super-admin/advertisements/:adId
+
+Super Admin. `{ "advertisement" }`. `404 AD_NOT_FOUND`.
+
+#### PATCH /super-admin/advertisements/:adId
+
+Super Admin. Partial update with any of the create fields. A new `image_public_id` replaces the image and deletes the old one from Cloudinary. Rate limit `60/min`. Returns `{ "message", "advertisement" }`.
+
+#### DELETE /super-admin/advertisements/:adId
+
+Super Admin. Deletes the ad and its Cloudinary image. Rate limit `30/min`. Returns `{ "message" }`.
+
+#### POST /super-admin/advertisements/:adId/notify
+
+Super Admin. Sends an FCM push to **every** registered Patient App device (in batches of 500; unregistered tokens are pruned). Only a live ad can be pushed (`409 AD_NOT_LIVE`). Rate limit `10/min`.
+
+Body (both optional): `{ "title": string ≤ 120, "body": string ≤ 300 }`. They default to the ad's title and description.
+
+The push carries `data: { "type": "advertisement", "ad_id", "link_type", "link_value" }`. Tapping it opens the ad's target directly, or the dashboard when `link_type` is `none`. No in-app inbox notification is created.
+
+Response: `{ "message", "devices", "delivered", "advertisement" }`, with `push_sent_at`/`push_sent_count` updated. Every create, update, delete and push is written to the Super Admin audit log (`advertisement.*`).
+
 
 ## Webhooks
 

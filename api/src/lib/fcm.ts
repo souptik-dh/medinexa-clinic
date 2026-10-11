@@ -72,6 +72,23 @@ export interface FcmMessage {
   title: string;
   body: string;
   data?: Record<string, string>;
+  /** Public HTTPS image shown in the expanded notification (FCM caps it at 1 MB). */
+  imageUrl?: string;
+}
+
+/**
+ * The notification fields of an FCM message. An image needs per-platform fields too:
+ * Android reads it from android.notification, and iOS only downloads it when the
+ * payload is mutable-content (handled by the app's Notification Service Extension).
+ */
+function notificationFields(msg: FcmMessage) {
+  const notification = { title: msg.title, body: msg.body, ...(msg.imageUrl ? { imageUrl: msg.imageUrl } : {}) };
+  if (!msg.imageUrl) return { notification };
+  return {
+    notification,
+    android: { notification: { imageUrl: msg.imageUrl } },
+    apns: { payload: { aps: { mutableContent: true } }, fcmOptions: { imageUrl: msg.imageUrl } },
+  };
 }
 
 /**
@@ -102,7 +119,7 @@ export async function sendFcmToUser(userId: string, msg: FcmMessage, pushApp: Pu
 
     const response = await getMessaging(firebaseApp).sendEachForMulticast({
       tokens,
-      notification: { title: msg.title, body: msg.body },
+      ...notificationFields(msg),
       data: msg.data,
     });
     console.log(`[push:${pushApp}] ${msg.data?.type ?? "push"} for user ${userId}: ${response.successCount}/${tokens.length} delivered to FCM.`);
@@ -120,6 +137,114 @@ export async function sendFcmToUser(userId: string, msg: FcmMessage, pushApp: Pu
     }
   } catch (err) {
     console.error(`[push:${pushApp}] FCM send failed:`, err);
+  }
+}
+
+/** FCM's per-call multicast limit. */
+const MULTICAST_BATCH = 500;
+
+export interface BroadcastResult {
+  devices: number;
+  delivered: number;
+}
+
+/**
+ * Sends one message to many tokens in batches of 500 and prunes tokens FCM reports
+ * as unregistered. Never throws — a failed batch is logged and counted as undelivered.
+ */
+async function multicast(firebaseApp: App, pushApp: PushApp, tokens: string[], msg: FcmMessage): Promise<number> {
+  const messaging = getMessaging(firebaseApp);
+  const staleTokens: string[] = [];
+  let delivered = 0;
+
+  for (let i = 0; i < tokens.length; i += MULTICAST_BATCH) {
+    const batch = tokens.slice(i, i + MULTICAST_BATCH);
+    try {
+      const response = await messaging.sendEachForMulticast({
+        tokens: batch,
+        ...notificationFields(msg),
+        data: msg.data,
+      });
+      delivered += response.successCount;
+      response.responses.forEach((r, j) => {
+        if (!r.success && isUnregistered(r.error?.code)) staleTokens.push(batch[j]);
+      });
+    } catch (err) {
+      console.error(`[push:${pushApp}] multicast batch ${i / MULTICAST_BATCH} failed:`, err);
+    }
+  }
+
+  if (staleTokens.length > 0) {
+    try {
+      await pool.query(`DELETE FROM device_tokens WHERE token IN (?)`, [staleTokens]);
+    } catch (err) {
+      console.error(`[push:${pushApp}] pruning stale tokens failed:`, err);
+    }
+  }
+  return delivered;
+}
+
+/**
+ * Sends one push to every device registered under the given app (all patients, by
+ * default) — used for Super Admin broadcasts such as advertisements. Never throws:
+ * failures are logged and reflected in the returned counts.
+ */
+export async function broadcastFcm(msg: FcmMessage, pushApp: PushApp = "patient"): Promise<BroadcastResult> {
+  const firebaseApp = app(pushApp);
+  if (!firebaseApp) {
+    console.error(`[push:${pushApp}] not configured (missing FIREBASE${pushApp === "clinic" ? "_CLINIC" : ""}_* env vars) — broadcast skipped.`);
+    return { devices: 0, delivered: 0 };
+  }
+
+  try {
+    const [rows] = await pool.query<Row[]>(`SELECT token FROM device_tokens WHERE app = ?`, [pushApp]);
+    const tokens = rows.map((r) => r.token as string);
+    const delivered = await multicast(firebaseApp, pushApp, tokens, msg);
+    console.log(`[push:${pushApp}] broadcast ${msg.data?.type ?? "push"}: ${delivered}/${tokens.length} delivered to FCM.`);
+    return { devices: tokens.length, delivered };
+  } catch (err) {
+    console.error(`[push:${pushApp}] broadcast failed:`, err);
+    return { devices: 0, delivered: 0 };
+  }
+}
+
+export type PushLanguage = "en" | "bn";
+
+/**
+ * Sends a push to every Patient App device of the given users, each device in the
+ * language its app is set to (device_tokens.language, reported at token registration;
+ * English when unknown). Never throws.
+ */
+export async function sendFcmToUsersLocalized(
+  userIds: string[],
+  messages: Record<PushLanguage, FcmMessage>,
+): Promise<BroadcastResult> {
+  const firebaseApp = app("patient");
+  if (!firebaseApp) {
+    console.error(`[push:patient] not configured (missing FIREBASE_* env vars) — localized send skipped.`);
+    return { devices: 0, delivered: 0 };
+  }
+  if (userIds.length === 0) return { devices: 0, delivered: 0 };
+
+  try {
+    const byLang: Record<PushLanguage, string[]> = { en: [], bn: [] };
+    for (let i = 0; i < userIds.length; i += 1000) {
+      const [rows] = await pool.query<Row[]>(
+        `SELECT token, language FROM device_tokens WHERE app = 'patient' AND user_id IN (?)`,
+        [userIds.slice(i, i + 1000)],
+      );
+      for (const r of rows) byLang[r.language === "bn" ? "bn" : "en"].push(r.token as string);
+    }
+    let delivered = 0;
+    for (const lang of ["en", "bn"] as const) {
+      if (byLang[lang].length > 0) delivered += await multicast(firebaseApp, "patient", byLang[lang], messages[lang]);
+    }
+    const devices = byLang.en.length + byLang.bn.length;
+    console.log(`[push:patient] ${messages.en.data?.type ?? "push"} to ${userIds.length} user(s): ${delivered}/${devices} delivered to FCM.`);
+    return { devices, delivered };
+  } catch (err) {
+    console.error(`[push:patient] localized send failed:`, err);
+    return { devices: 0, delivered: 0 };
   }
 }
 

@@ -623,6 +623,7 @@ CREATE TABLE IF NOT EXISTS device_tokens (
   token VARCHAR(255) NOT NULL,
   platform ENUM('android','ios') NOT NULL,
   app ENUM('patient','clinic') NOT NULL DEFAULT 'patient',
+  language ENUM('en','bn') NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
@@ -1207,6 +1208,64 @@ CREATE TABLE IF NOT EXISTS subscription_offer_recipients (
   CONSTRAINT fk_offer_recip_offer FOREIGN KEY (offer_id) REFERENCES subscription_offers(id) ON DELETE CASCADE,
   CONSTRAINT fk_offer_recip_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id),
   CONSTRAINT fk_offer_recip_notification FOREIGN KEY (portal_notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- "New clinic near you" announcements. One row per clinic, claimed (INSERT) before any
+-- patient is contacted, so a clinic is announced at most once even across processes.
+-- Clinics that existed when the feature shipped are seeded as 'skipped_existing' by
+-- db-migrate.mjs. See api/src/lib/clinic-announcements.ts.
+CREATE TABLE IF NOT EXISTS clinic_announcements (
+  clinic_id CHAR(36) NOT NULL,
+  status ENUM('processing','sent','skipped_existing') NOT NULL DEFAULT 'processing',
+  recipient_count INT NOT NULL DEFAULT 0,
+  push_delivered INT NOT NULL DEFAULT 0,
+  email_sent INT NOT NULL DEFAULT 0,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  completed_at DATETIME(3) NULL,
+  PRIMARY KEY (clinic_id),
+  CONSTRAINT fk_clinic_ann_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Per-patient dedupe for clinic announcements: the primary key guarantees a patient is
+-- never notified twice about the same clinic.
+CREATE TABLE IF NOT EXISTS clinic_announcement_recipients (
+  clinic_id CHAR(36) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  match_reason ENUM('pin_code','village','district','nearby_location') NOT NULL,
+  notification_id CHAR(36) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (clinic_id, user_id),
+  KEY idx_clinic_ann_recip_user (user_id),
+  CONSTRAINT fk_clinic_ann_recip_clinic FOREIGN KEY (clinic_id) REFERENCES clinics(id) ON DELETE CASCADE,
+  CONSTRAINT fk_clinic_ann_recip_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Super Admin advertisements shown in the Patient App dashboard carousel (insurance
+-- companies, clinics, pharmacies, ...). Visibility is computed live from is_active +
+-- starts_at/ends_at; push_* columns record the last "notify all patients" broadcast.
+CREATE TABLE IF NOT EXISTS advertisements (
+  id CHAR(36) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  description VARCHAR(500) NULL,
+  sponsor_name VARCHAR(150) NULL,
+  category ENUM('insurance','clinic','pharmacy','diagnostic','wellness','other') NOT NULL DEFAULT 'other',
+  placement ENUM('top','middle','bottom') NOT NULL DEFAULT 'top',
+  image_url VARCHAR(500) NOT NULL,
+  cta_label VARCHAR(40) NULL,
+  link_type ENUM('none','url','clinic','phone') NOT NULL DEFAULT 'none',
+  link_value VARCHAR(500) NULL,
+  starts_at DATETIME(3) NULL,
+  ends_at DATETIME(3) NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  sort_order INT NOT NULL DEFAULT 0,
+  push_sent_at DATETIME(3) NULL,
+  push_sent_count INT NOT NULL DEFAULT 0,
+  created_by CHAR(36) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_ads_live (is_active, sort_order, created_at),
+  CONSTRAINT fk_ads_created_by FOREIGN KEY (created_by) REFERENCES users(id)
 ) ENGINE=InnoDB;
 
 -- Clinic-issued patient documents (lab reports, prescriptions, other) — uploaded BY

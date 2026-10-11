@@ -1583,6 +1583,64 @@ export interface SuperAdminOfferChannels {
 export type OfferChannelPlan = "will_send" | "skipped_no_phone" | "skipped_no_email" | "disabled";
 export type OfferDeliveryStatus = "SENT" | "SKIPPED" | "FAILED";
 
+// ---------------------------------------------------------------------------
+// Super Admin — advertisements (Patient App dashboard carousel)
+// ---------------------------------------------------------------------------
+
+export type AdCategory = "insurance" | "clinic" | "pharmacy" | "diagnostic" | "wellness" | "other";
+export type AdLinkType = "none" | "url" | "clinic" | "phone";
+/** Dashboard area: top (under the greeting), middle (above categories), bottom (after categories). */
+export type AdPlacement = "top" | "middle" | "bottom";
+export type AdStatus = "live" | "scheduled" | "expired" | "inactive";
+
+export interface SuperAdminAdvertisement {
+  id: string;
+  title: string;
+  description: string | null;
+  sponsor_name: string | null;
+  category: AdCategory;
+  placement: AdPlacement;
+  image_url: string;
+  cta_label: string | null;
+  link_type: AdLinkType;
+  link_value: string | null;
+  linked_clinic_name: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  is_active: boolean;
+  sort_order: number;
+  status: AdStatus;
+  push_sent_at: string | null;
+  push_sent_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SuperAdminAdvertisementInput {
+  title: string;
+  description?: string | null;
+  sponsor_name?: string | null;
+  category: AdCategory;
+  placement: AdPlacement;
+  /** Cloudinary public id from advertisementImageGrant(). Required on create. */
+  image_public_id?: string;
+  cta_label?: string | null;
+  link_type: AdLinkType;
+  link_value?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface SuperAdminAdvertisementNotifyResponse {
+  message: string;
+  devices: number;
+  delivered: number;
+  advertisement: SuperAdminAdvertisement;
+}
+
 export interface SuperAdminOffer {
   id: string;
   title: string;
@@ -3382,6 +3440,41 @@ export const superAdminApi = {
 
   async cancelOffer(offerId: string): Promise<{ message: string; offer: SuperAdminOffer }> {
     return apiFetch(`/super-admin/offers/${offerId}/cancel`, { method: "POST" });
+  },
+
+  async advertisements(): Promise<{ items: SuperAdminAdvertisement[] }> {
+    return apiFetch<{ items: SuperAdminAdvertisement[] }>("/super-admin/advertisements");
+  },
+
+  async advertisementImageGrant(): Promise<PhotoUploadGrant> {
+    return apiFetch<PhotoUploadGrant>("/super-admin/advertisements/image/signature", { method: "POST" });
+  },
+
+  async createAdvertisement(
+    input: SuperAdminAdvertisementInput
+  ): Promise<{ message: string; advertisement: SuperAdminAdvertisement }> {
+    return apiFetch("/super-admin/advertisements", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  async updateAdvertisement(
+    adId: string,
+    input: Partial<SuperAdminAdvertisementInput>
+  ): Promise<{ message: string; advertisement: SuperAdminAdvertisement }> {
+    return apiFetch(`/super-admin/advertisements/${adId}`, { method: "PATCH", body: JSON.stringify(input) });
+  },
+
+  async deleteAdvertisement(adId: string): Promise<{ message: string }> {
+    return apiFetch(`/super-admin/advertisements/${adId}`, { method: "DELETE" });
+  },
+
+  async notifyAdvertisement(
+    adId: string,
+    input: { title?: string | null; body?: string | null } = {}
+  ): Promise<SuperAdminAdvertisementNotifyResponse> {
+    return apiFetch(`/super-admin/advertisements/${adId}/notify`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   },
 };
 

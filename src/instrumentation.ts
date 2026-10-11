@@ -1,7 +1,8 @@
 /**
  * Next.js instrumentation hook — runs once per server process start.
  * Starts the hourly subscription cron (expiry sweep + expiring warnings) and the
- * 15-minute overdue-appointment auto-cancel sweep. Guarded to the Node.js runtime only.
+ * 15-minute overdue-appointment auto-cancel sweep, and the 15-minute "new clinic near
+ * you" announcement sweep. Guarded to the Node.js runtime only.
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -16,6 +17,12 @@ export async function register(): Promise<void> {
     startAppointmentExpiryCron();
   } catch (err) {
     console.error("[instrumentation] Failed to start appointment expiry cron:", err);
+  }
+  try {
+    const { startClinicAnnouncementCron } = await import("@api/lib/clinic-announcements");
+    startClinicAnnouncementCron();
+  } catch (err) {
+    console.error("[instrumentation] Failed to start clinic announcement cron:", err);
   }
 }
 

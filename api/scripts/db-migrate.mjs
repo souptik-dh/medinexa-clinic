@@ -22,7 +22,46 @@ if (!url) {
 const schema = await readFile(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
 const conn = await createConnection({ uri: url, multipleStatements: true });
 try {
+  // Checked before schema.sql runs: on the run that first creates clinic_announcements,
+  // every clinic that already exists is marked as announced (see the seed further down)
+  // so shipping the feature doesn't notify patients about long-established clinics.
+  const [annTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinic_announcements'`,
+  );
+  const clinicAnnouncementsIsNew = Number(annTables[0].cnt) === 0;
+
   await conn.query(schema);
+
+  if (clinicAnnouncementsIsNew) {
+    const [seeded] = await conn.query(
+      `INSERT IGNORE INTO clinic_announcements (clinic_id, status, completed_at)
+       SELECT id, 'skipped_existing', UTC_TIMESTAMP(3) FROM clinics`,
+    );
+    console.log(`Applied migration: clinic_announcements (marked ${seeded.affectedRows} existing clinic(s) as already announced)`);
+  }
+
+  // advertisements first shipped with a single dashboard carousel (no placement).
+  const [adPlacementCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advertisements' AND COLUMN_NAME = 'placement'`,
+  );
+  if (Number(adPlacementCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE advertisements
+         ADD COLUMN placement ENUM('top','middle','bottom') NOT NULL DEFAULT 'top' AFTER category`,
+    );
+    console.log('Applied migration: advertisements.placement');
+  }
+
+  const [deviceLangCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = 'language'`,
+  );
+  if (Number(deviceLangCols[0].cnt) === 0) {
+    await conn.query(`ALTER TABLE device_tokens ADD COLUMN language ENUM('en','bn') NULL`);
+    console.log('Applied migration: device_tokens.language');
+  }
 
   const [cols] = await conn.query(
     `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS

@@ -9,6 +9,9 @@ import { newId } from "@api/lib/ids";
 const registerSchema = z.object({
   token: z.string().trim().min(1).max(255),
   platform: z.enum(["android", "ios"]),
+  // The app's display language, so pushes built server-side (e.g. "new clinic near
+  // you") arrive in the language the patient reads. Optional for older app builds.
+  language: z.enum(["en", "bn"]).optional(),
 });
 
 // A device token identifies one app install, not one user — the same phone can be
@@ -25,10 +28,11 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const app = auth.role === "patient" ? "patient" : "clinic";
 
   await pool.query(
-    `INSERT INTO device_tokens (id, user_id, token, platform, app)
-     VALUES (?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), platform = VALUES(platform), app = VALUES(app)`,
-    [newId(), auth.userId, body.token, body.platform, app],
+    `INSERT INTO device_tokens (id, user_id, token, platform, app, language)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), platform = VALUES(platform), app = VALUES(app),
+                             language = IFNULL(VALUES(language), language)`,
+    [newId(), auth.userId, body.token, body.platform, app, body.language ?? null],
   );
 
   return json({ registered: true }, 201);
