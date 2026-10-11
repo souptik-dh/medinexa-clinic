@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import LabTestPrecautionsList from "@/components/lab-tests/LabTestPrecautionsList";
+import PatientDocumentsModal from "@/components/patients/PatientDocumentsModal";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
@@ -73,6 +74,7 @@ export default function LabTestAppointmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showReceipts, setShowReceipts] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
 
   const fetchDetail = useCallback(() => {
     labTestAppointmentsApi
@@ -105,6 +107,12 @@ export default function LabTestAppointmentDetailPage() {
     can("lab_payments:collect");
   const canViewReceipts =
     detail?.status === "APPROVED" || detail?.status === "COMPLETED";
+  // The person the test is for (not the booking account) - documents belong to them.
+  const servicePatientId =
+    detail?.patient_details?.patient_id ?? detail?.patient?.id ?? detail?.patient_id ?? null;
+  const canOpenDocuments =
+    !!servicePatientId &&
+    (can("patient_documents:view") || can("patient_documents:upload"));
 
   return (
     <div>
@@ -242,6 +250,28 @@ export default function LabTestAppointmentDetailPage() {
               </div>
             )}
 
+            {canOpenDocuments && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <div>
+                  <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                    {t("patientDocuments.title")}
+                  </h6>
+                  {detail.prescription_required && !detail.prescription_id && (
+                    <p className="mt-1 text-xs text-warning-700 dark:text-warning-400">
+                      {t("bookLabTestModal.prescriptionRequiredNote")}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDocuments(true)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                >
+                  {t("patientDocuments.viewDocuments")}
+                </button>
+              </div>
+            )}
+
             {detail.payments && detail.payments.length > 0 && (
               <div className="border-t border-gray-100 pt-4 dark:border-gray-800">
                 <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">Payments</h6>
@@ -330,6 +360,22 @@ export default function LabTestAppointmentDetailPage() {
         kind="lab-test"
         appointmentId={id ?? detail?.id ?? null}
       />
+
+      {detail && servicePatientId && (
+        <PatientDocumentsModal
+          isOpen={showDocuments}
+          onClose={() => setShowDocuments(false)}
+          patientId={servicePatientId}
+          patientName={detail.patient?.name ?? detail.patient_details?.name ?? "—"}
+          patientPhone={detail.patient?.mobile ?? detail.patient_details?.phone ?? null}
+          branchId={detail.branch_id}
+          labTestAppointmentId={detail.id}
+          onUploaded={(doc) => {
+            // A prescription is now attached to this booking - refresh its list.
+            if (doc.document_type === "PRESCRIPTION") fetchDetail();
+          }}
+        />
+      )}
     </div>
   );
 }

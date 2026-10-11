@@ -115,12 +115,17 @@ const NOTIFICATION_TYPE_KEYS: Record<string, string> = {
   doctor_invited: "notificationTypes.doctorInvited",
   doctor_invite_accepted: "notificationTypes.doctorInviteAccepted",
   appointment_cancelled: "notificationTypes.appointmentCancelled",
+  appointment_rescheduled: "notificationTypes.appointmentRescheduled",
+  appointment_reminder: "notificationTypes.appointmentReminder",
+  staff_joined: "notificationTypes.staffJoined",
+  patient_document_uploaded: "notificationTypes.patientDocumentUploaded",
   lab_test_booked: "notificationTypes.labTestBooked",
   lab_test_approved: "notificationTypes.labTestApproved",
   lab_test_rejected: "notificationTypes.labTestRejected",
   lab_test_cancelled: "notificationTypes.labTestCancelled",
   lab_test_completed: "notificationTypes.labTestCompleted",
   lab_test_payment_success: "notificationTypes.labTestPaymentSuccess",
+  lab_test_reminder: "notificationTypes.labTestReminder",
   subscription_expiring: "notificationTypes.subscriptionExpiring",
   subscription_expired: "notificationTypes.subscriptionExpired",
   subscription_activated: "notificationTypes.subscriptionActivated",
@@ -137,13 +142,37 @@ export const notificationTypeLabel = (type: string, t?: Translator): string => {
     .join(" ");
 };
 
-export const notificationLink = (type: NotificationType): string => {
+/**
+ * Where clicking a notification goes. `payload` is optional for older callers;
+ * when given, lab notifications deep-link to that lab appointment's detail page
+ * and any other type carrying an `appointment_id` falls back to /appointments.
+ */
+export const notificationLink = (
+  type: NotificationType,
+  payload?: Record<string, unknown> | null,
+): string => {
+  const appointmentId =
+    typeof payload?.appointment_id === "string" && payload.appointment_id
+      ? payload.appointment_id
+      : null;
+  if (type.startsWith("lab_test_")) {
+    return appointmentId
+      ? `/lab-test-appointments/${encodeURIComponent(appointmentId)}`
+      : "/lab-test-appointments";
+  }
+  if (type.startsWith("subscription_")) return "/billing";
   switch (type) {
     case "new_booking":
     case "booking_confirmed":
     case "appointment_cancelled":
+    case "appointment_rescheduled":
+    case "appointment_reminder":
     case "consultation_completed":
       return "/appointments";
+    case "staff_joined":
+      return "/staff";
+    case "patient_document_uploaded":
+      return "/patients";
     case "payment_received":
       return "/ledger";
     case "prescription_ready":
@@ -152,16 +181,8 @@ export const notificationLink = (type: NotificationType): string => {
       return "/doctors/invite";
     case "doctor_invite_accepted":
       return "/doctors";
-    case "lab_test_booked":
-    case "lab_test_approved":
-    case "lab_test_rejected":
-    case "lab_test_cancelled":
-    case "lab_test_completed":
-      return "/lab-test-appointments";
-    case "subscription_offer":
-      return "/billing";
     default:
-      return "/dashboard";
+      return appointmentId ? "/appointments" : "/dashboard";
   }
 };
 

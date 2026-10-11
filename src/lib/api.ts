@@ -420,6 +420,8 @@ export interface Clinic {
   post_office?: string | null;
   branch_count?: number;
   owner_id?: string;
+  // Cover/avatar image (Cloudinary); null until the owner uploads one.
+  photo_url?: string | null;
   trade_license_number?: string | null;
   trade_license_url?: string | null;
   trade_license_validated?: boolean;
@@ -559,6 +561,7 @@ export interface StaffMember {
   name: string;
   email?: string | null;
   phone: string;
+  photo_url?: string | null;
   added_by: string;
   permissions?: string[];
   created_at: string;
@@ -699,6 +702,34 @@ export interface BranchDoctor {
 export interface BranchDoctorsResponse {
   total: number;
   items: BranchDoctor[];
+}
+
+// One row of GET /clinics/:clinicId/doctor-availability — a doctor scheduled at
+// one branch on `date`.
+export interface ClinicDoctorAvailability {
+  doctor_id: string;
+  name: string;
+  degree: string | null;
+  photo_url: string | null;
+  specialization: string | null;
+  branch_id: string;
+  branch_name: string;
+  date: string;
+  day: string;
+  fee_amount: number;
+  currency: string;
+  status: string;
+  is_bookable: boolean;
+  total_slots: number;
+  available_slots_count: number;
+  available_slots: { time: string; capacity: number; remaining: number }[];
+  appointments_count: number;
+  appointments_by_status: Record<string, number>;
+}
+
+export interface ClinicDoctorAvailabilityResponse {
+  clinic_id: string;
+  doctors: ClinicDoctorAvailability[];
 }
 
 export interface DoctorAssignment {
@@ -843,6 +874,7 @@ export interface AppointmentPatientDetails {
   age: number | null;
   gender: string | null;
   patient_id?: string | null;
+  photo_url?: string | null;
 }
 
 export interface Appointment {
@@ -858,6 +890,8 @@ export interface Appointment {
   fee_amount: number;
   currency: string;
   payment_method: string | null;
+  // When the payment was collected (latest payments row); null if none recorded.
+  paid_at?: string | null;
   created_at: string;
   updated_at: string;
   doctor_name?: string;
@@ -936,18 +970,23 @@ export type NotificationType =
   | "prescription_ready"
   | "doctor_invited"
   | "doctor_invite_accepted"
+  | "staff_joined"
   | "appointment_cancelled"
+  | "appointment_rescheduled"
+  | "appointment_reminder"
   | "lab_test_booked"
   | "lab_test_approved"
   | "lab_test_rejected"
   | "lab_test_cancelled"
   | "lab_test_completed"
   | "lab_test_payment_success"
+  | "lab_test_reminder"
   | "subscription_expiring"
   | "subscription_expired"
   | "subscription_activated"
   | "subscription_deactivated"
-  | "subscription_offer";
+  | "subscription_offer"
+  | "patient_document_uploaded";
 
 // ---------------------------------------------------------------------------
 // Lab Tests
@@ -1838,6 +1877,18 @@ export const authApi = {
     });
   },
 
+  // Alternative to the OTP flow for a staff member who has set a password.
+  async loginBranchStaffWithPassword(input: {
+    phone: string;
+    password: string;
+  }): Promise<ClinicOwnerAuthResponse> {
+    return apiFetch<ClinicOwnerAuthResponse>("/auth/branch-staff/login-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+      skipAuth: true,
+    });
+  },
+
   // ── Doctor: accept invite (phone + OTP) ──────────────────────────────
   async acceptDoctorInvite(input: {
     phone: string;
@@ -2039,6 +2090,17 @@ export const clinicsApi = {
   async list(params: ClinicListParams = {}): Promise<Paginated<Clinic>> {
     return apiFetch<Paginated<Clinic>>(
       `/clinics${query({ search: params.search, limit: params.limit, cursor: params.cursor })}`
+    );
+  },
+
+  // Doctors scheduled on `date` (default: tomorrow in each branch's timezone),
+  // one row per doctor per branch, with open slots and booked-patient counts.
+  async doctorAvailability(
+    clinicId: string,
+    params: { date?: string } = {}
+  ): Promise<ClinicDoctorAvailabilityResponse> {
+    return apiFetch<ClinicDoctorAvailabilityResponse>(
+      `/clinics/${clinicId}/doctor-availability${query({ date: params.date })}`
     );
   },
 
@@ -2315,6 +2377,29 @@ export const staffApi = {
   async remove(branchId: string, staffId: string): Promise<void> {
     return apiFetch<void>(`/branches/${branchId}/staff/${staffId}`, {
       method: "DELETE",
+    });
+  },
+
+  // Sets a staff member's profile photo on their behalf (owner / staff:manage).
+  async uploadPhoto(branchId: string, staffId: string, file: File): Promise<{ photo_url: string }> {
+    const base = `/branches/${branchId}/staff/${staffId}/photo`;
+    const grant = await apiFetch<PhotoUploadGrant>(`${base}/signature`, { method: "POST" });
+    await uploadFileToCloudinary(grant, file);
+    return apiFetch<{ photo_url: string }>(base, {
+      method: "POST",
+      body: JSON.stringify({ public_id: grant.public_id }),
+    });
+  },
+
+  // Edits name / phone (OTP login number) / email / permissions — any subset.
+  async update(
+    branchId: string,
+    staffId: string,
+    input: { name?: string; phone?: string; email?: string | null; permissions?: BranchStaffPermission[] }
+  ): Promise<StaffMember> {
+    return apiFetch<StaffMember>(`/branches/${branchId}/staff/${staffId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
     });
   },
 
@@ -2644,8 +2729,13 @@ export const reviewsApi = {
 export interface AppointmentListParams {
   clinic_id?: string;
   status?: AppointmentStatus;
+  doctor_id?: string;
+  branch_id?: string;
   date_from?: string;
   date_to?: string;
+  // ISO timestamps: payment collected in [paid_from, paid_to).
+  paid_from?: string;
+  paid_to?: string;
   limit?: number;
   cursor?: string;
 }
@@ -2664,12 +2754,33 @@ export const appointmentsApi = {
       `/appointments${query({
         clinic_id: params.clinic_id,
         status: params.status,
+        doctor_id: params.doctor_id,
+        branch_id: params.branch_id,
         date_from: params.date_from,
         date_to: params.date_to,
+        paid_from: params.paid_from,
+        paid_to: params.paid_to,
         limit: params.limit,
         cursor: params.cursor,
       })}`
     );
+  },
+
+  // Follows next_cursor (100 per page, the API max) up to `maxPages` pages, for
+  // dashboards/reports that aggregate a whole window rather than show one page.
+  async listAll(
+    params: Omit<AppointmentListParams, "limit" | "cursor"> = {},
+    maxPages = 30
+  ): Promise<Appointment[]> {
+    const all: Appointment[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const res = await appointmentsApi.list({ ...params, limit: 100, cursor });
+      all.push(...res.items);
+      if (!res.next_cursor) break;
+      cursor = res.next_cursor;
+    }
+    return all;
   },
 
   async get(id: string): Promise<AppointmentDetail> {
@@ -3075,6 +3186,9 @@ export interface PatientDocumentUploadInput {
   // clinic_owner only — which of their branches issued this; ignored (and
   // unnecessary) for branch_staff, who are always pinned to their own branch.
   branch_id?: string;
+  // PRESCRIPTION only — attaches the document to this lab booking as its
+  // prescription (the booking's branch must match branch_id).
+  lab_test_appointment_id?: string;
   file: File;
 }
 
@@ -3093,6 +3207,9 @@ export const patientDocumentsApi = {
     form.append("title", input.title);
     if (input.description) form.append("description", input.description);
     if (input.branch_id) form.append("branch_id", input.branch_id);
+    if (input.lab_test_appointment_id) {
+      form.append("lab_test_appointment_id", input.lab_test_appointment_id);
+    }
     form.append("file", input.file);
     return apiFetch<PatientDocument>("/patient-documents/upload", {
       method: "POST",
@@ -3158,6 +3275,120 @@ export const ledgerApi = {
     return apiFetch<{ items: LedgerEntry[] }>(
       `/clinics/${clinicId}/ledger${query({ month })}`
     );
+  },
+
+  // Individual collected payments: every paid/completed doctor appointment in range,
+  // all pages walked via cursor (one stream per status). Capped so a runaway cursor
+  // can't loop forever.
+  async listPayments(params: {
+    clinic_id: string;
+    date_from?: string;
+    date_to?: string;
+  }): Promise<Appointment[]> {
+    const MAX_PAGES = 50;
+    const walk = async (status: AppointmentStatus): Promise<Appointment[]> => {
+      const out: Appointment[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const res = await appointmentsApi.list({ ...params, status, limit: 100, cursor });
+        out.push(...res.items);
+        if (!res.next_cursor) break;
+        cursor = res.next_cursor;
+      }
+      return out;
+    };
+    const [paid, completed] = await Promise.all([walk("paid"), walk("completed")]);
+    return [...paid, ...completed].sort(
+      (a, b) =>
+        `${b.scheduled_date} ${b.scheduled_time}`.localeCompare(`${a.scheduled_date} ${a.scheduled_time}`) ||
+        b.id.localeCompare(a.id)
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Clinic photo (cover/avatar) — signed Cloudinary upload, owner only.
+// ---------------------------------------------------------------------------
+
+export const clinicPhotoApi = {
+  async upload(clinicId: string, file: File): Promise<{ photo_url: string }> {
+    const base = `/clinics/${clinicId}/photo`;
+    const grant = await apiFetch<PhotoUploadGrant>(`${base}/signature`, { method: "POST" });
+    await uploadFileToCloudinary(grant, file);
+    return apiFetch<{ photo_url: string }>(base, {
+      method: "POST",
+      body: JSON.stringify({ public_id: grant.public_id }),
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Clinic prescription files — GET /clinic/prescriptions (clinic_owner, branch_staff).
+// Merges staff uploads, lab-booking attachments and patients' own uploads.
+// ---------------------------------------------------------------------------
+
+export type ClinicPrescriptionSource = "clinic_upload" | "lab_booking" | "patient_upload";
+
+export interface ClinicPrescription {
+  id: string;
+  source: ClinicPrescriptionSource;
+  title: string | null;
+  description: string | null;
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  // Freshly signed on every read — don't persist.
+  file_url: string;
+  uploaded_at: string;
+  uploaded_by_name: string | null;
+  patient: { id: string; name: string; photo_url: string | null };
+  branch: { id: string; name: string } | null;
+  lab_appointment: {
+    id: string;
+    appointment_number: string;
+    appointment_date: string;
+    status: string;
+    test_name: string;
+  } | null;
+}
+
+export interface ClinicPrescriptionListResponse {
+  items: ClinicPrescription[];
+  counts: Record<ClinicPrescriptionSource | "total", number>;
+  allowed_sources: ClinicPrescriptionSource[];
+  next_cursor: string | null;
+}
+
+export const clinicPrescriptionsApi = {
+  async list(params: {
+    source?: ClinicPrescriptionSource[];
+    q?: string;
+    clinic_id?: string;
+    branch_id?: string;
+    limit?: number;
+    cursor?: string;
+  } = {}): Promise<ClinicPrescriptionListResponse> {
+    return apiFetch<ClinicPrescriptionListResponse>(
+      `/clinic/prescriptions${query({
+        source: params.source?.length ? params.source.join(",") : undefined,
+        q: params.q,
+        clinic_id: params.clinic_id,
+        branch_id: params.branch_id,
+        limit: params.limit,
+        cursor: params.cursor,
+      })}`
+    );
+  },
+
+  // Staff uploads go through the authenticated patient-document download; the
+  // others are already-signed file URLs fetched directly.
+  async download(item: ClinicPrescription): Promise<Blob> {
+    if (item.source === "clinic_upload") {
+      return fetchPdfBlob(`/patient-documents/${item.id}/download`);
+    }
+    const res = await fetch(item.file_url);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    return res.blob();
   },
 };
 
@@ -3732,6 +3963,10 @@ export interface LabTestAppointmentCreateInput {
   patient_notes?: string;
   // Free-text name of the referring doctor (staff-recorded, optional).
   referring_doctor_name?: string;
+  // HOME service mode only - home_address is required for home collection.
+  home_address?: string;
+  home_contact_phone?: string;
+  home_notes?: string;
   patient_details: LabTestAppointmentPatientDetailsInput;
 }
 

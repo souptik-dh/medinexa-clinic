@@ -4,6 +4,7 @@ import OtpInput from "@/components/form/input/OtpInput";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +24,7 @@ export default function SignInForm() {
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("otp");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function SignInForm() {
     verifyDoctorOtp,
     staffLogin,
     verifyStaffOtp,
+    loginStaffWithPassword,
   } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -112,7 +115,11 @@ export default function SignInForm() {
     }
     await runSubmit(async () => {
       try {
-        await loginOwnerWithPassword(phone, password);
+        if (mode === "staff") {
+          await loginStaffWithPassword(phone, password);
+        } else {
+          await loginOwnerWithPassword(phone, password);
+        }
         router.push("/dashboard");
       } catch (err) {
         setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
@@ -165,7 +172,9 @@ export default function SignInForm() {
                   ? t("auth.signInClinicOwner")
                   : mode === "doctor"
                     ? t("auth.signInDoctor")
-                    : t("auth.signInStaff")}
+                    : loginMethod === "password"
+                      ? t("auth.signInStaffPassword")
+                      : t("auth.signInStaff")}
               </p>
           </div>
 
@@ -201,7 +210,7 @@ export default function SignInForm() {
             */}
           </div>
 
-          {mode === "owner" && loginMethod === "password" ? (
+          {mode !== "doctor" && loginMethod === "password" ? (
             <form onSubmit={handlePasswordSubmit} className="space-y-6">
               <div>
                 <Label>
@@ -234,16 +243,33 @@ export default function SignInForm() {
                 <Label>
                   {t("auth.password")} <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  type="password"
-                  placeholder={t("auth.enterPasswordPlaceholder")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => touch("password")}
-                  error={showError("password", !password.trim())}
-                  hint={showError("password", !password.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t("auth.enterPasswordPlaceholder")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => touch("password")}
+                    error={showError("password", !password.trim())}
+                    hint={showError("password", !password.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
+                    className="pr-12"
+                    required
+                  />
+                  {/* Pinned to the input's own height (h-11) so a validation hint below doesn't shift it. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute right-4 top-[22px] z-30 -translate-y-1/2 cursor-pointer"
+                  >
+                    {showPassword ? (
+                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+                    ) : (
+                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+                    )}
+                  </button>
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -310,7 +336,7 @@ export default function SignInForm() {
                   {submitting ? t("auth.sendingOtp") : t("auth.sendOtp")}
                 </Button>
               </div>
-              {mode === "owner" && (
+              {mode !== "doctor" && (
                 <div className="flex items-center justify-between">
                   <button
                     type="button"

@@ -40,6 +40,13 @@ interface PatientDocumentsModalProps {
   isNewPatient?: boolean;
   firstVisitDate?: string | null;
   lastVisitDate?: string | null;
+  // Opened from a lab booking: a PRESCRIPTION uploaded here is attached to this
+  // booking (lab_test_appointment_id) as its prescription. branchId must then be
+  // the booking's branch.
+  labTestAppointmentId?: string | null;
+  // Called after a successful upload (e.g. so the lab booking page can refresh
+  // its prescriptions list).
+  onUploaded?: (doc: PatientDocument) => void;
 }
 
 type Tab = "overview" | "documents";
@@ -72,6 +79,8 @@ export default function PatientDocumentsModal({
   isNewPatient,
   firstVisitDate,
   lastVisitDate,
+  labTestAppointmentId,
+  onUploaded,
 }: PatientDocumentsModalProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -159,14 +168,18 @@ export default function PatientDocumentsModal({
     }
     await runUpload(async () => {
       try {
-        await patientDocumentsApi.upload({
+        // Only a prescription can be attached to a lab booking (server-enforced).
+        const linkToLabBooking = !!labTestAppointmentId && uploadType === "PRESCRIPTION";
+        const doc = await patientDocumentsApi.upload({
           patient_id: patientId,
           document_type: uploadType,
           title: uploadTitle.trim(),
           description: uploadDescription.trim() || undefined,
           branch_id: isOwner ? branchId ?? undefined : undefined,
+          lab_test_appointment_id: linkToLabBooking ? labTestAppointmentId ?? undefined : undefined,
           file: uploadFile,
         });
+        onUploaded?.(doc);
         toast.success(t("patientDocuments.uploadSuccess"));
         resetUploadForm();
         setShowUploadForm(false);
@@ -430,6 +443,11 @@ export default function PatientDocumentsModal({
               <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
                 {t("patientDocuments.uploadDocument")}
               </h6>
+              {labTestAppointmentId && uploadType === "PRESCRIPTION" && (
+                <p className="rounded-lg border border-brand-500/20 bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:bg-brand-500/10 dark:text-brand-400">
+                  {t("patientDocuments.prescriptionLinksToLabBooking")}
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">

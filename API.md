@@ -1924,6 +1924,29 @@ Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Full replace —
 
 **Errors:** `404 STAFF_NOT_FOUND`, `400 VALIDATION_ERROR` (unknown key).
 
+### PATCH /branches/:id/staff/:staffId
+
+Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Edits a staff member — any subset of the fields below in one request (at least one). Omitted fields are unchanged.
+
+**Request body**
+
+```json
+{
+  "name": "Riya Sen",
+  "phone": "9876543210",
+  "email": "riya@clinic.com",
+  "permissions": ["appointments:confirm", "appointments:payment", "patients:view"]
+}
+```
+
+- `phone` — the staff member's OTP login number (normalized to `+91XXXXXXXXXX`). Changing it marks the number unverified until they sign in with it.
+- `email` — `""` or `null` clears it.
+- `permissions` — full replace, same rules as `PATCH …/permissions`.
+
+**Response `200`** — the staff member, same shape as `GET /branches/:id/staff` items.
+
+**Errors:** `404 STAFF_NOT_FOUND`, `409 PHONE_ALREADY_REGISTERED` (number used by another account), `400 VALIDATION_ERROR` (bad phone/email, unknown key or permission, empty body).
+
 ### DELETE /branches/:id/staff/:staffId
 
 Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Hard-deletes the staff membership row.

@@ -28,6 +28,10 @@ import {
   formatDateTime,
 } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAuth } from "@/context/AuthContext";
+import ClinicPrescriptionFilesSection from "@/components/prescriptions/ClinicPrescriptionFilesSection";
+
+type PrescriptionsTab = "files" | "appointments";
 
 const STATUS_FILTERS: (AppointmentStatus | "")[] = [
   "",
@@ -39,6 +43,41 @@ const STATUS_FILTERS: (AppointmentStatus | "")[] = [
 ];
 
 export default function PrescriptionsPanel() {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  // GET /clinic/prescriptions is limited to clinic owners and branch staff.
+  const canViewFiles = user?.role === "clinic_owner" || user?.role === "branch_staff";
+  const [tab, setTab] = useState<PrescriptionsTab>("files");
+  const activeTab: PrescriptionsTab = canViewFiles ? tab : "appointments";
+
+  return (
+    <div>
+      {canViewFiles && (
+        <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900" role="tablist">
+          {(["files", "appointments"] as PrescriptionsTab[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === key}
+              onClick={() => setTab(key)}
+              className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                activeTab === key
+                  ? "bg-white text-gray-900 shadow-theme-xs dark:bg-gray-800 dark:text-white"
+                  : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+              }`}
+            >
+              {key === "files" ? t("prescriptions.tabFiles") : t("prescriptions.tabAppointments")}
+            </button>
+          ))}
+        </div>
+      )}
+      {activeTab === "files" ? <ClinicPrescriptionFilesSection /> : <AppointmentPrescriptions />}
+    </div>
+  );
+}
+
+function AppointmentPrescriptions() {
   const { t } = useTranslation();
   const [items, setItems] = useState<Appointment[]>([]);
   const [status, setStatus] = useState<AppointmentStatus | "">("");

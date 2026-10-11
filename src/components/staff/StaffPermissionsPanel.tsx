@@ -6,9 +6,10 @@ import Checkbox from "@/components/form/input/Checkbox";
 import { useAuth } from "@/context/AuthContext";
 import { StaffMember, staffApi } from "@/lib/api";
 import {
+  ASSIGNABLE_STAFF_PERMISSION_META,
   BRANCH_STAFF_PERMISSION_MODULES,
-  BRANCH_STAFF_PERMISSION_META,
   BranchStaffPermission,
+  isAssignableStaffPermission,
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
@@ -80,7 +81,7 @@ export default function StaffPermissionsPanel() {
     setLoadFailed(false);
     await runSave(async () => {
       try {
-        await staffApi.setPermissions(branchId, staffId, permValues);
+        await staffApi.setPermissions(branchId, staffId, permValues.filter(isAssignableStaffPermission));
         toast.success(t("staffPermissions.permissionsUpdatedSuccess"));
         router.push("/staff");
       } catch (err) {
@@ -128,7 +129,7 @@ export default function StaffPermissionsPanel() {
                 {mod.label}
               </h6>
               <div className="space-y-3">
-                {BRANCH_STAFF_PERMISSION_META.filter(
+                {ASSIGNABLE_STAFF_PERMISSION_META.filter(
                   (m) => m.module === mod.module
                 ).map((meta) => (
                   <div

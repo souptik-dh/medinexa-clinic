@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -22,6 +22,7 @@ import {
   ClinicLicenseType,
   appointmentsApi,
   branchesApi,
+  clinicPhotoApi,
   clinicsApi,
   doctorsApi,
   labTestsApi,
@@ -70,6 +71,10 @@ export default function ClinicOverviewPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { pending: isDeleting, run: runDelete } = useAsyncAction();
+  // Clinic photo upload — the backend only lets the owning clinic_owner change it.
+  const canEditPhoto = user?.role === "clinic_owner";
+  const { pending: uploadingPhoto, run: runPhotoUpload } = useAsyncAction();
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   // Mirrors the embedded ClinicForm's save state so the drawer can't be
@@ -173,6 +178,28 @@ export default function ClinicOverviewPanel() {
     setClinic((prev) => (prev ? { ...prev, [field]: url } : prev));
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !clinic) return;
+    try {
+      if (!file.type.startsWith("image/")) {
+        toast.error(t("clinicOverview.invalidImage"));
+        return;
+      }
+      await runPhotoUpload(async () => {
+        try {
+          const res = await clinicPhotoApi.upload(clinic.id, file);
+          setClinic((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
+          toast.success(t("clinicOverview.photoUpdated"));
+        } catch (err) {
+          toast.error(getErrorMessage(err, t("clinicOverview.failedToUploadPhoto")));
+        }
+      });
+    } finally {
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
   const confirmDeleteClinic = async () => {
     if (!clinic) return;
     await runDelete(async () => {
@@ -244,7 +271,19 @@ export default function ClinicOverviewPanel() {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+            <div className="flex shrink-0 flex-col items-center gap-1.5">
+            {clinic.photo_url ? (
+              <img
+                src={clinic.photo_url}
+                alt={t("clinicOverview.photoAlt", { name: clinic.name })}
+                className={`h-20 w-20 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-800 ${
+                  uploadingPhoto ? "opacity-50" : ""
+                }`}
+              />
+            ) : (
+            <div className={`flex shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400 ${
+              canEditPhoto ? "h-20 w-20" : "h-12 w-12"
+            } ${uploadingPhoto ? "opacity-50" : ""}`}>
               <svg
                 className="h-6 w-6"
                 fill="none"
@@ -258,6 +297,31 @@ export default function ClinicOverviewPanel() {
                   d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3H21m-3.75 3H21"
                 />
               </svg>
+            </div>
+            )}
+            {canEditPhoto && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="text-theme-xs font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {uploadingPhoto
+                    ? t("clinicOverview.uploadingPhoto")
+                    : clinic.photo_url
+                      ? t("clinicOverview.changePhoto")
+                      : t("clinicOverview.uploadPhoto")}
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoUpload}
+                />
+              </>
+            )}
             </div>
             <div>
               <div className="flex items-center gap-3">

@@ -159,7 +159,7 @@ export default function NotificationsPanel() {
             {items.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={notificationLink(item.type)}
+                  href={notificationLink(item.type, item.payload)}
                   onClick={() => markRead(item.id)}
                   className={`flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-gray-50 dark:hover:bg-white/5 ${
                     !item.read_at ? "bg-brand-50 dark:bg-brand-500/10" : ""

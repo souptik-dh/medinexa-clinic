@@ -177,7 +177,7 @@ export default function NotificationDropdown() {
             {items.map((item) => (
               <li key={item.id}>
                 <Link
-                  href={notificationLink(item.type)}
+                  href={notificationLink(item.type, item.payload)}
                   onClick={() => {
                     handleMarkRead(item.id);
                     closeDropdown();

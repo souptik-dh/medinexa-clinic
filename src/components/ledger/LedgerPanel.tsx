@@ -13,11 +13,18 @@ import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { SelectSkeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useLatestRequest } from "@/hooks/useAsyncAction";
+import LedgerPaymentsSection from "@/components/ledger/LedgerPaymentsSection";
+
+type LedgerTab = "payments" | "monthly";
 
 export default function LedgerPanel() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  // The per-payment view reads GET /appointments, which sys_admin can't call.
+  const canViewPayments = user?.role === "clinic_owner";
+  const [tab, setTab] = useState<LedgerTab>(canViewPayments ? "payments" : "monthly");
+  const activeTab: LedgerTab = canViewPayments ? tab : "monthly";
 
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [clinicsLoading, setClinicsLoading] = useState(isOwner);
@@ -89,9 +96,31 @@ export default function LedgerPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          {t("ledger.title")}
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            {t("ledger.title")}
+          </h3>
+          {canViewPayments && (
+            <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900" role="tablist">
+              {(["payments", "monthly"] as LedgerTab[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === key}
+                  onClick={() => setTab(key)}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                    activeTab === key
+                      ? "bg-white text-gray-900 shadow-theme-xs dark:bg-gray-800 dark:text-white"
+                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  {key === "payments" ? t("ledger.tabPayments") : t("ledger.tabMonthly")}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-64">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -114,6 +143,7 @@ export default function LedgerPanel() {
             </select>
             )}
           </div>
+          {activeTab === "monthly" && (
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               {t("ledger.month")}
@@ -125,7 +155,8 @@ export default function LedgerPanel() {
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </div>
-          {month && (
+          )}
+          {activeTab === "monthly" && month && (
             <button
               type="button"
               onClick={() => setMonth("")}
@@ -137,6 +168,16 @@ export default function LedgerPanel() {
         </div>
       </div>
 
+      {activeTab === "payments" ? (
+        clinicId ? (
+          <LedgerPaymentsSection clinicId={clinicId} />
+        ) : !clinicsLoading ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+            {t("ledger.selectClinicHint")}
+          </div>
+        ) : null
+      ) : (
+      <>
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
@@ -230,6 +271,8 @@ export default function LedgerPanel() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

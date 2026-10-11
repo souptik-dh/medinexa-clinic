@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { TableRowsSkeleton, DetailSkeleton, SelectSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
+import DoctorFilterSelect from "@/components/appointments/DoctorFilterSelect";
 import BookLabTestModal from "@/components/lab-tests/BookLabTestModal";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
@@ -84,6 +85,7 @@ export default function AllAppointmentsPanel() {
   // Doctor appointments state
   const [docItems, setDocItems] = useState<Appointment[]>([]);
   const [docStatus, setDocStatus] = useState<AppointmentStatus | "">("");
+  const [docDoctorId, setDocDoctorId] = useState("");
   const [docDateFrom, setDocDateFrom] = useState("");
   const [docDateTo, setDocDateTo] = useState("");
   const [docLoading, setDocLoading] = useState(true);
@@ -114,7 +116,7 @@ export default function AllAppointmentsPanel() {
     setPage: setDocPage,
     totalPages: docTotalPages,
     pageItems: docPageItems,
-  } = usePagination(docItems, { resetKey: `${docStatus}-${docDateFrom}-${docDateTo}` });
+  } = usePagination(docItems, { resetKey: `${docStatus}-${docDoctorId}-${docDateFrom}-${docDateTo}` });
 
   // Lab appointments state
   const [labItems, setLabItems] = useState<LabTestAppointment[]>([]);
@@ -162,6 +164,7 @@ export default function AllAppointmentsPanel() {
       const res = await appointmentsApi.list({
         clinic_id: clinicId,
         status: docStatus || undefined,
+        doctor_id: docDoctorId || undefined,
         date_from: docDateFrom || undefined,
         date_to: docDateTo || undefined,
         limit: 50,
@@ -174,7 +177,7 @@ export default function AllAppointmentsPanel() {
     } finally {
       if (isLatestDoc(token)) setDocLoading(false);
     }
-  }, [clinicId, docStatus, docDateFrom, docDateTo, t, beginDoc, isLatestDoc]);
+  }, [clinicId, docStatus, docDoctorId, docDateFrom, docDateTo, t, beginDoc, isLatestDoc]);
 
   useEffect(() => {
     if (activeTab === "doctor") loadDoctor();
@@ -431,6 +434,11 @@ export default function AllAppointmentsPanel() {
                 ))}
               </select>
             </FilterField>
+            {clinicId && (
+              <FilterField label={t("dashboard.doctor")}>
+                <DoctorFilterSelect clinicId={clinicId} value={docDoctorId} onChange={setDocDoctorId} />
+              </FilterField>
+            )}
             <FilterField label={t("appointments.from")}>
               <input
                 type="date"

@@ -101,9 +101,11 @@ export default function ReportsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await appointmentsApi.list({ clinic_id: clinicId, limit: 200 });
+      // Every page, not just the first: the API caps a page at 100, and the
+      // period tabs/KPIs need the whole history to be right.
+      const items = await appointmentsApi.listAll({ clinic_id: clinicId });
       if (!isLatest(token)) return;
-      setAll(res.items);
+      setAll(items);
     } catch (err) {
       if (!isLatest(token)) return;
       setAll([]);
@@ -154,15 +156,29 @@ export default function ReportsPanel() {
     const cancelled = scoped.filter((a) => a.status === "cancelled").length;
     const paid = scoped.filter((a) => a.status === "paid").length;
     const paidVisits = completed + paid;
+    const pending = scoped.filter((a) => a.status === "pending").length;
+    // Average bookings per day across the period (inclusive of both ends);
+    // null for "all time", which has no fixed span.
+    let perDay: string | null = null;
+    if (dateRange.from) {
+      const [fy, fm, fd] = dateRange.from.split("-").map(Number);
+      const [ty, tm, td] = dateRange.to.split("-").map(Number);
+      const days =
+        Math.round((new Date(ty, tm - 1, td).getTime() - new Date(fy, fm - 1, fd).getTime()) / 86_400_000) + 1;
+      const avg = total / Math.max(days, 1);
+      perDay = avg >= 10 ? String(Math.round(avg)) : avg.toFixed(1).replace(/\.0$/, "");
+    }
     return {
       total,
+      pending,
+      perDay,
       revenue,
       completed,
       cancelled,
       completionRate: total ? Math.round((completed / total) * 100) : 0,
       avgPerVisit: paidVisits ? Math.round(revenue / paidVisits) : 0,
     };
-  }, [scoped]);
+  }, [scoped, dateRange]);
 
   const statusRows = useMemo(
     () =>
@@ -272,8 +288,8 @@ export default function ReportsPanel() {
           {t("reports.selectClinicHint")}
         </div>
       ) : showSkeleton ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
               className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]"
@@ -289,14 +305,28 @@ export default function ReportsPanel() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label={t("reports.totalAppointments")} value={String(stats.total)} />
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <StatCard
+              label={t("reports.totalAppointments")}
+              value={String(stats.total)}
+              hint={t("reports.byBookingDate")}
+            />
             <StatCard label={t("reports.revenue")} value={formatCurrency(stats.revenue)} />
             <StatCard
               label={t("reports.completionRate")}
               value={`${stats.completionRate}%`}
             />
             <StatCard label={t("reports.avgPerVisit")} value={formatCurrency(stats.avgPerVisit)} />
+            <StatCard
+              label={t("reports.perDayAverage")}
+              value={stats.perDay ?? "—"}
+              hint={stats.perDay === null ? t("reports.perDayAllTime") : t(PERIOD_KEYS[period])}
+            />
+            <StatCard
+              label={t("status.pending")}
+              value={String(stats.pending)}
+              hint={t(stats.pending > 0 ? "reports.awaitingConfirmation" : "reports.nothingPending")}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -370,11 +400,12 @@ export default function ReportsPanel() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
       <p className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-gray-800 dark:text-white/90">{value}</p>
+      {hint && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
     </div>
   );
 }

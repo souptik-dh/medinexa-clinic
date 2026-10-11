@@ -17,6 +17,7 @@ import { useAuth } from "@/context/AuthContext";
 import { TableRowsSkeleton, DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import BookAppointmentModal from "@/components/appointments/BookAppointmentModal";
+import DoctorFilterSelect from "@/components/appointments/DoctorFilterSelect";
 import ReceiptsModal from "@/components/receipts/ReceiptsModal";
 import {
   Appointment,
@@ -51,9 +52,16 @@ const STATUS_FILTERS: (AppointmentStatus | "")[] = [
 
 export default function AppointmentsPanel() {
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, user, clinic, staffBranch } = useAuth();
+  // Doctor filter scope: owners pick from the whole clinic, staff from their branch.
+  const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  const doctorClinicId = isOwner ? clinic?.id ?? null : null;
+  const doctorBranchId =
+    user?.role === "branch_staff" ? staffBranch?.id ?? user.branch_id ?? null : null;
+  const showDoctorFilter = !!doctorClinicId || !!doctorBranchId;
   const [items, setItems] = useState<Appointment[]>([]);
   const [status, setStatus] = useState<AppointmentStatus | "">("");
+  const [doctorId, setDoctorId] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
@@ -85,7 +93,7 @@ export default function AppointmentsPanel() {
 
   const { isOpen, openModal, closeModal } = useModal();
   const { page, setPage, totalPages, pageItems } = usePagination(items, {
-    resetKey: `${status}-${dateFrom}-${dateTo}`,
+    resetKey: `${status}-${doctorId}-${dateFrom}-${dateTo}`,
   });
 
   // `silent` refreshes after a mutation without flashing the table skeleton.
@@ -100,6 +108,7 @@ export default function AppointmentsPanel() {
     try {
       const res = await appointmentsApi.list({
         status: status || undefined,
+        doctor_id: doctorId || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         limit: 50,
@@ -112,7 +121,7 @@ export default function AppointmentsPanel() {
     } finally {
       if (isLatest(token)) setLoading(false);
     }
-  }, [status, dateFrom, dateTo, t, begin, isLatest]);
+  }, [status, doctorId, dateFrom, dateTo, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -287,6 +296,16 @@ export default function AppointmentsPanel() {
             ))}
           </select>
         </FilterField>
+        {showDoctorFilter && (
+          <FilterField label={t("dashboard.doctor")}>
+            <DoctorFilterSelect
+              clinicId={doctorClinicId}
+              branchId={doctorBranchId}
+              value={doctorId}
+              onChange={setDoctorId}
+            />
+          </FilterField>
+        )}
         <FilterField label={t("appointments.from")}>
           <input
             type="date"
