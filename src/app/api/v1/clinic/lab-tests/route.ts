@@ -6,6 +6,8 @@ import { parseBody } from "@api/lib/validators";
 import { serializeLabTest, generateUniqueLabTestCode, auditLabAction } from "@api/lib/lab-tests";
 import { getOwnedClinic } from "@api/lib/scope";
 import { replaceTestPrecautions, withTestPrecautions } from "@api/lib/lab-test-precautions";
+import { assertClinicHasLabSchedule, assertLabTestCodeFree } from "@api/lib/lab-test-library";
+import { conflict, isUniqueViolation } from "@api/lib/errors";
 import { parsePagination } from "@api/lib/validators";
 import { encodeCursor, decodeCursor } from "@api/lib/http";
 import { z } from "zod";
@@ -97,8 +99,12 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     await getOwnedClinic(pool, body.clinic_id, auth.userId);
   }
 
+  // A test can't be offered anywhere until at least one branch has lab hours.
+  await assertClinicHasLabSchedule(pool, body.clinic_id);
+
   const name = body.name?.trim() || body.category.trim();
   const code = body.code?.trim() || (await generateUniqueLabTestCode(pool, body.clinic_id, body.category));
+  if (body.code) await assertLabTestCodeFree(pool, body.clinic_id, code);
 
   const id = newId();
   await withTransaction(async (conn) => {
@@ -117,6 +123,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       ],
     );
     if (body.precaution_ids) await replaceTestPrecautions(conn, id, body.precaution_ids);
+  }).catch((err) => {
+    // Lost a race with another create using the same code (uniq_lab_test_clinic_code).
+    if (isUniqueViolation(err)) throw conflict("LAB_TEST_CODE_EXISTS", "A test with this code already exists.");
+    throw err;
   });
 
   await auditLabAction(pool, auth.userId, "lab_test_created", id, {

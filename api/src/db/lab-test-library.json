@@ -1,0 +1,2672 @@
+{
+  "_about": "Global predefined lab test library. internal_code (JLT-####) is a Jido-generated identifier, NOT LOINC or any recognised coding standard. Codes are frozen: never renumber; append new tests with the next free code. Names come from the MedlinePlus lab-test index (source=medlineplus_index) or are standard routine clinic tests (source=common_clinic). Category assignments must be validated clinically before production use. description/reference_url are left null unless clinically verified text is available.",
+  "categories": [
+    "Hematology",
+    "Clinical Pathology",
+    "Biochemistry",
+    "Microbiology",
+    "Serology",
+    "Immunology",
+    "Hormone and Endocrine Tests",
+    "Coagulation",
+    "Molecular Diagnostics",
+    "Histopathology and Cytology",
+    "Other Laboratory Tests"
+  ],
+  "tests": [
+    {
+      "internal_code": "JLT-0001",
+      "name": "Acetaminophen Level",
+      "category": "Biochemistry",
+      "abbreviations": "Paracetamol",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0002",
+      "name": "Acid-Fast Bacillus (AFB) Tests",
+      "category": "Microbiology",
+      "abbreviations": "AFB",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0003",
+      "name": "Adrenocorticotropic Hormone (ACTH)",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "ACTH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0004",
+      "name": "Albumin Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Total Protein and Albumin/Globulin (A/G) Ratio, Globulin Test"
+    },
+    {
+      "internal_code": "JLT-0005",
+      "name": "Aldosterone Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0006",
+      "name": "Alkaline Phosphatase",
+      "category": "Biochemistry",
+      "abbreviations": "ALP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0007",
+      "name": "Allergy Blood Test",
+      "category": "Immunology",
+      "abbreviations": "IgE",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0008",
+      "name": "Alpha Fetoprotein (AFP) Tumor Marker Test",
+      "category": "Biochemistry",
+      "abbreviations": "AFP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Closely related: Alpha-Fetoprotein (AFP) Test (prenatal use). Kept separate."
+    },
+    {
+      "internal_code": "JLT-0009",
+      "name": "Alpha-1 Antitrypsin Testing",
+      "category": "Biochemistry",
+      "abbreviations": "AAT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0010",
+      "name": "Alpha-Fetoprotein (AFP) Test",
+      "category": "Biochemistry",
+      "abbreviations": "AFP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Closely related: Alpha Fetoprotein (AFP) Tumor Marker Test. Kept separate."
+    },
+    {
+      "internal_code": "JLT-0011",
+      "name": "ALT Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "ALT, SGPT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0012",
+      "name": "Ammonia Levels",
+      "category": "Biochemistry",
+      "abbreviations": "NH3",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0013",
+      "name": "Amylase Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0014",
+      "name": "ANA (Antinuclear Antibody) Test",
+      "category": "Immunology",
+      "abbreviations": "ANA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0015",
+      "name": "Anion Gap Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0016",
+      "name": "Anti-Müllerian Hormone Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "AMH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0017",
+      "name": "Antibiotic Sensitivity Test",
+      "category": "Microbiology",
+      "abbreviations": "AST, Culture and sensitivity",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0018",
+      "name": "Antineutrophil Cytoplasmic Antibodies (ANCA) Test",
+      "category": "Immunology",
+      "abbreviations": "ANCA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0019",
+      "name": "Arterial Blood Gas (ABG) Test",
+      "category": "Biochemistry",
+      "abbreviations": "ABG",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0020",
+      "name": "AST Test",
+      "category": "Biochemistry",
+      "abbreviations": "AST, SGOT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0021",
+      "name": "Bacteria Culture Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0022",
+      "name": "Bacterial Vaginosis Test",
+      "category": "Microbiology",
+      "abbreviations": "BV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0023",
+      "name": "Basic Metabolic Panel (BMP)",
+      "category": "Biochemistry",
+      "abbreviations": "BMP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0024",
+      "name": "BCR-ABL1 Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "BCR-ABL",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0025",
+      "name": "Beta 2 Microglobulin (B2M) Tumor Marker Test",
+      "category": "Biochemistry",
+      "abbreviations": "B2M",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0026",
+      "name": "Bilirubin Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0027",
+      "name": "Bilirubin in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0028",
+      "name": "Blood Alcohol Level",
+      "category": "Biochemistry",
+      "abbreviations": "BAC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0029",
+      "name": "Blood Differential",
+      "category": "Hematology",
+      "abbreviations": "DLC, Differential count",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Complete Blood Count (CBC), White Blood Count (WBC)"
+    },
+    {
+      "internal_code": "JLT-0030",
+      "name": "Blood Glucose Test",
+      "category": "Biochemistry",
+      "abbreviations": "FBS, RBS, PPBS",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0031",
+      "name": "Blood in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0032",
+      "name": "Blood Smear",
+      "category": "Hematology",
+      "abbreviations": "PBS, Peripheral smear",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0033",
+      "name": "Bone Marrow Tests",
+      "category": "Hematology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0034",
+      "name": "BRAF Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "BRAF",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0035",
+      "name": "BRCA Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "BRCA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0036",
+      "name": "Breast Biopsy",
+      "category": "Histopathology and Cytology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0037",
+      "name": "BUN (Blood Urea Nitrogen)",
+      "category": "Biochemistry",
+      "abbreviations": "BUN",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0038",
+      "name": "C-Peptide Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0039",
+      "name": "C-Reactive Protein (CRP) Test",
+      "category": "Biochemistry",
+      "abbreviations": "CRP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0040",
+      "name": "C. diff Testing",
+      "category": "Microbiology",
+      "abbreviations": "C. difficile",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0041",
+      "name": "CA 19-9 Blood Test (Pancreatic Cancer)",
+      "category": "Biochemistry",
+      "abbreviations": "CA 19-9",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0042",
+      "name": "CA-125 Blood Test (Ovarian Cancer)",
+      "category": "Biochemistry",
+      "abbreviations": "CA-125",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0043",
+      "name": "Calcitonin Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0044",
+      "name": "Calcium Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "Ca",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0045",
+      "name": "Calcium in Urine Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0046",
+      "name": "Calprotectin Stool Test",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0047",
+      "name": "Carbon Dioxide (CO2) in Blood",
+      "category": "Biochemistry",
+      "abbreviations": "CO2, Bicarbonate",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0048",
+      "name": "Catecholamine Tests",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0049",
+      "name": "CCP Antibody Test",
+      "category": "Immunology",
+      "abbreviations": "Anti-CCP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0050",
+      "name": "CD4 Lymphocyte Count",
+      "category": "Immunology",
+      "abbreviations": "CD4",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0051",
+      "name": "CEA Test",
+      "category": "Biochemistry",
+      "abbreviations": "CEA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0052",
+      "name": "Celiac Disease Screening",
+      "category": "Immunology",
+      "abbreviations": "tTG",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0053",
+      "name": "Cerebrospinal Fluid (CSF) Analysis",
+      "category": "Clinical Pathology",
+      "abbreviations": "CSF",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0054",
+      "name": "Ceruloplasmin Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0055",
+      "name": "Chickenpox and Shingles Tests",
+      "category": "Serology",
+      "abbreviations": "VZV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0056",
+      "name": "Chlamydia Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0057",
+      "name": "Chloride Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "Cl",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0058",
+      "name": "Cholesterol Levels",
+      "category": "Biochemistry",
+      "abbreviations": "Lipid profile",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Triglycerides Test, Lipid Panel"
+    },
+    {
+      "internal_code": "JLT-0059",
+      "name": "Chymotrypsin in Stool",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0060",
+      "name": "Coagulation Factor Tests",
+      "category": "Coagulation",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0061",
+      "name": "Complement Blood Test",
+      "category": "Immunology",
+      "abbreviations": "C3, C4",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0062",
+      "name": "Complete Blood Count (CBC)",
+      "category": "Hematology",
+      "abbreviations": "CBC, Hemogram",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0063",
+      "name": "Comprehensive Metabolic Panel (CMP)",
+      "category": "Biochemistry",
+      "abbreviations": "CMP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0064",
+      "name": "Cortisol Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0065",
+      "name": "Creatine Kinase",
+      "category": "Biochemistry",
+      "abbreviations": "CK, CPK",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0066",
+      "name": "Creatinine Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0067",
+      "name": "Crystals in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0068",
+      "name": "CSF Immunoglobulin G (IgG) Index",
+      "category": "Immunology",
+      "abbreviations": "IgG index",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0069",
+      "name": "Cytomegalovirus (CMV) Tests",
+      "category": "Serology",
+      "abbreviations": "CMV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0070",
+      "name": "D-Dimer Test",
+      "category": "Coagulation",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0071",
+      "name": "Dengue Fever Test",
+      "category": "Serology",
+      "abbreviations": "NS1, Dengue IgM/IgG",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0072",
+      "name": "DHEA Sulfate Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "DHEA-S",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0073",
+      "name": "Drug Testing",
+      "category": "Biochemistry",
+      "abbreviations": "Drug screen",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Opioid Testing, Tricyclic Antidepressant (TCA) Screen"
+    },
+    {
+      "internal_code": "JLT-0074",
+      "name": "Electrolyte Panel",
+      "category": "Biochemistry",
+      "abbreviations": "Serum electrolytes, Na/K/Cl",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0075",
+      "name": "Epithelial Cells in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0076",
+      "name": "Erythrocyte Sedimentation Rate (ESR)",
+      "category": "Hematology",
+      "abbreviations": "ESR",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0077",
+      "name": "Estimated Glomerular Filtration Rate (eGFR) and GFR Tests",
+      "category": "Biochemistry",
+      "abbreviations": "eGFR",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0078",
+      "name": "Estrogen Levels Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "Estradiol, E2",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0079",
+      "name": "Estrogen Receptor, Progesterone Receptor Tests",
+      "category": "Histopathology and Cytology",
+      "abbreviations": "ER, PR",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0080",
+      "name": "Fecal Occult Blood Test (FOBT)",
+      "category": "Clinical Pathology",
+      "abbreviations": "FOBT, Stool occult blood",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0081",
+      "name": "Ferritin Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Iron Tests"
+    },
+    {
+      "internal_code": "JLT-0082",
+      "name": "Flu (Influenza) Test",
+      "category": "Microbiology",
+      "abbreviations": "Influenza",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0083",
+      "name": "Follicle-Stimulating Hormone (FSH) Levels Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "FSH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0084",
+      "name": "Free Light Chains",
+      "category": "Immunology",
+      "abbreviations": "FLC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0085",
+      "name": "Fungal Culture Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0086",
+      "name": "G6PD Test",
+      "category": "Hematology",
+      "abbreviations": "G6PD",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0087",
+      "name": "Galactosemia Tests",
+      "category": "Other Laboratory Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0088",
+      "name": "Gamma-glutamyl Transferase (GGT) Test",
+      "category": "Biochemistry",
+      "abbreviations": "GGT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0089",
+      "name": "Globulin Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0090",
+      "name": "Glucagon Blood Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0091",
+      "name": "Glucose in Urine Test",
+      "category": "Clinical Pathology",
+      "abbreviations": "Urine sugar",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0092",
+      "name": "Gonorrhea Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0093",
+      "name": "Gram Stain",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0094",
+      "name": "Growth Hormone Tests",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "GH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0095",
+      "name": "Haptoglobin (HP) Test",
+      "category": "Biochemistry",
+      "abbreviations": "HP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0096",
+      "name": "Heavy Metal Testing",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0097",
+      "name": "Helicobacter pylori (H. pylori) Tests",
+      "category": "Microbiology",
+      "abbreviations": "H. pylori",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0098",
+      "name": "Hematocrit Test",
+      "category": "Hematology",
+      "abbreviations": "HCT, PCV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0099",
+      "name": "Hemoglobin A1C (HbA1c) Test",
+      "category": "Biochemistry",
+      "abbreviations": "HbA1c, A1C",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0100",
+      "name": "Hemoglobin Electrophoresis",
+      "category": "Hematology",
+      "abbreviations": "Hb electrophoresis",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0101",
+      "name": "Hemoglobin Test",
+      "category": "Hematology",
+      "abbreviations": "Hb",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0102",
+      "name": "Hepatitis Testing",
+      "category": "Serology",
+      "abbreviations": "Hepatitis panel",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Broad entry; specific hepatitis B/C tests are listed separately."
+    },
+    {
+      "internal_code": "JLT-0103",
+      "name": "HER2 Tumor Marker Test",
+      "category": "Histopathology and Cytology",
+      "abbreviations": "HER2",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0104",
+      "name": "Herpes (HSV) Test",
+      "category": "Serology",
+      "abbreviations": "HSV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0105",
+      "name": "HIV Screening Test",
+      "category": "Serology",
+      "abbreviations": "HIV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0106",
+      "name": "HIV Viral Load",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "HIV RNA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0107",
+      "name": "Homocysteine Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0108",
+      "name": "Human Papillomavirus (HPV) Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "HPV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0109",
+      "name": "IGF-1 (Insulin-like Growth Factor 1) Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "IGF-1",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0110",
+      "name": "Immunoglobulins Blood Test",
+      "category": "Immunology",
+      "abbreviations": "IgA, IgG, IgM",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0111",
+      "name": "Insulin in Blood Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0112",
+      "name": "Iron Tests",
+      "category": "Biochemistry",
+      "abbreviations": "Serum iron, TIBC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Ferritin Blood Test"
+    },
+    {
+      "internal_code": "JLT-0113",
+      "name": "Karyotype Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "Karyotyping",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0114",
+      "name": "Ketones in Blood",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0115",
+      "name": "Ketones in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0116",
+      "name": "Kidney Stone Analysis",
+      "category": "Other Laboratory Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0117",
+      "name": "Lactate Dehydrogenase (LDH) Isoenzymes Test",
+      "category": "Biochemistry",
+      "abbreviations": "LDH isoenzymes",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Closely related: Lactate Dehydrogenase (LDH) Test. Kept separate."
+    },
+    {
+      "internal_code": "JLT-0118",
+      "name": "Lactate Dehydrogenase (LDH) Test",
+      "category": "Biochemistry",
+      "abbreviations": "LDH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Closely related: Lactate Dehydrogenase (LDH) Isoenzymes Test. Kept separate."
+    },
+    {
+      "internal_code": "JLT-0119",
+      "name": "Lactate Test",
+      "category": "Biochemistry",
+      "abbreviations": "Lactic acid",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0120",
+      "name": "Lactose Tolerance Tests",
+      "category": "Other Laboratory Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0121",
+      "name": "Legionella Tests",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0122",
+      "name": "Lipase Tests",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0123",
+      "name": "Lipoprotein (a) Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "Lp(a)",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0124",
+      "name": "Liver Function Tests",
+      "category": "Biochemistry",
+      "abbreviations": "LFT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Panel; related to ALT, AST, Alkaline Phosphatase and Bilirubin tests."
+    },
+    {
+      "internal_code": "JLT-0125",
+      "name": "Lung Cancer Genetic Tests",
+      "category": "Molecular Diagnostics",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0126",
+      "name": "Luteinizing Hormone (LH) Levels Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "LH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0127",
+      "name": "Lyme Disease Tests",
+      "category": "Serology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0128",
+      "name": "Magnesium Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "Mg",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0129",
+      "name": "Malaria Tests",
+      "category": "Microbiology",
+      "abbreviations": "MP, Malaria parasite",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0130",
+      "name": "MCV (Mean Corpuscular Volume)",
+      "category": "Hematology",
+      "abbreviations": "MCV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Red Blood Cell (RBC) Indices"
+    },
+    {
+      "internal_code": "JLT-0131",
+      "name": "Measles and Mumps Tests",
+      "category": "Serology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0132",
+      "name": "Meningococcal Disease Tests",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0133",
+      "name": "Methylmalonic Acid (MMA) Test",
+      "category": "Biochemistry",
+      "abbreviations": "MMA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0134",
+      "name": "Microalbumin Creatinine Ratio",
+      "category": "Biochemistry",
+      "abbreviations": "UACR, Microalbumin",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0135",
+      "name": "Mononucleosis (Mono) Tests",
+      "category": "Serology",
+      "abbreviations": "Monospot",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0136",
+      "name": "MPV Blood Test",
+      "category": "Hematology",
+      "abbreviations": "MPV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Platelet Tests"
+    },
+    {
+      "internal_code": "JLT-0137",
+      "name": "MRSA Tests",
+      "category": "Microbiology",
+      "abbreviations": "MRSA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0138",
+      "name": "MTHFR Gene Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "MTHFR",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0139",
+      "name": "Mucus in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0140",
+      "name": "Natriuretic Peptide Tests (BNP, NT-proBNP)",
+      "category": "Biochemistry",
+      "abbreviations": "BNP, NT-proBNP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0141",
+      "name": "Nitrites in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0142",
+      "name": "Opioid Testing",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Drug Testing"
+    },
+    {
+      "internal_code": "JLT-0143",
+      "name": "Osmolality Tests",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0144",
+      "name": "Ova and Parasite Test",
+      "category": "Microbiology",
+      "abbreviations": "O&P, Stool for ova and cysts",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0145",
+      "name": "Pap Smear",
+      "category": "Histopathology and Cytology",
+      "abbreviations": "Pap test",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0146",
+      "name": "Parainfluenza Tests",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0147",
+      "name": "Parathyroid Hormone (PTH) Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "PTH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0148",
+      "name": "Partial Thromboplastin Time (PTT) Test",
+      "category": "Coagulation",
+      "abbreviations": "PTT, aPTT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0149",
+      "name": "PDL1 (Immunotherapy) Tests",
+      "category": "Histopathology and Cytology",
+      "abbreviations": "PD-L1",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0150",
+      "name": "Pharmacogenetic Tests",
+      "category": "Molecular Diagnostics",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0151",
+      "name": "Phenylketonuria (PKU) Screening",
+      "category": "Other Laboratory Tests",
+      "abbreviations": "PKU",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0152",
+      "name": "Phosphate in Blood",
+      "category": "Biochemistry",
+      "abbreviations": "Phosphorus",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0153",
+      "name": "Phosphate in Urine",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0154",
+      "name": "Platelet Tests",
+      "category": "Hematology",
+      "abbreviations": "Platelet count",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: MPV Blood Test"
+    },
+    {
+      "internal_code": "JLT-0155",
+      "name": "Pleural Fluid Analysis",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0156",
+      "name": "Pneumococcal Disease Tests",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0157",
+      "name": "Porphyrin Tests",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0158",
+      "name": "Potassium Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "K",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0159",
+      "name": "Prealbumin Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0160",
+      "name": "Pregnancy Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "hCG, Beta hCG, UPT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0161",
+      "name": "Prenatal Cell-Free DNA Screening",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "cfDNA, NIPT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0162",
+      "name": "Prenatal Panel",
+      "category": "Other Laboratory Tests",
+      "abbreviations": "Antenatal profile",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0163",
+      "name": "Procalcitonin Test",
+      "category": "Biochemistry",
+      "abbreviations": "PCT",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0164",
+      "name": "Progesterone Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0165",
+      "name": "Prolactin Levels",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "PRL",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0166",
+      "name": "Prostate-Specific Antigen (PSA) Test",
+      "category": "Biochemistry",
+      "abbreviations": "PSA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0167",
+      "name": "Protein C and Protein S Tests",
+      "category": "Coagulation",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0168",
+      "name": "Protein Electrophoresis by Immunofixation Blood Test",
+      "category": "Immunology",
+      "abbreviations": "IFE, SPEP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0169",
+      "name": "Protein in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": "Urine albumin",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0170",
+      "name": "Prothrombin Time Test and INR (PT/INR)",
+      "category": "Coagulation",
+      "abbreviations": "PT, INR",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0171",
+      "name": "PTEN Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "PTEN",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0172",
+      "name": "RDW (Red Cell Distribution Width)",
+      "category": "Hematology",
+      "abbreviations": "RDW",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Red Blood Cell (RBC) Indices"
+    },
+    {
+      "internal_code": "JLT-0173",
+      "name": "Red Blood Cell (RBC) Count",
+      "category": "Hematology",
+      "abbreviations": "RBC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0174",
+      "name": "Red Blood Cell (RBC) Indices",
+      "category": "Hematology",
+      "abbreviations": "MCV, MCH, MCHC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: MCV (Mean Corpuscular Volume), RDW"
+    },
+    {
+      "internal_code": "JLT-0175",
+      "name": "Red Blood Cell Antibody Screen",
+      "category": "Immunology",
+      "abbreviations": "Indirect Coombs",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0176",
+      "name": "Renin Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0177",
+      "name": "Respiratory Pathogens Panel",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "RPP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0178",
+      "name": "Respiratory Syncytial Virus (RSV) Tests",
+      "category": "Microbiology",
+      "abbreviations": "RSV",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0179",
+      "name": "Reticulocyte Count",
+      "category": "Hematology",
+      "abbreviations": "Retic",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0180",
+      "name": "Rheumatoid Factor (RF) Test",
+      "category": "Immunology",
+      "abbreviations": "RF, RA factor",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0181",
+      "name": "Salicylates Level",
+      "category": "Biochemistry",
+      "abbreviations": "Aspirin level",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0182",
+      "name": "Semen Analysis",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0183",
+      "name": "SHBG Blood Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "SHBG",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0184",
+      "name": "Skin Biopsy",
+      "category": "Histopathology and Cytology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0185",
+      "name": "Smooth Muscle Antibody (SMA) Test",
+      "category": "Immunology",
+      "abbreviations": "SMA, ASMA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0186",
+      "name": "Sodium Blood Test",
+      "category": "Biochemistry",
+      "abbreviations": "Na",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0187",
+      "name": "Sputum Culture",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0188",
+      "name": "Stool Elastase Test",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0189",
+      "name": "Strep A Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0190",
+      "name": "Strep B Test",
+      "category": "Microbiology",
+      "abbreviations": "GBS",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0191",
+      "name": "Sweat Test for Cystic Fibrosis",
+      "category": "Other Laboratory Tests",
+      "abbreviations": "Sweat chloride",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0192",
+      "name": "Synovial Fluid Analysis",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0193",
+      "name": "Syphilis Tests",
+      "category": "Serology",
+      "abbreviations": "VDRL, RPR, TPHA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0194",
+      "name": "Testosterone Levels Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0195",
+      "name": "Therapeutic Drug Monitoring",
+      "category": "Biochemistry",
+      "abbreviations": "TDM",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0196",
+      "name": "Thyroglobulin",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "Tg",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0197",
+      "name": "Thyroid Antibody Tests",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "Anti-TPO, Anti-Tg",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0198",
+      "name": "Thyroxine (T4) Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "T4, FT4",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0199",
+      "name": "Total Protein and Albumin/Globulin (A/G) Ratio",
+      "category": "Biochemistry",
+      "abbreviations": "A/G ratio",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Albumin Blood Test, Globulin Test"
+    },
+    {
+      "internal_code": "JLT-0200",
+      "name": "TP53 Genetic Test",
+      "category": "Molecular Diagnostics",
+      "abbreviations": "TP53",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0201",
+      "name": "Trichomoniasis Test",
+      "category": "Microbiology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0202",
+      "name": "Tricyclic Antidepressant (TCA) Screen",
+      "category": "Biochemistry",
+      "abbreviations": "TCA",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Drug Testing"
+    },
+    {
+      "internal_code": "JLT-0203",
+      "name": "Triglycerides Test",
+      "category": "Biochemistry",
+      "abbreviations": "TG",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Cholesterol Levels"
+    },
+    {
+      "internal_code": "JLT-0204",
+      "name": "Triiodothyronine (T3) Tests",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "T3, FT3",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0205",
+      "name": "Troponin Test",
+      "category": "Biochemistry",
+      "abbreviations": "Trop I, Trop T",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0206",
+      "name": "TSH (Thyroid-stimulating hormone) Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "TSH",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0207",
+      "name": "Uric Acid Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0208",
+      "name": "Urobilinogen in Urine",
+      "category": "Clinical Pathology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0209",
+      "name": "Vitamin B Test",
+      "category": "Biochemistry",
+      "abbreviations": "B12, Folate",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0210",
+      "name": "Vitamin D Test",
+      "category": "Biochemistry",
+      "abbreviations": "25-OH Vitamin D",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0211",
+      "name": "Vitamin E (Tocopherol) Test",
+      "category": "Biochemistry",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0212",
+      "name": "White Blood Cell (WBC) in Stool",
+      "category": "Clinical Pathology",
+      "abbreviations": "Fecal leukocytes",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0213",
+      "name": "White Blood Count (WBC)",
+      "category": "Hematology",
+      "abbreviations": "WBC, TLC",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": "Related: Blood Differential"
+    },
+    {
+      "internal_code": "JLT-0214",
+      "name": "Whooping Cough Tests",
+      "category": "Microbiology",
+      "abbreviations": "Pertussis",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0215",
+      "name": "Xylose Testing",
+      "category": "Biochemistry",
+      "abbreviations": "D-xylose",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0216",
+      "name": "Yeast Infection Tests",
+      "category": "Microbiology",
+      "abbreviations": "Candida",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0217",
+      "name": "Zika Virus Test",
+      "category": "Serology",
+      "abbreviations": null,
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0218",
+      "name": "17-Hydroxyprogesterone Test",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "17-OHP",
+      "description": null,
+      "reference_url": null,
+      "source": "medlineplus_index",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0219",
+      "name": "Urine Routine Examination (Urinalysis)",
+      "category": "Clinical Pathology",
+      "abbreviations": "Urine R/E, Urinalysis",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0220",
+      "name": "Stool Routine Examination",
+      "category": "Clinical Pathology",
+      "abbreviations": "Stool R/E",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0221",
+      "name": "Blood Group and Rh Typing",
+      "category": "Immunology",
+      "abbreviations": "ABO, Rh",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0222",
+      "name": "Lipid Panel",
+      "category": "Biochemistry",
+      "abbreviations": "Lipid profile",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": "Related: Cholesterol Levels, Triglycerides Test"
+    },
+    {
+      "internal_code": "JLT-0223",
+      "name": "Kidney Function Tests",
+      "category": "Biochemistry",
+      "abbreviations": "KFT, RFT",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": "Panel; related to Creatinine Test, BUN and eGFR."
+    },
+    {
+      "internal_code": "JLT-0224",
+      "name": "Thyroid Function Tests",
+      "category": "Hormone and Endocrine Tests",
+      "abbreviations": "TFT, Thyroid profile",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": "Panel; related to TSH, T3 and T4 tests."
+    },
+    {
+      "internal_code": "JLT-0225",
+      "name": "Oral Glucose Tolerance Test",
+      "category": "Biochemistry",
+      "abbreviations": "OGTT, GTT",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0226",
+      "name": "Urine Culture",
+      "category": "Microbiology",
+      "abbreviations": "Urine C/S",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0227",
+      "name": "Blood Culture",
+      "category": "Microbiology",
+      "abbreviations": "Blood C/S",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0228",
+      "name": "Widal Test",
+      "category": "Serology",
+      "abbreviations": "Typhoid",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0229",
+      "name": "Hepatitis B Surface Antigen (HBsAg) Test",
+      "category": "Serology",
+      "abbreviations": "HBsAg",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0230",
+      "name": "Hepatitis C Antibody (Anti-HCV) Test",
+      "category": "Serology",
+      "abbreviations": "Anti-HCV",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": null
+    },
+    {
+      "internal_code": "JLT-0231",
+      "name": "Vitamin B12 Test",
+      "category": "Biochemistry",
+      "abbreviations": "Cobalamin",
+      "description": null,
+      "reference_url": null,
+      "source": "common_clinic",
+      "review_note": "Related: Vitamin B Test"
+    }
+  ],
+  "excluded": [
+    {
+      "name": "ADHD Screening",
+      "reason": "Behavioural screening questionnaire, not a laboratory test"
+    },
+    {
+      "name": "Alcohol Use Screening Tests",
+      "reason": "Questionnaire-based screening, not a laboratory test"
+    },
+    {
+      "name": "Allergy Skin Test",
+      "reason": "In-vivo skin procedure, not a laboratory specimen test"
+    },
+    {
+      "name": "Amniocentesis (amniotic fluid test)",
+      "reason": "Obstetric sampling procedure"
+    },
+    {
+      "name": "Anoscopy",
+      "reason": "Endoscopic examination"
+    },
+    {
+      "name": "At-Home Medical Tests",
+      "reason": "Informational article"
+    },
+    {
+      "name": "Autism Spectrum Disorder (ASD) Screening",
+      "reason": "Developmental screening questionnaire"
+    },
+    {
+      "name": "Autonomic Testing",
+      "reason": "Physiological nervous-system testing"
+    },
+    {
+      "name": "Balance Tests",
+      "reason": "Physical examination"
+    },
+    {
+      "name": "Barium Swallow",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Bone Density Scan",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Bronchoscopy and Bronchoalveolar Lavage (BAL)",
+      "reason": "Endoscopic procedure"
+    },
+    {
+      "name": "Burn Evaluation",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Chorionic Villus Sampling (CVS)",
+      "reason": "Obstetric sampling procedure"
+    },
+    {
+      "name": "Cognitive Testing",
+      "reason": "Neuropsychological assessment"
+    },
+    {
+      "name": "Cold Stimulation Test",
+      "reason": "Physiological test"
+    },
+    {
+      "name": "Colposcopy",
+      "reason": "Gynaecological examination procedure"
+    },
+    {
+      "name": "Concussion Tests",
+      "reason": "Neurological assessment"
+    },
+    {
+      "name": "Cord Blood Testing and Banking",
+      "reason": "Blood banking service"
+    },
+    {
+      "name": "Dental Exam",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Depression Screening",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "Developmental and Behavioral Screening Tests",
+      "reason": "Developmental screening questionnaire"
+    },
+    {
+      "name": "Diabetic Foot Exam",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Differential Diagnosis",
+      "reason": "Clinical reasoning concept, not a test"
+    },
+    {
+      "name": "Doppler Ultrasound",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Dysphagia Tests",
+      "reason": "Swallowing assessment / imaging"
+    },
+    {
+      "name": "Echocardiography",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Elastography",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Electrocardiogram",
+      "reason": "Cardiac procedure"
+    },
+    {
+      "name": "Electromyography (EMG) and Nerve Conduction Studies",
+      "reason": "Neurophysiology procedure"
+    },
+    {
+      "name": "Esophageal pH Test",
+      "reason": "Gastro-intestinal monitoring procedure"
+    },
+    {
+      "name": "Fall Risk Assessment",
+      "reason": "Clinical assessment"
+    },
+    {
+      "name": "Fasting for a Blood Test",
+      "reason": "Informational article"
+    },
+    {
+      "name": "Fetal Alcohol Spectrum Disorders (FASD) Screening",
+      "reason": "Clinical screening"
+    },
+    {
+      "name": "Fluoroscopy",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Gastric Emptying Tests",
+      "reason": "Imaging / breath procedure"
+    },
+    {
+      "name": "Glaucoma Tests",
+      "reason": "Eye examination"
+    },
+    {
+      "name": "Hearing Tests for Adults",
+      "reason": "Audiology examination"
+    },
+    {
+      "name": "Hearing Tests for Children",
+      "reason": "Audiology examination"
+    },
+    {
+      "name": "Heart Disease Risk Assessment",
+      "reason": "Clinical risk assessment"
+    },
+    {
+      "name": "How to Cope with Medical Test Anxiety",
+      "reason": "Informational article"
+    },
+    {
+      "name": "How to Prepare for a Lab Test",
+      "reason": "Informational article"
+    },
+    {
+      "name": "How to Prepare Your Child for a Lab Test",
+      "reason": "Informational article"
+    },
+    {
+      "name": "How to Understand Your Lab Results",
+      "reason": "Informational article"
+    },
+    {
+      "name": "Hysteroscopy",
+      "reason": "Endoscopic procedure"
+    },
+    {
+      "name": "Intravenous Pyelogram (IVP)",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Laparoscopy",
+      "reason": "Surgical procedure"
+    },
+    {
+      "name": "Lung Function Tests",
+      "reason": "Pulmonary function procedure"
+    },
+    {
+      "name": "Measuring Blood Pressure",
+      "reason": "Clinical measurement"
+    },
+    {
+      "name": "Mental Health Screening",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "Myelography",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Neurological Exam",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Nonstress Test",
+      "reason": "Fetal monitoring procedure"
+    },
+    {
+      "name": "Obesity Screening",
+      "reason": "Clinical screening"
+    },
+    {
+      "name": "Obsessive Compulsive Disorder (OCD) Test",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "Panic Disorder Test",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "PET Scan",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Postpartum Depression Screening",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "Pulse Oximetry",
+      "reason": "Bedside measurement"
+    },
+    {
+      "name": "Rash Evaluation",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Sentinel Lymph Node Biopsy",
+      "reason": "Surgical procedure"
+    },
+    {
+      "name": "Skin Cancer Screening",
+      "reason": "Clinical examination"
+    },
+    {
+      "name": "Sleep Study",
+      "reason": "Overnight monitoring procedure"
+    },
+    {
+      "name": "Stress Tests",
+      "reason": "Cardiac procedure"
+    },
+    {
+      "name": "Suicide Risk Screening",
+      "reason": "Questionnaire-based screening"
+    },
+    {
+      "name": "Ultrasound",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "V/Q Scan",
+      "reason": "Imaging procedure"
+    },
+    {
+      "name": "Videonystagmography (VNG)",
+      "reason": "Vestibular examination"
+    },
+    {
+      "name": "Vision Screening",
+      "reason": "Eye examination"
+    },
+    {
+      "name": "What You Need to Know About Blood Testing",
+      "reason": "Informational article"
+    }
+  ],
+  "review": [
+    {
+      "name": "Antibody Serology Tests",
+      "reason": "Broad umbrella entry; choose the specific antibody test instead"
+    },
+    {
+      "name": "Appendicitis Tests",
+      "reason": "Diagnostic work-up mixing imaging and lab tests, not one orderable test"
+    },
+    {
+      "name": "Autoantibody Testing",
+      "reason": "Broad umbrella entry; choose the specific autoantibody test instead"
+    },
+    {
+      "name": "Colorectal Cancer Screening Tests",
+      "reason": "Screening umbrella including colonoscopy; see Fecal Occult Blood Test (FOBT)"
+    },
+    {
+      "name": "Diabetes Tests",
+      "reason": "Umbrella entry; see Blood Glucose Test and Hemoglobin A1C (HbA1c) Test"
+    },
+    {
+      "name": "Down Syndrome Tests",
+      "reason": "Prenatal screening umbrella mixing ultrasound and blood tests"
+    },
+    {
+      "name": "Drug Use Screening Tests",
+      "reason": "May describe questionnaire screening; closely related to Drug Testing"
+    },
+    {
+      "name": "Food Allergy Testing",
+      "reason": "Mixes blood, skin and food-challenge testing; see Allergy Blood Test"
+    },
+    {
+      "name": "Myasthenia Gravis Tests",
+      "reason": "Mixes antibody blood tests with nerve studies; needs a specific test"
+    },
+    {
+      "name": "Nasal Swab",
+      "reason": "Specimen collection method, not a test by itself"
+    },
+    {
+      "name": "PCR Tests",
+      "reason": "Laboratory method, not a specific test"
+    },
+    {
+      "name": "Rapid Tests",
+      "reason": "Umbrella entry for point-of-care tests"
+    },
+    {
+      "name": "Sexually Transmitted Infection (STI) Tests",
+      "reason": "Umbrella entry; choose the specific infection test"
+    },
+    {
+      "name": "Tuberculosis Screening",
+      "reason": "Mixes the in-vivo skin test with blood (IGRA) tests"
+    },
+    {
+      "name": "Tumor Marker Tests",
+      "reason": "Umbrella entry; specific tumour markers are listed separately"
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { newId } from "@api/lib/ids";
 import { parseBody } from "@api/lib/validators";
 import { serializeLabTest, getLabTestInScope, auditLabAction } from "@api/lib/lab-tests";
 import { replaceTestPrecautions, withTestPrecautions } from "@api/lib/lab-test-precautions";
+import { assertLabTestCodeFree } from "@api/lib/lab-test-library";
+import { conflict, isUniqueViolation } from "@api/lib/errors";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -25,6 +27,9 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
   const body = parseBody(updateSchema, await ctx.request.json());
 
   const existing = await getLabTestInScope(pool, id, auth);
+  if (body.code !== undefined && body.code.trim().toLowerCase() !== String(existing.code).toLowerCase()) {
+    await assertLabTestCodeFree(pool, existing.clinic_id, body.code.trim(), id);
+  }
 
   const updates: string[] = [];
   const params: unknown[] = [];
@@ -51,6 +56,9 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
     if (body.precaution_ids !== undefined) {
       await replaceTestPrecautions(conn, id, body.precaution_ids);
     }
+  }).catch((err) => {
+    if (isUniqueViolation(err)) throw conflict("LAB_TEST_CODE_EXISTS", "A test with this code already exists.");
+    throw err;
   });
 
   await auditLabAction(pool, auth.userId, "lab_test_updated", id, body);

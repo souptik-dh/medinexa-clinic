@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createConnection } from 'mysql2/promise';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadLibraryData, seedLabTestLibrary } from './lab-test-library-seed.mjs';
 
 function slugify(name) {
   return name
@@ -1671,6 +1672,46 @@ try {
   if (precautionInsert.affectedRows > 0) {
     console.log(`Seeded ${precautionInsert.affectedRows} lab test precautions`);
   }
+
+  // lab_tests first shipped without a link to the predefined library (table from
+  // schema.sql) and without any uniqueness on code.
+  const [libraryCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND COLUMN_NAME = 'library_test_id'`,
+  );
+  if (Number(libraryCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE lab_tests
+         ADD COLUMN library_test_id CHAR(36) NULL AFTER clinic_id,
+         ADD UNIQUE KEY uniq_lab_test_clinic_library (clinic_id, library_test_id),
+         ADD KEY idx_lab_test_library (library_test_id),
+         ADD CONSTRAINT fk_lab_test_library FOREIGN KEY (library_test_id) REFERENCES lab_test_library(id) ON DELETE SET NULL`,
+    );
+    console.log('Applied migration: lab_tests.library_test_id');
+  }
+  const [codeIndex] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND INDEX_NAME = 'uniq_lab_test_clinic_code'`,
+  );
+  if (Number(codeIndex[0].cnt) === 0) {
+    // Existing data is never rewritten: if a clinic already has two tests with the same
+    // code the index is skipped (the API still rejects new duplicates) and the clashes
+    // are listed so they can be fixed by hand, after which a re-run adds it.
+    const [dupCodes] = await conn.query(
+      `SELECT clinic_id, code, COUNT(*) AS cnt FROM lab_tests GROUP BY clinic_id, code HAVING COUNT(*) > 1`,
+    );
+    if (dupCodes.length === 0) {
+      await conn.query(`ALTER TABLE lab_tests ADD UNIQUE KEY uniq_lab_test_clinic_code (clinic_id, code)`);
+      console.log('Applied migration: lab_tests unique (clinic_id, code)');
+    } else {
+      console.warn(`Skipped lab_tests unique (clinic_id, code): ${dupCodes.length} duplicate code(s) to resolve first:`);
+      for (const d of dupCodes) console.warn(`  clinic ${d.clinic_id} code "${d.code}" x${d.cnt}`);
+    }
+  }
+
+  // Predefined lab test library: inserts missing entries only, never updates or deletes.
+  const { summary: librarySummary } = await seedLabTestLibrary(conn, await loadLibraryData());
+  console.log(librarySummary);
 
   // appointment_reminders first shipped without status (every row was a sent reminder).
   const [reminderStatusCols] = await conn.query(
