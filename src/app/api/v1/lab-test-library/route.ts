@@ -27,14 +27,16 @@ export const GET = api({ rateLimit: 240 }, async (ctx) => {
     conditions.push("l.category = ?");
     params.push(category);
   }
-  let rank = "0";
+  // MySQL reads a bare integer in ORDER BY as a column position, so the rank is only
+  // added when there is a search to rank by.
+  let orderBy = "l.name ASC";
   const rankParams: unknown[] = [];
   if (search) {
     const like = `%${search}%`;
     conditions.push("(l.name LIKE ? OR l.internal_code LIKE ? OR l.abbreviations LIKE ? OR l.category LIKE ?)");
     params.push(like, like, like, like);
     // Name/code prefix matches first, then abbreviation hits, then the rest.
-    rank = "CASE WHEN l.name LIKE ? OR l.internal_code LIKE ? THEN 0 WHEN l.abbreviations LIKE ? THEN 1 ELSE 2 END";
+    orderBy = "CASE WHEN l.name LIKE ? OR l.internal_code LIKE ? THEN 0 WHEN l.abbreviations LIKE ? THEN 1 ELSE 2 END ASC, l.name ASC";
     rankParams.push(`${search}%`, `${search}%`, like);
   }
 
@@ -53,7 +55,7 @@ export const GET = api({ rateLimit: 240 }, async (ctx) => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT ${select} FROM lab_test_library l
       WHERE ${conditions.join(" AND ")}
-      ORDER BY ${rank} ASC, l.name ASC
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?`,
     [...selectParams, ...params, ...rankParams, limit + 1, offset],
   );
