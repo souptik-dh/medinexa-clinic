@@ -769,6 +769,7 @@ CREATE TABLE IF NOT EXISTS lab_tests (
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
   UNIQUE KEY uniq_lab_test_clinic_code (clinic_id, code),
+  UNIQUE KEY uniq_lab_test_clinic_name (clinic_id, name),
   UNIQUE KEY uniq_lab_test_clinic_library (clinic_id, library_test_id),
   KEY idx_lab_test_clinic (clinic_id),
   KEY idx_lab_test_category (category),

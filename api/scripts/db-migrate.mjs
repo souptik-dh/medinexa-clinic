@@ -1729,6 +1729,24 @@ try {
     }
   }
 
+  // Same for names: one clinic can't list two tests called the same thing.
+  const [nameIndex] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND INDEX_NAME = 'uniq_lab_test_clinic_name'`,
+  );
+  if (Number(nameIndex[0].cnt) === 0) {
+    const [dupNames] = await conn.query(
+      `SELECT clinic_id, name, COUNT(*) AS cnt FROM lab_tests GROUP BY clinic_id, name HAVING COUNT(*) > 1`,
+    );
+    if (dupNames.length === 0) {
+      await conn.query(`ALTER TABLE lab_tests ADD UNIQUE KEY uniq_lab_test_clinic_name (clinic_id, name)`);
+      console.log('Applied migration: lab_tests unique (clinic_id, name)');
+    } else {
+      console.warn(`Skipped lab_tests unique (clinic_id, name): ${dupNames.length} duplicate name(s) to resolve first:`);
+      for (const d of dupNames) console.warn(`  clinic ${d.clinic_id} name "${d.name}" x${d.cnt}`);
+    }
+  }
+
   // Predefined lab test library: inserts missing entries only, never updates or deletes.
   const { summary: librarySummary } = await seedLabTestLibrary(conn, await loadLibraryData());
   console.log(librarySummary);

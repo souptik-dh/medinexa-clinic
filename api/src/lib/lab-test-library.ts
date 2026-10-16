@@ -104,6 +104,38 @@ export async function assertLabTestCodeFree(db: Db, clinicId: string, code: stri
   if (rows.length > 0) throw conflict("LAB_TEST_CODE_EXISTS", "A test with this code already exists.", "code");
 }
 
+/** 409 LAB_TEST_NAME_EXISTS when another test of the clinic has this name (case/space-insensitive). */
+export async function assertLabTestNameFree(db: Db, clinicId: string, name: string, exceptTestId?: string): Promise<void> {
+  const [rows] = await db.query<Row[]>(
+    `SELECT id FROM lab_tests WHERE clinic_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1`,
+    [clinicId, name, exceptTestId ?? ""],
+  );
+  if (rows.length > 0) throw conflict("LAB_TEST_NAME_EXISTS", "A test with this name already exists.", "name");
+}
+
+/** For a derived name (quick-create from a category): `base`, or `base (2)`, `base (3)`… if taken. */
+export async function uniqueLabTestName(db: Db, clinicId: string, base: string): Promise<string> {
+  const [rows] = await db.query<Row[]>(`SELECT name FROM lab_tests WHERE clinic_id = ? AND name LIKE ?`, [clinicId, `${base}%`]);
+  const taken = new Set(rows.map((r) => String(r.name).trim().toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  let n = 2;
+  while (taken.has(`${base} (${n})`.toLowerCase())) n++;
+  return `${base} (${n})`;
+}
+
+/**
+ * Maps a duplicate-key error from inserting/updating lab_tests to the matching 409
+ * (the request lost a race with another one), or returns null for any other error.
+ */
+export function labTestDuplicateError(err: unknown): ApiError | null {
+  if ((err as { code?: string })?.code !== "ER_DUP_ENTRY") return null;
+  const msg = String((err as { sqlMessage?: string; message?: string }).sqlMessage ?? (err as Error).message ?? "");
+  if (msg.includes("uniq_lab_test_clinic_name")) return conflict("LAB_TEST_NAME_EXISTS", "A test with this name already exists.", "name");
+  if (msg.includes("uniq_lab_test_clinic_code")) return conflict("LAB_TEST_CODE_EXISTS", "A test with this code already exists.", "code");
+  // uniq_lab_test_clinic_library, uniq_branch_test: the same test twice.
+  return conflict("DUPLICATE_TEST", "This test has already been added.");
+}
+
 export type BranchTestOptions = {
   price: number;
   currency: string;

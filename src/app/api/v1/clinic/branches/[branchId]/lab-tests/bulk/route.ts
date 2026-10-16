@@ -4,7 +4,7 @@ import { pool, withTransaction } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { auditLabAction, serializeBranchLabTest } from "@api/lib/lab-tests";
-import { addTestsToBranch } from "@api/lib/lab-test-library";
+import { addTestsToBranch, labTestDuplicateError } from "@api/lib/lab-test-library";
 import { withTestPrecautions } from "@api/lib/lab-test-precautions";
 import { conflict, isUniqueViolation } from "@api/lib/errors";
 import { z } from "zod";
@@ -49,8 +49,8 @@ export const POST = api({ rateLimit: 60 }, async (ctx) => {
   await requireBranchAccess(pool, auth, branchId, "lab_tests:manage");
 
   const result = await withTransaction((conn) => addTestsToBranch(conn, branchId, body.items)).catch((err) => {
-    // Another request added the same test or code between our checks and the insert.
-    if (isUniqueViolation(err)) throw conflict("DUPLICATE_TEST", "This test has already been added.");
+    // Another request added the same test, name or code between our checks and the insert.
+    if (isUniqueViolation(err)) throw labTestDuplicateError(err) ?? conflict("DUPLICATE_TEST", "This test has already been added.");
     throw err;
   });
 

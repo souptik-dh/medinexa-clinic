@@ -5,8 +5,7 @@ import { newId } from "@api/lib/ids";
 import { parseBody } from "@api/lib/validators";
 import { serializeLabTest, getLabTestInScope, auditLabAction } from "@api/lib/lab-tests";
 import { replaceTestPrecautions, withTestPrecautions } from "@api/lib/lab-test-precautions";
-import { assertLabTestCodeFree } from "@api/lib/lab-test-library";
-import { conflict, isUniqueViolation } from "@api/lib/errors";
+import { assertLabTestCodeFree, assertLabTestNameFree, labTestDuplicateError } from "@api/lib/lab-test-library";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -27,6 +26,9 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
   const body = parseBody(updateSchema, await ctx.request.json());
 
   const existing = await getLabTestInScope(pool, id, auth);
+  if (body.name !== undefined && body.name.trim().toLowerCase() !== String(existing.name).trim().toLowerCase()) {
+    await assertLabTestNameFree(pool, existing.clinic_id, body.name.trim(), id);
+  }
   if (body.code !== undefined && body.code.trim().toLowerCase() !== String(existing.code).toLowerCase()) {
     await assertLabTestCodeFree(pool, existing.clinic_id, body.code.trim(), id);
   }
@@ -34,8 +36,8 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
   const updates: string[] = [];
   const params: unknown[] = [];
 
-  if (body.name !== undefined) { updates.push("name = ?"); params.push(body.name); }
-  if (body.code !== undefined) { updates.push("code = ?"); params.push(body.code); }
+  if (body.name !== undefined) { updates.push("name = ?"); params.push(body.name.trim()); }
+  if (body.code !== undefined) { updates.push("code = ?"); params.push(body.code.trim()); }
   if (body.description !== undefined) { updates.push("description = ?"); params.push(body.description); }
   if (body.category !== undefined) { updates.push("category = ?"); params.push(body.category); }
   if (body.instructions !== undefined) { updates.push("instructions = ?"); params.push(body.instructions); }
@@ -57,8 +59,7 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
       await replaceTestPrecautions(conn, id, body.precaution_ids);
     }
   }).catch((err) => {
-    if (isUniqueViolation(err)) throw conflict("LAB_TEST_CODE_EXISTS", "A test with this code already exists.");
-    throw err;
+    throw labTestDuplicateError(err) ?? err;
   });
 
   await auditLabAction(pool, auth.userId, "lab_test_updated", id, body);

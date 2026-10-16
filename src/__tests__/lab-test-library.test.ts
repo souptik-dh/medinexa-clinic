@@ -9,6 +9,9 @@ vi.mock("@api/lib/scope", () => ({ getOwnedBranch: vi.fn() }));
 import {
   addTestsToBranch,
   assertBranchHasLabSchedule,
+  assertLabTestNameFree,
+  labTestDuplicateError,
+  uniqueLabTestName,
   LIBRARY_CODE_PREFIX,
   type AddTestItem,
 } from "../../api/src/lib/lab-test-library";
@@ -275,5 +278,46 @@ describe("planLibrarySeed / seedLabTestLibrary", () => {
     expect(run2.inserted).toBe(0);
     expect(rows).toHaveLength(dataset.tests.length);
     expect(run2.summary).toContain("0 imported");
+  });
+});
+
+describe("duplicate lab test names", () => {
+  const names = (list: string[]) => {
+    const calls: unknown[][] = [];
+    const db = {
+      async query(sql: string, params: unknown[]) {
+        calls.push(params);
+        if (sql.includes("LOWER(TRIM(name)) = LOWER(TRIM(?))")) {
+          const [, name, except] = params as string[];
+          return [list.map((n, i) => ({ id: `t${i}`, name: n })).filter((r) => r.name.trim().toLowerCase() === name.trim().toLowerCase() && r.id !== except)];
+        }
+        if (sql.includes("name LIKE ?")) return [list.map((name) => ({ name }))];
+        throw new Error("Unexpected SQL " + sql);
+      },
+    };
+    return db as unknown as PoolConnection;
+  };
+
+  it("rejects a name already used in the clinic, ignoring case and spaces", async () => {
+    await expectApiError(assertLabTestNameFree(names(["Sugar Test"]), "c1", "  sugar test "), 409, "LAB_TEST_NAME_EXISTS", "name");
+    await expect(assertLabTestNameFree(names(["Sugar Test"]), "c1", "Lipid Panel")).resolves.toBeUndefined();
+  });
+
+  it("lets a test keep its own name when edited", async () => {
+    await expect(assertLabTestNameFree(names(["Sugar Test"]), "c1", "Sugar Test", "t0")).resolves.toBeUndefined();
+  });
+
+  it("suffixes a name derived from the category instead of duplicating it", async () => {
+    expect(await uniqueLabTestName(names([]), "c1", "Blood Test")).toBe("Blood Test");
+    expect(await uniqueLabTestName(names(["Blood Test"]), "c1", "Blood Test")).toBe("Blood Test (2)");
+    expect(await uniqueLabTestName(names(["Blood Test", "blood test (2)"]), "c1", "Blood Test")).toBe("Blood Test (3)");
+  });
+
+  it("maps duplicate-key errors from the database to the matching 409", () => {
+    const dup = (index: string) => ({ code: "ER_DUP_ENTRY", sqlMessage: `Duplicate entry 'x' for key 'lab_tests.${index}'` });
+    expect(labTestDuplicateError(dup("uniq_lab_test_clinic_name"))).toMatchObject({ status: 409, code: "LAB_TEST_NAME_EXISTS", field: "name" });
+    expect(labTestDuplicateError(dup("uniq_lab_test_clinic_code"))).toMatchObject({ code: "LAB_TEST_CODE_EXISTS", field: "code" });
+    expect(labTestDuplicateError(dup("uniq_branch_test"))).toMatchObject({ code: "DUPLICATE_TEST" });
+    expect(labTestDuplicateError(new Error("boom"))).toBeNull();
   });
 });
