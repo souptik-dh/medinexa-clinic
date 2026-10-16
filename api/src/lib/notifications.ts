@@ -1,6 +1,7 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { newId } from "@api/lib/ids";
 import { sendFcmToUser } from "@api/lib/fcm";
+import { formatDoctorName } from "@api/lib/doctor-name";
 
 export type NotificationType =
   | "new_booking"
@@ -77,7 +78,7 @@ export interface PushMessage {
 }
 
 function withDoctor(name: unknown): string | null {
-  return typeof name === "string" && name.trim().length > 0 ? `Dr. ${name}` : null;
+  return typeof name === "string" && name.trim().length > 0 ? `${formatDoctorName(name)}` : null;
 }
 
 function asString(value: unknown): string | null {
@@ -772,7 +773,7 @@ export function branchAccessEmailHtml(opts: {
 }): string {
   const body = `
 <h2 style="color:#1e293b;font-size:20px;margin:0 0 16px;font-weight:600;">You've been added to a new branch</h2>
-<p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">Hi Dr. ${escapeHtml(opts.doctorName)},</p>
+<p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">Hi ${formatDoctorName(escapeHtml(opts.doctorName))},</p>
 <p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">
 You have been successfully added to <strong>${escapeHtml(opts.branchName)}</strong> under <strong>${escapeHtml(opts.clinicName)}</strong>.
 </p>
@@ -1204,6 +1205,6 @@ export async function sendInviteWhatsapp(opts: {
   clinicName: string;
   inviteUrl: string;
 }): Promise<boolean> {
-  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on Jido Healthcare. Accept your invitation here: ${opts.inviteUrl}`;
+  const text = `${formatDoctorName(opts.doctorName)}, you have been invited to join ${opts.clinicName} on Jido Healthcare. Accept your invitation here: ${opts.inviteUrl}`;
   return sendWhatsapp(opts.phone, text);
 }

@@ -11,6 +11,7 @@ import { requireBranchAccess } from "@api/lib/permissions";
 import { getInviteSpecializations } from "@api/lib/specializations";
 import { slotTemplateSchema } from "@api/lib/slot-template";
 import { effectiveInviteStatus } from "@api/lib/doctor-invites";
+import { doctorNameSql, formatDoctorName } from "@api/lib/doctor-name";
 
 // Doctor invite codes/links are valid for 24 hours from creation.
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -131,7 +132,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     if (doctorEmail) {
       await sendEmail(
         doctorEmail,
-        `Dr. ${doctorName}, you've been added to ${branch.name}`,
+        `${formatDoctorName(doctorName)}, you've been added to ${branch.name}`,
         `You have been added to ${branch.name} under ${clinicName}. You can now manage your schedule and appointments at this branch using your existing Jido Healthcare account.`,
         branchAccessEmailHtml({
           doctorName,
@@ -158,7 +159,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
   if (body.doctor_id) {
     const [existingClinicAssignment] = await pool.query<Row[]>(
-      `SELECT d.id AS doctor_id, d.name AS doctor_name, u.email, u.phone
+      `SELECT d.id AS doctor_id, ${doctorNameSql()} AS doctor_name, u.email, u.phone
          FROM doctor_branch_assignments dba
          JOIN doctors d ON d.id = dba.doctor_id
          JOIN users u ON u.id = d.user_id
@@ -202,7 +203,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       : [clinicId, body.phone, branchId];
 
   const [existingClinicAssignment] = await pool.query<Row[]>(
-    `SELECT dba.id, dba.doctor_id, d.name AS doctor_name, u.email AS doctor_email, u.phone AS doctor_phone
+    `SELECT dba.id, dba.doctor_id, ${doctorNameSql()} AS doctor_name, u.email AS doctor_email, u.phone AS doctor_phone
        FROM doctor_branch_assignments dba
        JOIN doctors d ON d.id = dba.doctor_id
        JOIN users u ON u.id = d.user_id
@@ -333,7 +334,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const inviteBody = `You've been invited to join ${branch.name} on Jido Healthcare.\n\nAccept your invitation here: ${acceptUrl}\n\nYour one-time invite code is: ${inviteCode}\n\nThis code expires in 24 hours.`;
     await sendEmail(
       body.email,
-      `Dr. ${body.name}, you've been invited to ${branch.name}`,
+      `${formatDoctorName(body.name)}, you've been invited to ${branch.name}`,
       inviteBody,
       inviteEmailHtml({
         heading: "Clinic Join Invitation",

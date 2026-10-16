@@ -292,6 +292,8 @@ CREATE TABLE IF NOT EXISTS doctor_invite_specializations (
 CREATE TABLE IF NOT EXISTS doctors (
   id CHAR(36) NOT NULL,
   user_id CHAR(36) NOT NULL,
+  -- Title shown before the name ("Dr. Riya Sen"); `name` itself is stored without it.
+  name_prefix VARCHAR(20) NOT NULL DEFAULT 'Dr.',
   name VARCHAR(255) NOT NULL,
   specialization VARCHAR(255) NULL,
   reg_no VARCHAR(64) NULL,

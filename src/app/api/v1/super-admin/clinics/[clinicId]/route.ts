@@ -9,6 +9,7 @@ import {
   getPlatformSettings,
 } from "@api/lib/subscriptions";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 /**
  * Full administrative view of a clinic: owner contact, branches, staff, doctors,
@@ -45,12 +46,12 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     [clinicId],
   );
   const [doctors] = await pool.query<Row[]>(
-    `SELECT DISTINCT d.id, d.name, d.photo_url, d.reg_no, d.smc_name, d.doctor_degree, dba.branch_id, dba.fee_amount, dba.currency
+    `SELECT DISTINCT d.id, ${doctorNameSql()} AS name, d.name_prefix, d.photo_url, d.reg_no, d.smc_name, d.doctor_degree, dba.branch_id, dba.fee_amount, dba.currency
        FROM doctor_branch_assignments dba
        JOIN branches b ON b.id = dba.branch_id
        JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
       WHERE b.clinic_id = ?
-      ORDER BY d.name ASC`,
+      ORDER BY name ASC`,
     [clinicId],
   );
   const specializationsByDoctor = await getDoctorSpecializations(pool, doctors.map((d) => String(d.id)));

@@ -14,6 +14,7 @@ import {
   bookedCountsByTime,
   type LeaveRange,
 } from "@api/lib/availability";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 type Db = Pool | PoolConnection;
 type Row = RowDataPacket;
@@ -165,7 +166,7 @@ export async function getAppointmentNames(
   visitor_relationship: string | null;
 }> {
   const [rows] = await db.query<Row[]>(
-    `SELECT d.name AS doctor_name, b.name AS branch_name, u.name AS patient_name,
+    `SELECT ${doctorNameSql()} AS doctor_name, b.name AS branch_name, u.name AS patient_name,
             ap.name AS visitor_name, ap.relationship AS visitor_relationship
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id

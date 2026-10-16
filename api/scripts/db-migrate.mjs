@@ -1673,6 +1673,26 @@ try {
     console.log(`Seeded ${precautionInsert.affectedRows} lab test precautions`);
   }
 
+  // doctors.name_prefix: the "Dr." title moves out of the name into its own column.
+  const [doctorPrefixCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'doctors' AND COLUMN_NAME = 'name_prefix'`,
+  );
+  if (Number(doctorPrefixCols[0].cnt) === 0) {
+    await conn.query(`ALTER TABLE doctors ADD COLUMN name_prefix VARCHAR(20) NOT NULL DEFAULT 'Dr.' AFTER user_id`);
+    console.log('Applied migration: doctors.name_prefix');
+  }
+  // Names typed as "Dr. Riya Sen" would otherwise show as "Dr. Dr. Riya Sen". Safe to re-run.
+  const [strippedNames] = await conn.query(
+    `UPDATE doctors
+        SET name = TRIM(REGEXP_REPLACE(name, '^(dr[.]?[[:space:]]+|dr[.])+', '', 1, 0, 'i'))
+      WHERE name REGEXP '^[Dd][Rr]([.]|[[:space:]])'
+        AND TRIM(REGEXP_REPLACE(name, '^(dr[.]?[[:space:]]+|dr[.])+', '', 1, 0, 'i')) <> ''`,
+  );
+  if (strippedNames.affectedRows > 0) {
+    console.log(`Removed a typed "Dr." from ${strippedNames.affectedRows} doctor name(s)`);
+  }
+
   // lab_tests first shipped without a link to the predefined library (table from
   // schema.sql) and without any uniqueness on code.
   const [libraryCols] = await conn.query(

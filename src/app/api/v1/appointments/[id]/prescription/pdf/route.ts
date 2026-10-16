@@ -4,6 +4,7 @@ import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { getAppointmentInScope } from "@api/lib/appointments";
 import { buildTextPdf } from "@api/lib/pdf";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
@@ -20,7 +21,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [meta] = await pool.query<Row[]>(
     `SELECT c.name AS clinic_name, b.name AS branch_name,
-            d.name AS doctor_name, u.name AS patient_name
+            ${doctorNameSql()} AS doctor_name, u.name AS patient_name
        FROM appointments a
        JOIN clinics c ON c.id = a.clinic_id
        JOIN branches b ON b.id = a.branch_id

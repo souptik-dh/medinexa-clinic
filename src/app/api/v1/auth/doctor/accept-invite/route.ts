@@ -10,6 +10,7 @@ import { getInviteSpecializations } from "@api/lib/specializations";
 import { assertClinicOperational, resolveClinicIdByBranch } from "@api/lib/subscriptions";
 import { effectiveInviteStatus, findInviteByCode } from "@api/lib/doctor-invites";
 import type { ResultSetHeader } from "mysql2/promise";
+import { formatDoctorName, stripDoctorPrefix } from "@api/lib/doctor-name";
 
 const schema = z.object({
   phone: phoneSchema,
@@ -124,7 +125,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
     await conn.query(
       `INSERT INTO doctors (id, user_id, name, reg_no, smc_name, doctor_degree, phone, certificate_url)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [doctorId, userId, invite.name, regNo, smcName, doctorDegree, body.phone, invite.certificate_url ?? null],
+      [doctorId, userId, stripDoctorPrefix(String(invite.name)) || invite.name, regNo, smcName, doctorDegree, body.phone, invite.certificate_url ?? null],
     );
     const [inviteSpecializations] = await conn.query<Row[]>(
       `SELECT specialization_id FROM doctor_invite_specializations WHERE doctor_invite_id = ?`,
@@ -199,7 +200,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
   await Promise.all(pendingEmails.map((send) => send()));
 
   if (owner) {
-    const acceptedBody = `Dr. ${invite.name} (${body.phone}) has accepted your invitation and joined your branch.`;
+    const acceptedBody = `${formatDoctorName(invite.name)} (${body.phone}) has accepted your invitation and joined your branch.`;
     await sendEmail(
       owner.owner_email,
       "Doctor invite accepted",

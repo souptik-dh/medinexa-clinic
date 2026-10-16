@@ -101,7 +101,7 @@ export default function DoctorMySchedulePanel() {
       {doctor && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-            {t("doctorMySchedule.drPrefix", { name: doctor.name })}
+            {t("doctorMySchedule.drPrefix", { name: doctor.name.replace(/^dr\.?\s*/i, "") })}
           </h3>
           {doctor.specialization && (
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{doctor.specialization}</p>

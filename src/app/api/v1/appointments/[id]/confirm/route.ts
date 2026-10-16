@@ -13,6 +13,7 @@ import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { notFound } from "@api/lib/errors";
 import { issueReceipt } from "@api/lib/receipts";
+import { doctorNameSql, formatDoctorName } from "@api/lib/doctor-name";
 
 export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["branch_staff", "clinic_owner"]);
@@ -39,7 +40,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const [details] = await pool.query<Row[]>(
     `SELECT u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
             ap.phone AS visitor_phone, ap.name AS visitor_name, ap.relationship AS visitor_relationship,
-            d.name AS doctor_name, b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name
+            ${doctorNameSql()} AS doctor_name, b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id
        LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
@@ -78,16 +79,16 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
       paid: false,
     },
   });
-  const confirmBody = `Your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
+  const confirmBody = `Your appointment with ${formatDoctorName(info.doctor_name)} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
   const confirmText = personalizeForPatient(confirmBody, info?.visitor_name, info?.visitor_relationship);
   const whatsappConfirmText = `${confirmText}${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`;
   if (info?.patient_email) {
-    const confirmBody = `Hi ${info.patient_name ?? "there"},\n\nYour appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
+    const confirmBody = `Hi ${info.patient_name ?? "there"},\n\nYour appointment with ${formatDoctorName(info.doctor_name)} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been confirmed.`;
     const confirmHtml = detailsEmailHtml({
       heading: "Appointment Confirmed",
       intro: `Hi ${info.patient_name ?? "there"}, your appointment has been confirmed.`,
       rows: [
-        { label: "Doctor", value: `Dr. ${info.doctor_name}` },
+        { label: "Doctor", value: `${formatDoctorName(info.doctor_name)}` },
         { label: "Branch", value: info.branch_name },
         { label: "Date & Time", value: `${appointment.scheduled_date} at ${appointment.scheduled_time}` },
       ],

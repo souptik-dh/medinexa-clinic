@@ -24,6 +24,7 @@ import {
 } from "@api/lib/availability";
 import { fetchPage } from "@api/lib/pagination";
 import { assertClinicOperational } from "@api/lib/subscriptions";
+import { doctorNameSql, formatDoctorName } from "@api/lib/doctor-name";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -99,7 +100,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     select: "SELECT *",
     from: `FROM (
         SELECT a.*,
-               (SELECT d.name FROM doctors d WHERE d.id = a.doctor_id) AS doctor_name,
+               (SELECT ${doctorNameSql()} FROM doctors d WHERE d.id = a.doctor_id) AS doctor_name,
                (SELECT d.photo_url FROM doctors d WHERE d.id = a.doctor_id) AS doctor_photo_url,
                (SELECT b.name FROM branches b WHERE b.id = a.branch_id) AS branch_name,
                (SELECT b.photo_url FROM branches b WHERE b.id = a.branch_id) AS branch_photo_url,
@@ -242,7 +243,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         [body.doctor_id, body.branch_id, branchWeekday, body.date, body.date],
       ),
       pool.query<Row[]>(
-        `SELECT dba.id, dba.fee_amount, dba.currency, d.name AS doctor_name
+        `SELECT dba.id, dba.fee_amount, dba.currency, ${doctorNameSql()} AS doctor_name
            FROM doctor_branch_assignments dba
            JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
           WHERE dba.doctor_id = ? AND dba.branch_id = ? AND dba.is_active = 1`,
@@ -464,7 +465,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       ),
       pool.query<Row[]>(
         `SELECT u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
-                d.name AS doctor_name, b.name AS branch_name
+                ${doctorNameSql()} AS doctor_name, b.name AS branch_name
            FROM appointments a
            JOIN users u ON u.id = a.patient_id
            JOIN doctors d ON d.id = a.doctor_id
@@ -477,7 +478,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const info = details[0];
     if (info) {
       const isForSelf = patientDetails.relationship === "self";
-      const subject = `New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name}`;
+      const subject = `New appointment booked — ${patientDetails.name} with ${formatDoctorName(info.doctor_name)}`;
       const emailBody = [
         `A new appointment has been booked at ${info.branch_name}.`,
         "",
@@ -488,14 +489,14 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         `Email: ${info.patient_email ?? "-"}`,
         `Phone: ${info.patient_phone ?? "-"}`,
         "",
-        `Doctor: Dr. ${info.doctor_name}`,
+        `Doctor: ${formatDoctorName(info.doctor_name)}`,
         `Date: ${body.date} at ${scheduledTime}`,
       ].join("\n");
       const emailHtmlBody = detailsEmailHtml({
         heading: "New Appointment Booked",
         intro: `A new appointment has been confirmed at ${info.branch_name}.`,
         rows: [
-          { label: "Doctor", value: `Dr. ${info.doctor_name}` },
+          { label: "Doctor", value: `${formatDoctorName(info.doctor_name)}` },
           { label: "Date & Time", value: `${body.date} at ${scheduledTime}` },
           {
             label: "Visiting Patient",
@@ -518,7 +519,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       void Promise.all(recipients.map((email) => sendEmail(email, subject, emailBody, emailHtmlBody)));
 
       // To the booking's profile (the Patient App account), never the staff member who booked it.
-      const bookedBody = `${isForSelf ? "Your" : `${patientDetails.name}'s`} appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation from the clinic.`;
+      const bookedBody = `${isForSelf ? "Your" : `${patientDetails.name}'s`} appointment with ${formatDoctorName(info.doctor_name)} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation from the clinic.`;
       void patientRecipient(pool, auth.userId, "new_booking", { appointment_id: id }).then(async (recipient) => {
         if (!recipient) return;
         const [to] = await pool.query<Row[]>(`SELECT email FROM users WHERE id = ?`, [recipient]);

@@ -8,6 +8,7 @@ import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { conflict, notFound } from "@api/lib/errors";
 import { issueReceipt } from "@api/lib/receipts";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["branch_staff", "clinic_owner"]);
@@ -43,7 +44,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   if (!appointment) throw notFound("APPOINTMENT_NOT_FOUND", "Appointment not found.");
 
   const [details] = await pool.query<Row[]>(
-    `SELECT u.name AS patient_name, d.name AS doctor_name,
+    `SELECT u.name AS patient_name, ${doctorNameSql()} AS doctor_name,
             b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id

@@ -1,6 +1,7 @@
 import { pool, type Row } from "@api/lib/db";
 import { createPatientNotification, sendEmail, detailsEmailHtml } from "@api/lib/notifications";
 import type { RescheduledAppointment } from "@api/lib/appointments";
+import { doctorNameSql, formatDoctorName } from "@api/lib/doctor-name";
 
 // Shared by the branch-closure and doctor-leave routes: once a closure/leave has cascaded
 // into cancelling pre-existing appointments (see autoCancelAppointmentsInRange /
@@ -16,7 +17,7 @@ export async function notifyAutoCancelledDoctorAppointments(
   if (cancelled.length === 0) return;
   const [rows] = await pool.query<Row[]>(
     `SELECT a.id, a.patient_id, a.scheduled_date, a.scheduled_time,
-            u.name AS patient_name, u.email AS patient_email, d.name AS doctor_name
+            u.name AS patient_name, u.email AS patient_email, ${doctorNameSql()} AS doctor_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id
        JOIN doctors d ON d.id = a.doctor_id
@@ -35,13 +36,13 @@ export async function notifyAutoCancelledDoctorAppointments(
       await sendEmail(
         r.patient_email,
         `Appointment Cancelled — ${branchName}`,
-        `Your appointment with Dr. ${r.doctor_name} on ${r.scheduled_date} at ${r.scheduled_time} has been cancelled.\nReason: ${reason}`,
+        `Your appointment with ${formatDoctorName(r.doctor_name)} on ${r.scheduled_date} at ${r.scheduled_time} has been cancelled.\nReason: ${reason}`,
         detailsEmailHtml({
           heading: "Appointment Cancelled",
           intro: `Your appointment has been cancelled by the clinic.`,
           patientFacing: true,
           rows: [
-            { label: "Doctor", value: `Dr. ${r.doctor_name}` },
+            { label: "Doctor", value: `${formatDoctorName(r.doctor_name)}` },
             { label: "Branch", value: branchName },
             { label: "Date & Time", value: `${r.scheduled_date} at ${r.scheduled_time}` },
             { label: "Reason", value: reason },
@@ -63,7 +64,7 @@ export async function notifyRescheduledDoctorAppointments(
 ): Promise<void> {
   if (rescheduled.length === 0) return;
   const [rows] = await pool.query<Row[]>(
-    `SELECT a.id, a.patient_id, u.email AS patient_email, d.name AS doctor_name
+    `SELECT a.id, a.patient_id, u.email AS patient_email, ${doctorNameSql()} AS doctor_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id
        JOIN doctors d ON d.id = a.doctor_id
@@ -88,13 +89,13 @@ export async function notifyRescheduledDoctorAppointments(
       await sendEmail(
         row.patient_email,
         `Appointment Rescheduled — ${branchName}`,
-        `Your appointment with Dr. ${row.doctor_name} has been rescheduled.\nPrevious: ${r.old_date} at ${r.old_time}\nNew: ${r.new_date} at ${r.new_time}\nReason: ${reason}`,
+        `Your appointment with ${formatDoctorName(row.doctor_name)} has been rescheduled.\nPrevious: ${r.old_date} at ${r.old_time}\nNew: ${r.new_date} at ${r.new_time}\nReason: ${reason}`,
         detailsEmailHtml({
           heading: "Appointment Rescheduled",
-          intro: `Dr. ${row.doctor_name}'s availability changed, so your appointment has been moved to a new time. Please review and reschedule again if this doesn't work for you.`,
+          intro: `${formatDoctorName(row.doctor_name)}'s availability changed, so your appointment has been moved to a new time. Please review and reschedule again if this doesn't work for you.`,
           patientFacing: true,
           rows: [
-            { label: "Doctor", value: `Dr. ${row.doctor_name}` },
+            { label: "Doctor", value: `${formatDoctorName(row.doctor_name)}` },
             { label: "Branch", value: branchName },
             { label: "Previous Date & Time", value: `${r.old_date} at ${r.old_time}` },
             { label: "New Date & Time", value: `${r.new_date} at ${r.new_time}` },

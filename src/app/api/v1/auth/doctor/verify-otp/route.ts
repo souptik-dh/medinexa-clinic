@@ -4,6 +4,7 @@ import { parseBody, phoneSchema, otpSchema } from "@api/lib/validators";
 import { verifyPhoneOtpAndLogin, loadRoleBindings } from "@api/lib/auth-flows";
 import { pool, type Row } from "@api/lib/db";
 import { getDoctorSpecializations } from "@api/lib/specializations";
+import { formatDoctorName } from "@api/lib/doctor-name";
 
 const schema = z.object({
   phone: phoneSchema,
@@ -25,7 +26,7 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
 
   const { doctorId } = await loadRoleBindings(result.user.id, "doctor");
   const [doctors] = await pool.query<Row[]>(
-    `SELECT id, name, phone, certificate_url, photo_url, bio FROM doctors WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, name, name_prefix, phone, certificate_url, photo_url, bio FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [doctorId],
   );
   const doc = doctors[0];
@@ -39,7 +40,8 @@ export const POST = api({ rateLimit: 20, rateKey: "ip" }, async (ctx) => {
     doctor: doc
       ? {
           id: doc.id,
-          name: doc.name,
+          name: formatDoctorName(doc.name, doc.name_prefix),
+          name_prefix: doc.name_prefix,
           specializations: specializationsByDoctor?.get(String(doc.id)) ?? [],
           phone: doc.phone,
           certificate_url: doc.certificate_url,

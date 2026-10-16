@@ -5,6 +5,7 @@ import { badRequest } from "@api/lib/errors";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
 import { getDoctorRatingMap } from "@api/lib/reviews";
 import { getDoctorClinics } from "@api/lib/clinics";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
@@ -24,7 +25,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const prefix = `${escapeLike(q)}%`;
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT d.id, d.name, d.reg_no, d.smc_name, d.doctor_degree, d.phone, d.photo_url
+    `SELECT d.id, ${doctorNameSql()} AS name, d.name_prefix, d.reg_no, d.smc_name, d.doctor_degree, d.phone, d.photo_url
        FROM doctors d
       WHERE d.deleted_at IS NULL
         AND (d.reg_no LIKE ? OR d.name LIKE ?

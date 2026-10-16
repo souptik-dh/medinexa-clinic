@@ -16,6 +16,7 @@ import {
   weekdayNameInTz,
 } from "@api/lib/availability";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -69,7 +70,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const [assignments] = branchIds.length
     ? await pool.query<Row[]>(
         `SELECT dba.id AS assignment_id, dba.branch_id, dba.fee_amount, dba.currency, dba.slot_type,
-                d.id AS doctor_id, d.name, d.doctor_degree, d.photo_url
+                d.id AS doctor_id, ${doctorNameSql()} AS name, d.name_prefix, d.doctor_degree, d.photo_url
            FROM doctor_branch_assignments dba
            JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
           WHERE dba.branch_id IN (?) AND dba.is_active = 1

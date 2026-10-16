@@ -11,6 +11,7 @@ import {
   sendEmail,
   type NotificationType,
 } from "@api/lib/notifications";
+import { doctorNameSql, formatDoctorName } from "@api/lib/doctor-name";
 
 // Daily patient reminders for upcoming doctor and lab appointments: push + in-app +
 // email on each of the REMINDER_DAYS_BEFORE days leading up to the visit (so a booking
@@ -100,7 +101,7 @@ async function emailReminder(
 async function remindDoctorAppointments(poolDb: Pool): Promise<number> {
   const [candidates] = await poolDb.query<Row[]>(
     `SELECT a.id, a.patient_id, a.scheduled_date, a.scheduled_time, a.created_at,
-            d.name AS doctor_name, b.name AS branch_name, b.address AS branch_address,
+            ${doctorNameSql()} AS doctor_name, b.name AS branch_name, b.address AS branch_address,
             b.timezone AS branch_timezone, c.name AS clinic_name, ap.name AS visitor_name
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
@@ -130,7 +131,7 @@ async function remindDoctorAppointments(poolDb: Pool): Promise<number> {
       await createPatientNotification(poolDb, appt.patient_id, "appointment_reminder", payload);
       await emailReminder(poolDb, appt.patient_id, "appointment_reminder", payload, [
         ...(appt.visitor_name ? [{ label: "Patient", value: String(appt.visitor_name) }] : []),
-        { label: "Doctor", value: `Dr. ${appt.doctor_name}` },
+        { label: "Doctor", value: `${formatDoctorName(appt.doctor_name)}` },
         { label: "Clinic", value: String(appt.clinic_name), sub: [appt.branch_name, appt.branch_address].filter(Boolean).join(" · ") },
         { label: "Date & Time", value: `${date} at ${appt.scheduled_time}` },
       ]);

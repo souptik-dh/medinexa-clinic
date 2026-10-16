@@ -3,6 +3,7 @@ import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { getBranchRating } from "@api/lib/reviews";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 // Clinic-side view of patient feedback for a branch — every doctor's reviews whose
 // most recent submission was tied to this branch (see the note in
@@ -33,7 +34,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const [rows] = await pool.query<Row[]>(
     `SELECT r.id, r.rating, r.comment, r.created_at, r.doctor_id,
             u.name AS patient_name, u.photo_url AS patient_photo_url,
-            d.name AS doctor_name, d.photo_url AS doctor_photo_url
+            ${doctorNameSql()} AS doctor_name, d.photo_url AS doctor_photo_url
        FROM reviews r
        JOIN users u ON u.id = r.patient_id
        JOIN doctors d ON d.id = r.doctor_id

@@ -5,6 +5,7 @@ import { badRequest, notFound } from "@api/lib/errors";
 import { getOwnedClinic } from "@api/lib/scope";
 import { addDays, todayInTz } from "@api/lib/availability";
 import { DOCUMENT_SELECT_JOIN, serializeDocument } from "@api/lib/patient-documents";
+import { formatDoctorName } from "@api/lib/doctor-name";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -59,7 +60,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   );
 
   const [doctors] = await pool.query<Row[]>(
-    `SELECT id, name, doctor_degree, photo_url FROM doctors WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, name, name_prefix, doctor_degree, photo_url FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [doctorId],
   );
   if (!doctors[0] || branches.length === 0) {
@@ -252,7 +253,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   return json({
     clinic_id: clinicId,
-    doctor: { doctor_id: doctor.id, name: doctor.name, degree: doctor.doctor_degree, photo_url: doctor.photo_url ?? null },
+    doctor: { doctor_id: doctor.id, name: formatDoctorName(doctor.name, doctor.name_prefix), name_prefix: doctor.name_prefix, degree: doctor.doctor_degree, photo_url: doctor.photo_url ?? null },
     dates: [...new Set(pairs.map((p) => p.date))],
     total: items.length,
     appointments: items,

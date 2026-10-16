@@ -4,6 +4,7 @@ import { requireRoles } from "@api/lib/auth";
 import { getAppointmentInScope } from "@api/lib/appointments";
 import { getReceiptForPdf } from "@api/lib/receipts";
 import { buildReceiptPdf } from "@api/lib/pdf";
+import { formatDoctorName } from "@api/lib/doctor-name";
 
 const EVENT_TITLES: Record<string, string> = {
   booking_confirmed: "Booking Confirmation Receipt",
@@ -31,7 +32,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     branchPhone: d.branch_phone ? String(d.branch_phone) : null,
     patientName: String(d.patient_name ?? "Patient"),
     rows: [
-      ...(d.doctor_name ? [{ label: "Doctor", value: `Dr. ${d.doctor_name}` }] : []),
+      ...(d.doctor_name ? [{ label: "Doctor", value: `${formatDoctorName(String(d.doctor_name))}` }] : []),
       { label: "Date & Time", value: `${d.scheduled_date ?? ""} ${d.scheduled_time ?? ""}`.trim() },
       ...(receipt.payment_method ? [{ label: "Payment Method", value: String(receipt.payment_method) }] : []),
       ...(receipt.reference_no ? [{ label: "Reference No.", value: String(receipt.reference_no) }] : []),

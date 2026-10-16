@@ -5,6 +5,7 @@ import { fetchPage } from "@api/lib/pagination";
 import { getAvailabilityPeriods, nextAvailableSlot } from "@api/lib/availability";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
 import { getDoctorRatingMap } from "@api/lib/reviews";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
@@ -52,7 +53,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     select: "SELECT *",
     from: `FROM (
         SELECT dba.id AS id, dba.created_at AS created_at, dba.fee_amount, dba.currency, dba.slot_type,
-               d.id AS doctor_id, d.name AS doctor_name, d.smc_name, d.doctor_degree,
+               d.id AS doctor_id, ${doctorNameSql()} AS doctor_name, d.name_prefix, d.smc_name, d.doctor_degree,
                d.phone, d.photo_url,
                b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, b.city AS branch_city, b.timezone AS branch_timezone,
                c.id AS clinic_id, c.name AS clinic_name
@@ -82,6 +83,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
       id: r.doctor_id,
       assignment_id: r.id,
       name: r.doctor_name,
+      name_prefix: r.name_prefix,
       specialization: specializationDisplayName(specializations),
       specializations,
       smc_name: r.smc_name,

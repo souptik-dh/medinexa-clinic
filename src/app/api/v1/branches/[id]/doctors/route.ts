@@ -4,6 +4,7 @@ import { notFound } from "@api/lib/errors";
 import { getActiveLeaves, getAvailabilityPeriods, nextAvailableSlot, todayInTz } from "@api/lib/availability";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
 import { getDoctorRatingMap } from "@api/lib/reviews";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
@@ -44,7 +45,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   params.push(limit);
 
   const [rows] = await pool.query<Row[]>(
-    `SELECT d.id, d.name, d.smc_name, d.doctor_degree, d.phone, d.certificate_url, d.photo_url,
+    `SELECT d.id, ${doctorNameSql()} AS name, d.name_prefix, d.smc_name, d.doctor_degree, d.phone, d.certificate_url, d.photo_url,
             dba.id AS assignment_id, dba.fee_amount, dba.currency, dba.branch_id, dba.slot_type
        FROM doctor_branch_assignments dba
        JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL

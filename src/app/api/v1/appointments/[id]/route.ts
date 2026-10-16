@@ -3,6 +3,7 @@ import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { scopeWhere, serializeAppointment } from "@api/lib/appointments";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "doctor", "clinic_owner"]);
@@ -10,7 +11,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [rows] = await pool.query<Row[]>(
     `SELECT a.*,
-            d.name AS doctor_name,
+            ${doctorNameSql()} AS doctor_name,
             d.photo_url AS doctor_photo_url,
             b.name AS branch_name,
             b.photo_url AS branch_photo_url,

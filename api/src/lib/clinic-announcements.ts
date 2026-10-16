@@ -3,6 +3,7 @@ import { newId } from "@api/lib/ids";
 import { sendFcmToUsersLocalized, type FcmMessage, type PushLanguage } from "@api/lib/fcm";
 import { patientEmailHtml, sendEmail } from "@api/lib/notifications";
 import { computeLiveState, ensureClinicSubscription, getPlatformSettings } from "@api/lib/subscriptions";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 type Row = RowDataPacket;
 
@@ -69,12 +70,12 @@ async function loadClinicSummary(db: Pool, clinicId: string): Promise<{ summary:
   if (branches.length === 0) return null;
 
   const [doctorRows] = await db.query<Row[]>(
-    `SELECT DISTINCT d.id, d.name, d.specialization
+    `SELECT DISTINCT d.id, ${doctorNameSql()} AS name, d.specialization
        FROM doctor_branch_assignments dba
        JOIN branches b ON b.id = dba.branch_id AND b.deleted_at IS NULL
        JOIN doctors d ON d.id = dba.doctor_id
       WHERE b.clinic_id = ? AND dba.is_active = 1
-      ORDER BY d.name`,
+      ORDER BY name`,
     [clinicId],
   );
   const [testRows] = await db.query<Row[]>(

@@ -1,6 +1,7 @@
 import { api, json } from "@api/lib/http";
 import { pool, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient"]);
@@ -18,7 +19,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [nextRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            d.id AS doctor_id, ${doctorNameSql()} AS doctor_name, d.photo_url AS doctor_photo_url,
             b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
@@ -32,7 +33,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [previousRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            d.id AS doctor_id, ${doctorNameSql()} AS doctor_name, d.photo_url AS doctor_photo_url,
             b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id

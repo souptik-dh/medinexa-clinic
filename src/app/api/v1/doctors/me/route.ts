@@ -3,13 +3,14 @@ import { api, json, readJson } from "@api/lib/http";
 import { pool, type Row } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
-import { notFound } from "@api/lib/errors";
+import { badRequest, notFound } from "@api/lib/errors";
 import { getDoctorSpecializations } from "@api/lib/specializations";
+import { formatDoctorName, stripDoctorPrefix } from "@api/lib/doctor-name";
 
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["doctor"]);
   const [rows] = await pool.query<Row[]>(
-    `SELECT id, name, reg_no, smc_name, doctor_degree, phone, certificate_url, photo_url, bio
+    `SELECT id, name, name_prefix, reg_no, smc_name, doctor_degree, phone, certificate_url, photo_url, bio
        FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [auth.doctorId],
   );
@@ -18,7 +19,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   const specializationsByDoctor = await getDoctorSpecializations(pool, [String(doc.id)]);
   return json({
     id: doc.id,
-    name: doc.name,
+    name: formatDoctorName(doc.name, doc.name_prefix),
+    name_prefix: doc.name_prefix,
     specializations: specializationsByDoctor.get(String(doc.id)) ?? [],
     reg_no: doc.reg_no,
     smc_name: doc.smc_name,
@@ -50,7 +52,13 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
 
   const fields: string[] = [];
   const params: unknown[] = [];
-  if (body.name !== undefined) { fields.push("name = ?"); params.push(body.name); }
+  if (body.name !== undefined) {
+    // The form shows the titled name; store it without "Dr.".
+    const name = stripDoctorPrefix(body.name);
+    if (!name) throw badRequest("VALIDATION_ERROR", "Name is required.", "name");
+    fields.push("name = ?");
+    params.push(name);
+  }
   if (body.reg_no !== undefined) { fields.push("reg_no = ?"); params.push(body.reg_no); }
   if (body.smc_name !== undefined) { fields.push("smc_name = ?"); params.push(body.smc_name); }
   if (body.doctor_degree !== undefined) { fields.push("doctor_degree = ?"); params.push(body.doctor_degree); }
@@ -61,7 +69,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const [updated] = await pool.query<Row[]>(
-    `SELECT id, name, reg_no, smc_name, doctor_degree, phone, certificate_url, photo_url, bio
+    `SELECT id, name, name_prefix, reg_no, smc_name, doctor_degree, phone, certificate_url, photo_url, bio
        FROM doctors WHERE id = ? AND deleted_at IS NULL`,
     [auth.doctorId],
   );
@@ -69,7 +77,8 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const specializationsByDoctor = await getDoctorSpecializations(pool, [String(doc.id)]);
   return json({
     id: doc.id,
-    name: doc.name,
+    name: formatDoctorName(doc.name, doc.name_prefix),
+    name_prefix: doc.name_prefix,
     specializations: specializationsByDoctor.get(String(doc.id)) ?? [],
     reg_no: doc.reg_no,
     smc_name: doc.smc_name,

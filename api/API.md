@@ -2149,6 +2149,9 @@ Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Hard-deletes the
 
 ## Doctors, invites & assignments
 
+> **Doctor names carry their title.** Every doctor name the API returns (doctor objects' `name`, and `doctor_name` on appointments, reviews, summaries, receipts and messages) is the titled name, e.g. `"Dr. Riya Sen"`. The title is stored separately in `doctors.name_prefix` (default `"Dr."`) and doctor objects also return `name_prefix`. Writes (`PATCH /doctors/me` `name`, accepting an invite) strip a leading "Dr." before saving, so sending the titled name back is safe.
+
+
 ### POST /branches/:id/doctor-invites
 
 Auth: `clinic_owner` (must own the branch) **or** `branch_staff` with `doctors:manage`. Creates a single-use invite sent via **email and/or SMS** (the code is **never** returned in the response). The invite is keyed by the doctor's **phone** (primary) or email.

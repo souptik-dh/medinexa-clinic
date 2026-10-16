@@ -4,6 +4,7 @@ import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 import { loadStaffPermissions, hasPermission } from "@api/lib/permissions";
 import { getDoctorSpecializations, specializationDisplayName } from "@api/lib/specializations";
+import { doctorNameSql } from "@api/lib/doctor-name";
 
 // Lists doctors already actively assigned somewhere in this clinic - used by
 // the "add existing doctor to another branch" fast-track picker, so clinic
@@ -63,8 +64,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const [doctorRows] = await pool.query<Row[]>(
-    `SELECT id, name, phone, photo_url, doctor_degree, smc_name
-       FROM doctors WHERE id IN (?) AND deleted_at IS NULL ORDER BY name ASC`,
+    `SELECT id, ${doctorNameSql("doctors")} AS name, name_prefix, phone, photo_url, doctor_degree, smc_name
+       FROM doctors WHERE id IN (?) AND deleted_at IS NULL ORDER BY doctors.name ASC`,
     [doctorIds],
   );
 
