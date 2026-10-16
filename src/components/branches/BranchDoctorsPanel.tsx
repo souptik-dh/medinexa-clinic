@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import InviteDoctorForm from "@/components/doctors/InviteDoctorForm";
 import AddExistingDoctorForm from "@/components/doctors/AddExistingDoctorForm";
@@ -50,6 +50,10 @@ export default function BranchDoctorsPanel() {
   const [specializationFilter, setSpecializationFilter] = useState<string[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addExistingOpen, setAddExistingOpen] = useState(false);
+  // Embedded forms report when a request is in flight so the drawer can't be
+  // dismissed mid-submit.
+  const [invitePending, setInvitePending] = useState(false);
+  const [addExistingPending, setAddExistingPending] = useState(false);
 
   // Cached under the branch id so switching tabs and coming back to Doctors
   // shows the roster instantly instead of refetching every time.
@@ -98,12 +102,14 @@ export default function BranchDoctorsPanel() {
           {canManage && (
             <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => setAddExistingOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
               >
                 {t("doctors.addExistingDoctor")}
               </button>
               <button
+                type="button"
                 onClick={() => setInviteOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
@@ -165,13 +171,18 @@ export default function BranchDoctorsPanel() {
         {error && (
           <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {error}
+            <button
+              type="button"
+              onClick={() => reload()}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
           </div>
         )}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-          {loading ? (
-            <TableSkeleton rows={5} cols={5} />
-          ) : filtered.length === 0 ? (
+          {!loading && filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || specializationFilter.length > 0
                 ? t("doctors.noDoctorsMatchFilters")
@@ -215,7 +226,9 @@ export default function BranchDoctorsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {filtered.map((doc) => (
+                  {loading ? (
+                    <TableRowsSkeleton rows={5} cols={5} avatar actions cellClassName="py-3" />
+                  ) : filtered.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="py-3">
                         <Link
@@ -284,6 +297,7 @@ export default function BranchDoctorsPanel() {
         onClose={() => setInviteOpen(false)}
         title={t("doctors.inviteDoctor")}
         description={t("doctors.inviteDoctorDesc")}
+        closeDisabled={invitePending}
       >
         <InviteDoctorForm
           onDone={() => {
@@ -291,6 +305,7 @@ export default function BranchDoctorsPanel() {
             reload();
           }}
           onCancel={() => setInviteOpen(false)}
+          onPendingChange={setInvitePending}
         />
       </FormDrawer>
 
@@ -301,6 +316,7 @@ export default function BranchDoctorsPanel() {
         onClose={() => setAddExistingOpen(false)}
         title={t("doctors.addExistingDoctor")}
         description={t("doctors.addExistingDoctorDesc")}
+        closeDisabled={addExistingPending}
       >
         <AddExistingDoctorForm
           onDone={() => {
@@ -308,6 +324,7 @@ export default function BranchDoctorsPanel() {
             reload();
           }}
           onCancel={() => setAddExistingOpen(false)}
+          onPendingChange={setAddExistingPending}
         />
       </FormDrawer>
     </div>

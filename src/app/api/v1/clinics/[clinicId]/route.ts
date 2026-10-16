@@ -5,7 +5,7 @@ import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
 import { getOwnedClinic } from "@api/lib/scope";
 import { notFound, conflict } from "@api/lib/errors";
-import { licenseFields, tradeLicenseValidationFields } from "@api/lib/licenses";
+import { licenseFields, tradeLicenseLockedError, tradeLicenseValidationFields } from "@api/lib/licenses";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const { clinicId } = ctx.params;
@@ -24,6 +24,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     id: clinic.id,
     name: clinic.name,
     description: clinic.description,
+    photo_url: clinic.photo_url ?? null,
     nearby_location: clinic.nearby_location,
     city: clinic.city,
     district: clinic.district,
@@ -49,8 +50,8 @@ const patchSchema = z.object({
   state: z.string().trim().max(255).nullable().optional(),
   post_office: z.string().trim().max(255).nullable().optional(),
   trade_license_number: z.string().trim().min(1).max(100).optional(),
-  // Set only via a prior POST /clinics/validate-trade-license call for this same
-  // number — see the reset-on-change note below.
+  // From the client's PRDEODB check for this same number (the mobile app checks from
+  // the device, since the portal drops connections from this server's IP). Stored as sent.
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).nullable().optional(),
   clinical_establishment_reg_number: z.string().trim().max(100).nullable().optional(),
@@ -94,14 +95,22 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   // remembering to do it.
   const numberChanging =
     body.trade_license_number !== undefined && body.trade_license_number !== clinic.trade_license_number;
+  // A verified trade license number is locked: it can't be changed, and its VALID
+  // status can't be downgraded (which would otherwise unlock the number for the next
+  // request). Re-sending the same number and status is a no-op.
+  const tradeLicenseLocked = clinic.trade_license_validation_status === "VALID";
+  if (tradeLicenseLocked && numberChanging) throw tradeLicenseLockedError();
   const statusChanging =
+    !tradeLicenseLocked &&
     body.trade_license_validation_status !== undefined &&
     body.trade_license_validation_status !== clinic.trade_license_validation_status;
 
   if (body.trade_license_validation_status !== undefined && (numberChanging || statusChanging)) {
-    const validated = body.trade_license_validation_status === "VALID";
+    const number = body.trade_license_number ?? clinic.trade_license_number;
+    const status = number ? body.trade_license_validation_status : "PENDING";
+    const validated = status === "VALID";
     fields.push("trade_license_validated = ?", "trade_license_validation_status = ?", "trade_license_validated_at = ?");
-    params.push(validated, body.trade_license_validation_status, validated ? new Date() : null);
+    params.push(validated, status, validated ? new Date() : null);
   } else if (body.trade_license_validation_status === undefined && numberChanging) {
     fields.push("trade_license_validated = ?", "trade_license_validation_status = ?", "trade_license_validated_at = ?");
     params.push(false, "PENDING", null);
@@ -120,6 +129,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     id: updated.id,
     name: updated.name,
     description: updated.description,
+    photo_url: updated.photo_url ?? null,
     nearby_location: updated.nearby_location,
     city: updated.city,
     district: updated.district,

@@ -124,7 +124,7 @@ export default function AcceptDoctorInviteForm() {
   useEffect(() => {
     if (!done) return;
     const timer = setTimeout(() => {
-      router.push("/signin");
+      router.push("/");
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
   }, [done, router]);
@@ -152,7 +152,11 @@ export default function AcceptDoctorInviteForm() {
         setLinkState(status);
         return;
       }
-      const res = await authApi.sendVerifyPhoneOtp({ phone });
+      // Same code goes to the invited email too, so the doctor can use whichever arrives.
+      const res = await authApi.sendVerifyPhoneOtp({
+        phone,
+        email: emailFromLink ?? undefined,
+      });
       setMessage(res.message);
       setStage("verify");
     } catch (err) {
@@ -234,7 +238,7 @@ export default function AcceptDoctorInviteForm() {
                     {t("auth.accountActivated")}
                   </p>
                   <p className="mt-1 text-sm text-success-700/80 dark:text-success-500/80">
-                    {t("auth.redirectingToSignIn")}
+                    {t("auth.redirectingToHome")}
                   </p>
                 </div>
               </div>
@@ -346,7 +350,9 @@ export default function AcceptDoctorInviteForm() {
                 )}
                 {!showError("otp", !otp.trim()) && (
                   <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-                    {t("auth.enterOtpSentToPhone", { phone })}
+                    {emailFromLink
+                      ? t("auth.enterOtpSentToPhoneAndEmail", { phone, email: emailFromLink })
+                      : t("auth.enterOtpSentToPhone", { phone })}
                   </p>
                 )}
               </div>

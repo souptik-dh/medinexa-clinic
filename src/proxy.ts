@@ -26,6 +26,9 @@ export default function proxy(request: NextRequest) {
     const preflightHeaders: Record<string, string> = {
       "Vary": "Origin",
       ...corsOptions,
+      // Let browsers reuse the preflight instead of sending an OPTIONS before every
+      // call (Chrome caps this at 2h).
+      "Access-Control-Max-Age": "7200",
     };
     if (isAllowedOrigin) {
       preflightHeaders["Access-Control-Allow-Origin"] = origin;

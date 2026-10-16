@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { canUpdateBranch } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 interface BranchPhotoPanelProps {
   branchId: string;
@@ -22,7 +23,7 @@ export default function BranchPhotoPanel({
   onPhotoUpdated,
 }: BranchPhotoPanelProps) {
   const { t } = useTranslation();
-  const [uploading, setUploading] = useState(false);
+  const { pending: uploading, run: runUpload } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -39,18 +40,20 @@ export default function BranchPhotoPanel({
       return;
     }
 
-    setUploading(true);
     setError(null);
     try {
-      const res = await branchesApi.uploadPhoto(branchId, file);
-      onPhotoUpdated(res.photo_url);
-      toast.success(t("gallery.photoUpdateSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("gallery.photoUploadFailed"));
-      setError(message);
-      toast.error(message);
+      await runUpload(async () => {
+        try {
+          const res = await branchesApi.uploadPhoto(branchId, file);
+          onPhotoUpdated(res.photo_url);
+          toast.success(t("gallery.photoUpdateSuccess"));
+        } catch (err) {
+          const message = getErrorMessage(err, t("gallery.photoUploadFailed"));
+          setError(message);
+          toast.error(message);
+        }
+      });
     } finally {
-      setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -90,7 +93,7 @@ export default function BranchPhotoPanel({
               accept="image/jpeg,image/png,image/webp,image/gif"
               onChange={handleFileSelect}
               disabled={uploading}
-              className="block w-full max-w-xs text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
+              className="block w-full max-w-xs text-sm text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
             />
             {uploading && (
               <span className="text-sm text-gray-500 dark:text-gray-400">{t("doctors.uploading")}</span>

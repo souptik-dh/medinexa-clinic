@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import Image from "next/image";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useAuth } from "@/context/AuthContext";
@@ -36,7 +37,18 @@ export default function UserDropdown() {
         className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
       >
         <span className="mr-3 flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-brand-500 text-sm font-semibold text-white">
-          {initials}
+          {user?.photo_url ? (
+            <Image
+              src={user.photo_url}
+              alt={user.name ?? "Profile photo"}
+              width={44}
+              height={44}
+              unoptimized
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initials
+          )}
         </span>
 
         <span className="block mr-1 font-medium text-theme-sm">{user?.name ?? t("auth.signIn")}</span>

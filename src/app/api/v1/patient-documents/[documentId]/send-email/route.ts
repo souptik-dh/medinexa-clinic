@@ -104,7 +104,7 @@ export const POST = api({ rateLimit: 20 }, async (ctx) => {
   });
 
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT pdd.*, u.name AS attempted_by_name
+    `SELECT pdd.*, u.name AS attempted_by_name, u.photo_url AS attempted_by_photo_url
        FROM patient_document_deliveries pdd
        LEFT JOIN users u ON u.id = pdd.attempted_by
       WHERE pdd.id = ?`,

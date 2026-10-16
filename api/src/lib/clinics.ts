@@ -8,6 +8,7 @@ export interface DoctorClinicRef {
   clinic_name: string;
   branch_id: string;
   branch_name: string;
+  branch_photo_url: string | null;
   city: string | null;
 }
 
@@ -19,7 +20,7 @@ export async function getDoctorClinics(db: Db, doctorIds: string[]): Promise<Map
   if (uniqueIds.length === 0) return result;
   const [rows] = await db.query<Row[]>(
     `SELECT dba.doctor_id, c.id AS clinic_id, c.name AS clinic_name,
-            b.id AS branch_id, b.name AS branch_name, b.city AS city
+            b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, b.city AS city
        FROM doctor_branch_assignments dba
        JOIN branches b ON b.id = dba.branch_id AND b.deleted_at IS NULL
        JOIN clinics c ON c.id = b.clinic_id AND c.deleted_at IS NULL
@@ -34,6 +35,7 @@ export async function getDoctorClinics(db: Db, doctorIds: string[]): Promise<Map
       clinic_name: r.clinic_name,
       branch_id: r.branch_id,
       branch_name: r.branch_name,
+      branch_photo_url: r.branch_photo_url ?? null,
       city: r.city,
     });
     result.set(String(r.doctor_id), list);

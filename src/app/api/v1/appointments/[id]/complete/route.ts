@@ -3,22 +3,16 @@ import { pool, withTransaction, type Row } from "@api/lib/db";
 import { requireRoles } from "@api/lib/auth";
 import { getAppointmentInScope, getAppointmentNames, transition, serializeAppointment } from "@api/lib/appointments";
 import { hasSlotPassedInTz } from "@api/lib/availability";
-import {
-  createPatientNotification,
-  notifyPhonesWhatsapp,
-  branchContactPhones,
-  sendWhatsappFile,
-  personalizeForPatient,
-} from "@api/lib/notifications";
+import { createPatientNotification, emailPatient } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { conflict, notFound } from "@api/lib/errors";
 import { issueReceipt } from "@api/lib/receipts";
-import { buildReceiptPdf } from "@api/lib/pdf";
 
 export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["branch_staff", "clinic_owner"]);
 
+  const pendingEmails: Array<() => Promise<void>> = [];
   await withTransaction(async (conn) => {
     const appt = await getAppointmentInScope(conn, ctx.params.id, auth);
     await assertClinicOperational(conn, appt.clinic_id);
@@ -31,27 +25,28 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     }
     await transition(conn, appt, "completed", auth.userId, ["paid"]);
     const names = await getAppointmentNames(conn, appt.id);
-    await createPatientNotification(conn, appt.patient_id, "consultation_completed", {
+    const payload = {
       appointment_id: appt.id,
       date: appt.scheduled_date,
       time: appt.scheduled_time,
       doctor_name: names.doctor_name,
       branch_name: names.branch_name,
-    });
+    };
+    await createPatientNotification(conn, appt.patient_id, "consultation_completed", payload);
+    pendingEmails.push(() => emailPatient(pool, appt.patient_id, "consultation_completed", payload));
   });
+
+  await Promise.all(pendingEmails.map((send) => send()));
 
   const [rows] = await pool.query<Row[]>(`SELECT * FROM appointments WHERE id = ?`, [ctx.params.id]);
   const appointment = rows[0];
   if (!appointment) throw notFound("APPOINTMENT_NOT_FOUND", "Appointment not found.");
 
   const [details] = await pool.query<Row[]>(
-    `SELECT u.name AS patient_name, u.phone AS patient_phone,
-            ap.phone AS visitor_phone, ap.name AS visitor_name, ap.relationship AS visitor_relationship,
-            d.name AS doctor_name,
+    `SELECT u.name AS patient_name, d.name AS doctor_name,
             b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id
-       LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
        JOIN clinics c ON c.id = a.clinic_id
@@ -59,11 +54,8 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     [ctx.params.id],
   );
   const info = details[0];
-  // Prefer the walk-in patient's number when a patient_details.phone was provided,
-  // otherwise fall back to the account holder's recorded phone.
-  const patientPhone = info?.visitor_phone || info?.patient_phone || null;
 
-  const receipt = await issueReceipt(pool, {
+  await issueReceipt(pool, {
     sourceType: "appointment",
     sourceId: appointment.id,
     eventType: "completed",
@@ -88,42 +80,6 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
       paid: true,
     },
   });
-
-  const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-  const clinicCompleteText = `Jido Healthcare: Consultation for ${info?.patient_name ?? "a patient"} with Dr. ${info?.doctor_name} at ${info?.branch_name} has been completed.`;
-  void notifyPhonesWhatsapp(clinicPhones, clinicCompleteText);
-
-  if (patientPhone) {
-    const completeText = personalizeForPatient(
-      `Your consultation with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been completed.`,
-      info.visitor_name,
-      info.visitor_relationship,
-    );
-    void notifyPhonesWhatsapp([patientPhone], completeText);
-    if (receipt) {
-      const pdf = buildReceiptPdf({
-        title: "Consultation Completion Receipt",
-        receiptNumber: receipt.receiptNumber,
-        issuedAt: new Date().toISOString(),
-        clinicName: info.clinic_name ?? "Clinic",
-        branchName: info.branch_name,
-        branchAddress: info.branch_address ?? null,
-        branchPhone: info.branch_phone ?? null,
-        patientName: info.patient_name ?? "Patient",
-        rows: [
-          { label: "Doctor", value: `Dr. ${info.doctor_name}` },
-          { label: "Date & Time", value: `${appointment.scheduled_date} at ${appointment.scheduled_time}` },
-        ],
-        amount: { label: "Amount", value: `${Number(appointment.fee_amount)} ${appointment.currency}`, due: false },
-        copy: "patient",
-      });
-      void sendWhatsappFile(
-        patientPhone,
-        { filename: `receipt-${receipt.receiptNumber}.pdf`, mimetype: "application/pdf", data: pdf },
-        "Your consultation receipt",
-      );
-    }
-  }
 
   return json(serializeAppointment(appointment));
 });

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 interface ConfirmDeleteModalProps {
   isOpen: boolean;
@@ -27,7 +28,8 @@ export default function ConfirmDeleteModal({
   const { t } = useTranslation();
   const resolvedConfirmLabel = confirmLabel ?? t("common.delete");
   const [confirmText, setConfirmText] = useState("");
-  const [confirming, setConfirming] = useState(false);
+  // Ref-locked so a double-click / repeated Enter can't submit the delete twice.
+  const { pending: confirming, run } = useAsyncAction();
 
   // Clear stale input whenever the modal is (re)opened, including for a
   // different record — otherwise a previous "DELETE" carries over.
@@ -44,16 +46,13 @@ export default function ConfirmDeleteModal({
 
   const handleConfirm = async () => {
     if (!canConfirm) return;
-    setConfirming(true);
-    try {
+    await run(async () => {
       await onConfirm();
-    } finally {
-      setConfirming(false);
-    }
+    });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} className="max-w-md">
+    <Modal isOpen={isOpen} onClose={handleClose} closeDisabled={confirming} className="max-w-md">
       <div className="p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           {t("common.deleteConfirmTitle")}
@@ -82,6 +81,9 @@ export default function ConfirmDeleteModal({
             type="text"
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirm();
+            }}
             disabled={confirming}
             autoFocus
             className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
@@ -90,6 +92,7 @@ export default function ConfirmDeleteModal({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={handleClose}
             disabled={confirming}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
@@ -97,6 +100,7 @@ export default function ConfirmDeleteModal({
             {t("common.cancel")}
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={!canConfirm}
             className="rounded-lg bg-error-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:bg-error-300"

@@ -7,6 +7,7 @@ import { forbidden, notFound, conflict } from "@api/lib/errors";
 import { newId } from "@api/lib/ids";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { slotTemplateSchema } from "@api/lib/slot-template";
+import { deleteCloudinaryAsset } from "@api/lib/cloudinary";
 import { rescheduleAppointmentsAfterTemplateChange, type RescheduledAppointment } from "@api/lib/appointments";
 import {
   notifyRescheduledDoctorAppointments,
@@ -68,6 +69,8 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     rescheduled: [],
     cancelled: [],
   };
+  // Deleted from Cloudinary only after the transaction commits.
+  let replacedCertificateUrl: string | null = null;
 
   await withTransaction(async (conn) => {
     const fields: string[] = [];
@@ -88,6 +91,10 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     }
 
     if (body.certificate !== undefined) {
+      const [doctors] = await conn.query<Row[]>(`SELECT certificate_url FROM doctors WHERE id = ?`, [
+        assignment.doctor_id,
+      ]);
+      if (doctors[0]?.certificate_url !== body.certificate) replacedCertificateUrl = doctors[0]?.certificate_url;
       await conn.query(`UPDATE doctors SET certificate_url = ? WHERE id = ?`, [
         body.certificate,
         assignment.doctor_id,
@@ -138,6 +145,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     }
   });
 
+  await deleteCloudinaryAsset(replacedCertificateUrl);
   await Promise.all([
     notifyRescheduledDoctorAppointments(rescheduleResult.rescheduled, assignment.branch_name, RESCHEDULE_REASON),
     notifyAutoCancelledDoctorAppointments(rescheduleResult.cancelled, assignment.branch_name, RESCHEDULE_REASON),

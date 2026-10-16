@@ -77,7 +77,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   // clinic - lets the "add existing doctor" picker auto-fill sensible
   // defaults for the new branch from wherever else this doctor already works.
   const [assignmentRows] = await pool.query<Row[]>(
-    `SELECT dba.doctor_id, b.id AS branch_id, b.name AS branch_name,
+    `SELECT dba.doctor_id, b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url,
             dba.fee_amount, dba.currency, dba.slot_type
        FROM doctor_branch_assignments dba
        JOIN branches b ON b.id = dba.branch_id AND b.deleted_at IS NULL
@@ -99,6 +99,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       const branches = (branchesByDoctor.get(String(r.id)) ?? []).map((b) => ({
         branch_id: b.branch_id,
         branch_name: b.branch_name,
+        branch_photo_url: b.branch_photo_url ?? null,
         fee_amount: Number(b.fee_amount),
         currency: b.currency,
         slot_type: b.slot_type,

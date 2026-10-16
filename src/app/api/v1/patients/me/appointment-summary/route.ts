@@ -12,35 +12,35 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
        SUM(CASE WHEN status = 'no_show' THEN 1 ELSE 0 END) AS no_show_count,
        COUNT(*) AS total_count
-     FROM appointments WHERE patient_id = ?`,
-    [auth.userId],
+     FROM appointments a WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?))`,
+    [auth.userId, auth.userId, auth.userId],
   );
 
   const [nextRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name,
-            b.id AS branch_id, b.name AS branch_name
+            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
-      WHERE a.patient_id = ? AND a.status IN ('pending','confirmed','paid') AND a.scheduled_date >= CURDATE()
+      WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?)) AND a.status IN ('pending','confirmed','paid') AND a.scheduled_date >= CURDATE()
       ORDER BY a.scheduled_date ASC, a.scheduled_time ASC
       LIMIT 1`,
-    [auth.userId],
+    [auth.userId, auth.userId, auth.userId],
   );
   const next = nextRows[0];
 
   const [previousRows] = await pool.query<Row[]>(
     `SELECT a.id, a.scheduled_date, a.scheduled_time, a.status,
-            d.id AS doctor_id, d.name AS doctor_name,
-            b.id AS branch_id, b.name AS branch_name
+            d.id AS doctor_id, d.name AS doctor_name, d.photo_url AS doctor_photo_url,
+            b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url
        FROM appointments a
        JOIN doctors d ON d.id = a.doctor_id
        JOIN branches b ON b.id = a.branch_id
-      WHERE a.patient_id = ? AND a.status = 'completed'
+      WHERE (a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?)) AND a.status = 'completed'
       ORDER BY a.scheduled_date DESC, a.scheduled_time DESC
       LIMIT 1`,
-    [auth.userId],
+    [auth.userId, auth.userId, auth.userId],
   );
   const previous = previousRows[0];
 
@@ -53,8 +53,10 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       status: r.status,
       doctor_id: r.doctor_id,
       doctor_name: r.doctor_name,
+      doctor_photo_url: r.doctor_photo_url ?? null,
       branch_id: r.branch_id,
       branch_name: r.branch_name,
+      branch_photo_url: r.branch_photo_url ?? null,
     };
   }
 

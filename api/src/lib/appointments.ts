@@ -30,6 +30,11 @@ export type ApptStatus = (typeof APPT_STATUSES)[number];
 
 export const NON_TERMINAL = ["pending", "confirmed", "paid"];
 
+/** Readable patient ID shown to staff and patients: the first 8 characters of the id. */
+export function patientCode(id: unknown): string | null {
+  return typeof id === "string" && id.length >= 8 ? id.slice(0, 8).toUpperCase() : null;
+}
+
 export function serializeAppointment(r: Row) {
   const base = {
     id: r.id,
@@ -46,6 +51,8 @@ export function serializeAppointment(r: Row) {
     payment_method: r.payment_method,
     created_at: r.created_at,
     updated_at: r.updated_at,
+    // When the payment was collected (latest payments row); null if none recorded.
+    paid_at: r.paid_at ?? null,
   };
   const withPatientDetails = {
     ...base,
@@ -56,20 +63,30 @@ export function serializeAppointment(r: Row) {
       ? {
           patient_details: {
             patient_id: r.visitor_patient_id ?? null,
+            patient_code: patientCode(r.visitor_patient_id),
+            profile_user_id: r.visitor_profile_user_id ?? null,
+            profile_name: r.visitor_profile_name ?? null,
             relationship: r.visitor_relationship ?? "self",
             name: r.visitor_name,
             phone: r.visitor_phone ?? null,
             age: r.visitor_age !== null && r.visitor_age !== undefined ? Number(r.visitor_age) : null,
             gender: r.visitor_gender ?? null,
+            photo_url: r.visitor_photo_url ?? null,
           },
           relationship: r.visitor_relationship ?? "self",
           booking_source: r.visitor_booking_source ?? null,
+          // The Patient App account the booking belongs to — separate from the patient.
+          profile:
+            r.visitor_profile_user_id !== undefined
+              ? { id: r.visitor_profile_user_id ?? null, name: r.visitor_profile_name ?? null }
+              : null,
           // The actual patient the visit is for. `id` resolves to a real users row
           // once known — null for legacy bookings that predate this field.
           patient: {
             id: r.visitor_patient_id ?? null,
             name: r.visitor_name,
             mobile: r.visitor_phone ?? null,
+            photo_url: r.visitor_photo_url ?? null,
           },
           // The account that created the booking — the patient themselves, or clinic
           // staff booking on behalf of a walk-in/family member.
@@ -78,6 +95,7 @@ export function serializeAppointment(r: Row) {
             ...(r.patient_name !== undefined
               ? { name: r.patient_name ?? null, email: r.patient_email ?? null, phone: r.patient_phone ?? null }
               : {}),
+            photo_url: r.patient_photo_url ?? null,
           },
         }
       : {}),
@@ -88,6 +106,7 @@ export function serializeAppointment(r: Row) {
     doctor_name: r.doctor_name ?? null,
     doctor_photo_url: r.doctor_photo_url ?? null,
     branch_name: r.branch_name ?? null,
+    branch_photo_url: r.branch_photo_url ?? null,
     branch_phone: r.branch_phone ?? null,
   };
 }
@@ -95,7 +114,9 @@ export function serializeAppointment(r: Row) {
 export function scopeWhere(auth: AuthContext): { where: string; params: unknown[] } {
   switch (auth.role) {
     case "patient":
-      return { where: "a.patient_id = ?", params: [auth.userId] };
+      // Bookings the account made, is the patient of, or that belong to its profile
+      // (e.g. a visit reception booked for this user or one of their family).
+      return { where: "(a.patient_id = ? OR a.id IN (SELECT appointment_id FROM appointment_patients WHERE patient_id = ? OR profile_user_id = ?))", params: [auth.userId, auth.userId, auth.userId] };
     case "branch_staff":
       return { where: "a.branch_id = ?", params: [auth.branchId ?? "__none__"] };
     case "doctor":

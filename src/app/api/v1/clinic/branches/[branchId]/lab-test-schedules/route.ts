@@ -6,12 +6,14 @@ import { parseBody, timeSchema } from "@api/lib/validators";
 import { requireBranchAccess } from "@api/lib/permissions";
 import { auditLabAction } from "@api/lib/lab-tests";
 import { badRequest } from "@api/lib/errors";
+import { assertBranchReadable } from "@api/lib/lab-test-library";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
-  requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
+  const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
   const { branchId } = ctx.params;
+  await assertBranchReadable(pool, auth, branchId);
 
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT * FROM lab_test_schedules WHERE branch_id = ? ORDER BY weekday ASC, start_time ASC`,

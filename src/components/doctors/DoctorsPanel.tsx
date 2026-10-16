@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
-import { TableSkeleton, ListSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import {
   Table,
@@ -22,6 +22,7 @@ import AddExistingDoctorForm from "@/components/doctors/AddExistingDoctorForm";
 import Pagination from "@/components/tables/Pagination";
 import { useModal } from "@/hooks/useModal";
 import { usePagination } from "@/hooks/usePagination";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
@@ -75,10 +76,16 @@ export default function DoctorsPanel() {
   const [invites, setInvites] = useState<DoctorInvite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Per-row action state (invite revokes) instead of one page-wide busy flag.
+  const rowAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
   const [doctorToRemove, setDoctorToRemove] = useState<BranchDoctor | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [addExistingOpen, setAddExistingOpen] = useState(false);
+  // Mirrors the embedded forms' submit state so their drawers can't be
+  // dismissed mid-request.
+  const [inviteFormPending, setInviteFormPending] = useState(false);
+  const [addExistingPending, setAddExistingPending] = useState(false);
 
   // doctor directory search (GET /doctors/search)
   const [searchQuery, setSearchQuery] = useState("");
@@ -86,11 +93,15 @@ export default function DoctorsPanel() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const search = useLatestRequest();
+  // Query of the search currently in flight, so a repeated Enter on the same
+  // query doesn't fire a duplicate request.
+  const searchInFlight = React.useRef<string | null>(null);
 
   // doctor photo (clinic level)
   const [photoDoctor, setPhotoDoctor] = useState<BranchDoctor | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  const { pending: isUploadingPhoto, run: runPhotoUpload } = useAsyncAction();
   const [photoError, setPhotoError] = useState<string | null>(null);
   const photoFileRef = React.useRef<HTMLInputElement>(null);
   const {
@@ -112,32 +123,46 @@ export default function DoctorsPanel() {
     pageItems: invitesPageItems,
   } = usePagination(invites, { resetKey: branch?.id });
 
+  // `silent` refreshes (focus return, after a mutation) keep the current rows
+  // on screen instead of flashing the table skeleton.
   const load = useCallback(
-    async (b: BranchSelectValue | null, activeTab: Tab) => {
+    async (b: BranchSelectValue | null, activeTab: Tab, opts?: { silent?: boolean }) => {
+      const token = begin();
       if (!b) {
         setDoctors([]);
         setInvites([]);
+        setLoading(false);
         return;
       }
-      setLoading(true);
+      if (!opts?.silent) {
+        setLoading(true);
+        // Don't let the previous branch's rows pose as this branch's results.
+        if (activeTab === "doctors") setDoctors([]);
+        else setInvites([]);
+      }
       setError(null);
       try {
         if (activeTab === "doctors") {
           const res = await doctorsApi.listByBranch(b.id);
+          if (!isLatest(token)) return;
           setDoctors(res.items);
         } else {
           const res = await doctorInvitesApi.list(b.id);
+          if (!isLatest(token)) return;
           setInvites(res.items);
         }
       } catch (err) {
-        setDoctors([]);
-        setInvites([]);
+        if (!isLatest(token)) return;
+        if (!opts?.silent) {
+          setDoctors([]);
+          setInvites([]);
+        }
         setError(getErrorMessage(err, "Failed to load doctors"));
       } finally {
-        setLoading(false);
+        if (isLatest(token)) setLoading(false);
       }
     },
-    []
+    [begin, isLatest]
   );
 
   const onBranchChange = (b: BranchSelectValue | null) => {
@@ -159,7 +184,7 @@ export default function DoctorsPanel() {
   useEffect(() => {
     const refreshOnReturn = () => {
       if (document.visibilityState !== "visible") return;
-      if (branch && tab !== "search") load(branch, tab);
+      if (branch && tab !== "search") load(branch, tab, { silent: true });
     };
     window.addEventListener("focus", refreshOnReturn);
     document.addEventListener("visibilitychange", refreshOnReturn);
@@ -189,17 +214,25 @@ export default function DoctorsPanel() {
   const runSearch = async () => {
     const q = searchQuery.trim();
     if (!q) return;
+    if (searchInFlight.current === q) return;
+    const token = search.begin();
+    searchInFlight.current = q;
     setSearchLoading(true);
     setSearchError(null);
     try {
       const res = await doctorsApi.search(q, 20);
+      if (!search.isLatest(token)) return;
       setSearchResults(res.items);
       setHasSearched(true);
     } catch (err) {
+      if (!search.isLatest(token)) return;
       setSearchResults([]);
       setSearchError(getErrorMessage(err, "Search failed"));
     } finally {
-      setSearchLoading(false);
+      if (search.isLatest(token)) {
+        searchInFlight.current = null;
+        setSearchLoading(false);
+      }
     }
   };
 
@@ -208,20 +241,21 @@ export default function DoctorsPanel() {
       toast.error("You do not have permission to perform this action.");
       return;
     }
+    if (rowAction.isPending(invite.id)) return;
     if (!window.confirm(`Revoke the invite for ${invite.email}?`)) return;
-    setBusy(true);
     setError(null);
-    try {
-      await doctorInvitesApi.revoke(invite.id);
-      if (branch) await load(branch, "invites");
-      toast.success("Invite revoked successfully.");
-    } catch (err) {
-      const message = getErrorMessage(err, "Unable to revoke invite. Please try again.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    await rowAction.run(invite.id, async () => {
+      try {
+        await doctorInvitesApi.revoke(invite.id);
+        toast.success("Invite revoked successfully.");
+        // Refresh silently so the row's new status shows without a skeleton flash.
+        if (branch) await load(branch, "invites", { silent: true });
+      } catch (err) {
+        const message = getErrorMessage(err, "Unable to revoke invite. Please try again.");
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const confirmRemoveDoctor = async () => {
@@ -234,7 +268,8 @@ export default function DoctorsPanel() {
     setError(null);
     try {
       await doctorsApi.removeAssignment(doc.assignment_id);
-      if (branch) await load(branch, "doctors");
+      // Targeted update - drop just this assignment instead of refetching the table.
+      setDoctors((prev) => prev.filter((d) => d.assignment_id !== doc.assignment_id));
       toast.success("Doctor removed from branch successfully.");
       setDoctorToRemove(null);
     } catch (err) {
@@ -251,28 +286,27 @@ export default function DoctorsPanel() {
 
   const uploadDoctorPhoto = async (file: File) => {
     if (!photoDoctor || !branch) return;
-    setPhotoBusy(true);
-    setPhotoError(null);
-    try {
-      const res = await doctorsApi.uploadBranchDoctorPhoto(
-        branch.id,
-        photoDoctor.id,
-        file
-      );
-      setPhotoUrl(res.photo_url);
-      setDoctors((prev) =>
-        prev.map((d) =>
-          d.id === photoDoctor.id ? { ...d, photo_url: res.photo_url } : d
-        )
-      );
-      toast.success("Doctor photo updated successfully.");
-    } catch (err) {
-      const message = getErrorMessage(err, "Photo upload failed");
-      setPhotoError(message);
-      toast.error(message);
-    } finally {
-      setPhotoBusy(false);
-    }
+    await runPhotoUpload(async () => {
+      setPhotoError(null);
+      try {
+        const res = await doctorsApi.uploadBranchDoctorPhoto(
+          branch.id,
+          photoDoctor.id,
+          file
+        );
+        setPhotoUrl(res.photo_url);
+        setDoctors((prev) =>
+          prev.map((d) =>
+            d.id === photoDoctor.id ? { ...d, photo_url: res.photo_url } : d
+          )
+        );
+        toast.success("Doctor photo updated successfully.");
+      } catch (err) {
+        const message = getErrorMessage(err, "Photo upload failed");
+        setPhotoError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const formatNextSlot = (iso: string | null): string => {
@@ -316,27 +350,39 @@ export default function DoctorsPanel() {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+          <span>{error}</span>
+          {/* A failed (non-silent) load leaves the list empty - offer a retry. */}
+          {branch && tab !== "search" && !loading &&
+            (tab === "doctors" ? doctors.length === 0 : invites.length === 0) && (
+            <button
+              type="button"
+              onClick={() => load(branch, tab)}
+              className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-100 dark:text-error-400 dark:hover:bg-error-500/20"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-6">
-            <button onClick={() => onTabChange("doctors")} className={tabClass("doctors")}>
+            <button type="button" onClick={() => onTabChange("doctors")} className={tabClass("doctors")}>
               {t("doctors.doctors")}
             </button>
-            <button onClick={() => onTabChange("invites")} className={tabClass("invites")}>
+            <button type="button" onClick={() => onTabChange("invites")} className={tabClass("invites")}>
               {t("doctors.invites")}
             </button>
-            <button onClick={() => onTabChange("search")} className={tabClass("search")}>
+            <button type="button" onClick={() => onTabChange("search")} className={tabClass("search")}>
               {t("common.search")}
             </button>
           </div>
           {tab === "invites" && canManage && (
             <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => setAddExistingOpen(true)}
                 disabled={!branch}
                 className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:border-gray-300 disabled:text-gray-400 dark:hover:bg-brand-500/10"
@@ -344,6 +390,7 @@ export default function DoctorsPanel() {
                 {t("doctors.addExistingDoctor")}
               </button>
               <button
+                type="button"
                 onClick={() => setInviteOpen(true)}
                 disabled={!branch}
                 className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
@@ -366,9 +413,10 @@ export default function DoctorsPanel() {
                 className={inputClass}
               />
               <button
+                type="button"
                 onClick={runSearch}
                 disabled={searchLoading || !searchQuery.trim()}
-                className="h-11 shrink-0 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                className="h-11 shrink-0 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
                 {searchLoading ? t("common.loading") : t("common.search")}
               </button>
@@ -380,13 +428,11 @@ export default function DoctorsPanel() {
               </div>
             )}
 
-            {!hasSearched ? (
+            {!searchLoading && !hasSearched ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 Search the doctor directory by name, specialization, or registration number.
               </p>
-            ) : searchLoading ? (
-              <ListSkeleton rows={3} />
-            ) : searchResults.length === 0 ? (
+            ) : !searchLoading && searchResults.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t("doctors.noDoctors")}
               </p>
@@ -413,7 +459,10 @@ export default function DoctorsPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {searchResults.map((d) => (
+                    {/* A new query swaps the previous results for skeleton rows. */}
+                    {searchLoading ? (
+                      <TableRowsSkeleton rows={3} cols={5} avatar cellClassName="py-3" />
+                    ) : searchResults.map((d) => (
                       <TableRow key={d.id}>
                         <TableCell className="py-3">
                           <div className="flex items-center gap-3">
@@ -448,10 +497,8 @@ export default function DoctorsPanel() {
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             Select a branch to view its doctors and invites.
           </p>
-        ) : loading ? (
-          <TableSkeleton rows={5} cols={tab === "doctors" ? 7 : 5} />
         ) : tab === "doctors" ? (
-          doctors.length === 0 ? (
+          !loading && doctors.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {t("doctors.noDoctors")}
             </p>
@@ -485,7 +532,9 @@ export default function DoctorsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {doctorsPageItems.map((doc) => (
+                  {loading ? (
+                    <TableRowsSkeleton rows={5} cols={7} avatar actions cellClassName="py-3" />
+                  ) : doctorsPageItems.map((doc) => (
                     <TableRow key={doc.id}>
                       <TableCell className="py-3">
                         <Link
@@ -537,8 +586,8 @@ export default function DoctorsPanel() {
                         <div className="flex justify-end gap-1">
                           {canManage && (
                             <button
+                              type="button"
                               onClick={() => openPhoto(doc)}
-                              disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
                             >
                               Photo
@@ -554,8 +603,8 @@ export default function DoctorsPanel() {
                           )}
                           {canManage && (
                             <button
+                              type="button"
                               onClick={() => setDoctorToRemove(doc)}
-                              disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
                               {t("common.delete")}
@@ -568,7 +617,7 @@ export default function DoctorsPanel() {
                 </TableBody>
               </Table>
             </div>
-            {doctors.length > 10 && (
+            {!loading && doctors.length > 10 && (
               <div className="mt-4 flex justify-center">
                 <Pagination
                   currentPage={doctorsPage}
@@ -579,7 +628,7 @@ export default function DoctorsPanel() {
             )}
             </>
           )
-        ) : invites.length === 0 ? (
+        ) : !loading && invites.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("doctors.noDoctors")}
           </p>
@@ -607,7 +656,11 @@ export default function DoctorsPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {invitesPageItems.map((inv) => (
+                {loading ? (
+                  <TableRowsSkeleton rows={5} cols={5} actions cellClassName="py-3" />
+                ) : invitesPageItems.map((inv) => {
+                  const revoking = rowAction.isPending(inv.id);
+                  return (
                   <TableRow key={inv.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -637,21 +690,23 @@ export default function DoctorsPanel() {
                       <div className="flex justify-end">
                         {inv.status === "pending" && canManage && (
                           <button
+                            type="button"
                             onClick={() => revokeInvite(inv)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
+                            disabled={revoking}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-error-500/10"
                           >
-                            {t("doctors.revokeInvite")}
+                            {revoking ? t("common.revokingEllipsis") : t("doctors.revokeInvite")}
                           </button>
                         )}
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
-          {invites.length > 10 && (
+          {!loading && invites.length > 10 && (
             <div className="mt-4 flex justify-center">
               <Pagination
                 currentPage={invitesPage}
@@ -668,6 +723,7 @@ export default function DoctorsPanel() {
       <Modal
         isOpen={isPhotoOpen}
         onClose={closePhotoModal}
+        closeDisabled={isUploadingPhoto}
         className="max-w-[480px] p-6 lg:p-8"
       >
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -709,13 +765,20 @@ export default function DoctorsPanel() {
               const file = e.target.files?.[0];
               if (file) uploadDoctorPhoto(file);
             }}
-            disabled={photoBusy}
-            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
+            disabled={isUploadingPhoto}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:file:bg-gray-800 dark:file:text-gray-200"
           />
+          {isUploadingPhoto && (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400" aria-live="polite">
+              {t("doctors.uploading")}
+            </p>
+          )}
           <div className="mt-4 flex justify-end gap-3">
             <button
+              type="button"
               onClick={closePhotoModal}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+              disabled={isUploadingPhoto}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
               {photoUrl ? t("common.close") : t("common.cancel")}
             </button>
@@ -737,6 +800,7 @@ export default function DoctorsPanel() {
       <FormDrawer
         isOpen={inviteOpen}
         onClose={() => setInviteOpen(false)}
+        closeDisabled={inviteFormPending}
         title={t("doctors.inviteDoctor")}
         description={t("doctors.inviteDoctorDesc")}
       >
@@ -753,6 +817,7 @@ export default function DoctorsPanel() {
             load(branch, targetTab);
           }}
           onCancel={() => setInviteOpen(false)}
+          onPendingChange={setInviteFormPending}
         />
       </FormDrawer>
 
@@ -761,6 +826,7 @@ export default function DoctorsPanel() {
       <FormDrawer
         isOpen={addExistingOpen}
         onClose={() => setAddExistingOpen(false)}
+        closeDisabled={addExistingPending}
         title={t("doctors.addExistingDoctor")}
         description={t("doctors.addExistingDoctorDesc")}
       >
@@ -776,6 +842,7 @@ export default function DoctorsPanel() {
             load(branch, "doctors");
           }}
           onCancel={() => setAddExistingOpen(false)}
+          onPendingChange={setAddExistingPending}
         />
       </FormDrawer>
     </div>

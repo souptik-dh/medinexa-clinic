@@ -14,6 +14,7 @@ import { markAutoBranchPending } from "@/lib/autoCreateBranch";
 import { PHONE_VALIDATION_MESSAGE, isValidPhone, sanitizePhoneDigits } from "@/lib/phone";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type RequiredField = "firstName" | "lastName" | "phone" | "otp";
 
@@ -30,7 +31,8 @@ export default function SignUpForm() {
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked: a repeated Enter or double click can't fire a second auth request.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const { sendOwnerRegisterOtp, verifyOwnerRegisterOtp } = useAuth();
   const router = useRouter();
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
@@ -44,23 +46,22 @@ export default function SignUpForm() {
       return;
     }
     if (submitting) return;
-    setSubmitting(true);
-    try {
-      const msg = await sendOwnerRegisterOtp({
-        name,
-        clinicName: clinicName || name,
-        phone,
-        email: email.trim() || undefined,
-      });
-      setMessage(msg ?? t("auth.otpSentPhoneMessage"));
-      setStage("verify");
-    } catch (err) {
-      const message = getErrorMessage(err, t("auth.unableToCreateAccount"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      try {
+        const msg = await sendOwnerRegisterOtp({
+          name,
+          clinicName: clinicName || name,
+          phone,
+          email: email.trim() || undefined,
+        });
+        setMessage(msg ?? t("auth.otpSentPhoneMessage"));
+        setStage("verify");
+      } catch (err) {
+        const message = getErrorMessage(err, t("auth.unableToCreateAccount"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const verifyOtp = async () => {
@@ -72,27 +73,26 @@ export default function SignUpForm() {
       return;
     }
     if (submitting) return;
-    setSubmitting(true);
-    try {
-      const result = await verifyOwnerRegisterOtp({
-        name,
-        clinicName: clinicName || name,
-        phone,
-        email: email.trim() || undefined,
-        otp,
-      });
-      if (autoCreateBranch && result.clinicId) {
-        markAutoBranchPending(result.clinicId);
+    await runSubmit(async () => {
+      try {
+        const result = await verifyOwnerRegisterOtp({
+          name,
+          clinicName: clinicName || name,
+          phone,
+          email: email.trim() || undefined,
+          otp,
+        });
+        if (autoCreateBranch && result.clinicId) {
+          markAutoBranchPending(result.clinicId);
+        }
+        toast.success(t("auth.accountCreatedSuccess"));
+        router.push("/dashboard");
+      } catch (err) {
+        const message = getErrorMessage(err, t("auth.unableToCreateAccount"));
+        setError(message);
+        toast.error(message);
       }
-      toast.success(t("auth.accountCreatedSuccess"));
-      router.push("/dashboard");
-    } catch (err) {
-      const message = getErrorMessage(err, t("auth.unableToCreateAccount"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -301,7 +301,8 @@ export default function SignUpForm() {
                     setError(null);
                     setMessage(null);
                   }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                  disabled={submitting}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
                   {t("auth.back")}
                 </button>

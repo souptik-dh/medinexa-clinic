@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type RequiredField = "phone" | "password";
@@ -18,7 +19,8 @@ export default function SuperAdminSignInForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked so a double-click or repeated Enter can't send a second login.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const { superAdminLogin, user, isAuthReady } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,21 +37,20 @@ export default function SuperAdminSignInForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSubmitted(true);
-    if (!isValidPhone(phone) || !password.trim()) {
-      setError(t("auth.pleaseFillRequired"));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await superAdminLogin(phone, password);
-      router.push("/super-admin");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      setError(null);
+      setSubmitted(true);
+      if (!isValidPhone(phone) || !password.trim()) {
+        setError(t("auth.pleaseFillRequired"));
+        return;
+      }
+      try {
+        await superAdminLogin(phone, password);
+        router.push("/super-admin");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
+      }
+    });
   };
 
   return (
@@ -132,7 +133,7 @@ export default function SuperAdminSignInForm() {
               </div>
             )}
             <div>
-              <Button className="w-full" size="sm" disabled={submitting}>
+              <Button type="submit" className="w-full" size="sm" disabled={submitting}>
                 {submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>
             </div>

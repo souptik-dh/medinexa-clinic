@@ -28,7 +28,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { getSpecializationOptions, matchesSpecializationFilter } from "@/lib/specialization";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -116,6 +116,7 @@ function DoctorRowActions({
   if (branches.length === 1) {
     return (
       <button
+        type="button"
         onClick={() => onEdit(branches[0].branch_id)}
         className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
       >
@@ -127,6 +128,7 @@ function DoctorRowActions({
   return (
     <div className="relative inline-block">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         className="dropdown-toggle rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
       >
@@ -167,6 +169,9 @@ export default function ClinicDoctorsPanel() {
     branchId: string;
     name: string;
   } | null>(null);
+  // Mirrors the open drawer form's request state so the drawer can't be
+  // dismissed mid-request (only one drawer is open at a time).
+  const [formPending, setFormPending] = useState(false);
 
   // Cached under the clinic id so switching tabs and coming back to Doctors
   // shows the roster instantly instead of re-running the branch+doctor
@@ -175,6 +180,7 @@ export default function ClinicDoctorsPanel() {
     data,
     error: swrError,
     isLoading: loading,
+    isValidating: reloading,
     mutate: reload,
   } = useSWR(clinicId ? ["clinic-doctors", clinicId] : null, async () => {
     const branchesRes = await branchesApi.list(clinicId);
@@ -266,12 +272,14 @@ export default function ClinicDoctorsPanel() {
           {canManage && (
             <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => setAddExistingOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
               >
                 {t("doctors.addExistingDoctor")}
               </button>
               <button
+                type="button"
                 onClick={() => setInviteOpen(true)}
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
               >
@@ -335,7 +343,8 @@ export default function ClinicDoctorsPanel() {
             <select
               value={branchFilter}
               onChange={(e) => setBranchFilter(e.target.value)}
-              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              disabled={loading}
+              className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             >
               <option value="">{t("appointments.allBranches")}</option>
               {branches.map((b) => (
@@ -350,13 +359,19 @@ export default function ClinicDoctorsPanel() {
         {error && (
           <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {error}
+            <button
+              type="button"
+              onClick={() => reload()}
+              disabled={reloading}
+              className="ml-3 font-medium underline disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("common.retry")}
+            </button>
           </div>
         )}
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-          {loading ? (
-            <TableSkeleton cols={6} />
-          ) : groupedDoctors.length === 0 ? (
+          {!loading && groupedDoctors.length === 0 ? (
             <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
               {search || branchFilter || specializationFilter.length > 0
                 ? t("doctors.noDoctorsMatchFilters")
@@ -408,7 +423,15 @@ export default function ClinicDoctorsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {groupedDoctors.map((doc) => {
+                  {loading ? (
+                    <TableRowsSkeleton
+                      rows={5}
+                      cols={canManage ? 6 : 5}
+                      avatar
+                      actions={canManage}
+                      cellClassName="py-3"
+                    />
+                  ) : groupedDoctors.map((doc) => {
                     const firstFee = doc.branches[0];
                     const feeVaries = doc.branches.some(
                       (b) => b.fee_amount !== firstFee.fee_amount || b.currency !== firstFee.currency
@@ -490,15 +513,18 @@ export default function ClinicDoctorsPanel() {
       <FormDrawer
         isOpen={inviteOpen}
         onClose={() => setInviteOpen(false)}
+        closeDisabled={formPending}
         title={t("doctors.inviteDoctor")}
         description={t("doctors.inviteDoctorDesc")}
       >
         <InviteDoctorForm
           onDone={() => {
+            setFormPending(false);
             setInviteOpen(false);
             reload();
           }}
           onCancel={() => setInviteOpen(false)}
+          onPendingChange={setFormPending}
         />
       </FormDrawer>
 
@@ -507,21 +533,25 @@ export default function ClinicDoctorsPanel() {
       <FormDrawer
         isOpen={addExistingOpen}
         onClose={() => setAddExistingOpen(false)}
+        closeDisabled={formPending}
         title={t("doctors.addExistingDoctor")}
         description={t("doctors.addExistingDoctorDesc")}
       >
         <AddExistingDoctorForm
           onDone={() => {
+            setFormPending(false);
             setAddExistingOpen(false);
             reload();
           }}
           onCancel={() => setAddExistingOpen(false)}
+          onPendingChange={setFormPending}
         />
       </FormDrawer>
 
       <FormDrawer
         isOpen={editingDoctor !== null}
         onClose={() => setEditingDoctor(null)}
+        closeDisabled={formPending}
         title={t("doctors.editDoctor")}
         description={editingDoctor?.name}
       >
@@ -530,10 +560,12 @@ export default function ClinicDoctorsPanel() {
             branchId={editingDoctor.branchId}
             doctorId={editingDoctor.doctorId}
             onDone={() => {
+              setFormPending(false);
               setEditingDoctor(null);
               reload();
             }}
             onCancel={() => setEditingDoctor(null)}
+            onPendingChange={setFormPending}
           />
         )}
       </FormDrawer>

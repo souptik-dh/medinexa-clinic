@@ -2,6 +2,7 @@ import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { serializeLabTestAppointment, labApptScopeWhere } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import { parsePagination } from "@api/lib/validators";
 import { encodeCursor, decodeCursor } from "@api/lib/http";
 import type { RowDataPacket } from "mysql2/promise";
@@ -14,8 +15,9 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const past = sp.get("past");
   const { limit, cursor } = parsePagination(sp);
 
-  const conditions = ["a.patient_id = ?"];
-  const params: unknown[] = [auth.userId];
+  // Bookings the account made, is the patient of, or that belong to its profile.
+  const conditions = ["(a.patient_id = ? OR a.id IN (SELECT appointment_id FROM lab_test_appointment_patients WHERE patient_id = ? OR profile_user_id = ?))"];
+  const params: unknown[] = [auth.userId, auth.userId, auth.userId];
 
   if (status) {
     conditions.push("a.status = ?");
@@ -24,12 +26,13 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
 
   const today = new Date().toISOString().slice(0, 10);
   if (upcoming === "true") {
-    conditions.push("(a.appointment_date > ? OR (a.appointment_date = ? AND a.start_time >= ?))");
+    // No time yet (awaiting the clinic's confirmation) = upcoming for its whole date.
+    conditions.push("(a.appointment_date > ? OR (a.appointment_date = ? AND (a.start_time IS NULL OR a.start_time >= ?)))");
     const now = new Date();
     params.push(today, today, `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`);
   }
   if (past === "true") {
-    conditions.push("(a.appointment_date < ? OR (a.appointment_date = ? AND a.start_time < ?))");
+    conditions.push("(a.appointment_date < ? OR (a.appointment_date = ? AND a.start_time IS NOT NULL AND a.start_time < ?))");
     const now = new Date();
     params.push(today, today, `${String(now.getUTCHours()).padStart(2, "0")}:${String(now.getUTCMinutes()).padStart(2, "0")}`);
   }
@@ -45,10 +48,13 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT a.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
             b.name AS branch_name, c.name AS clinic_name,
+            b.photo_url AS branch_photo_url,
+            (SELECT bu.photo_url FROM users bu WHERE bu.id = a.patient_id) AS patient_photo_url,
+            (SELECT vu.photo_url FROM users vu WHERE vu.id = ltap.patient_id) AS visitor_photo_url,
             ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
             ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
             ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-            ltap.booked_by AS visitor_booked_by
+            ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
        FROM lab_test_appointments a
        JOIN lab_tests lt ON lt.id = a.test_id
        JOIN branches b ON b.id = a.branch_id
@@ -73,7 +79,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const nextCursor = hasMore && items.length > 0 ? encodeCursor({ offset: offset + items.length }) : null;
 
   return json({
-    items: items.map(serializeLabTestAppointment),
+    items: await withAppointmentPrecautions(pool, items.map(serializeLabTestAppointment)),
     next_cursor: nextCursor,
   });
 });

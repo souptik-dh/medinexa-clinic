@@ -8,6 +8,7 @@ import Button from "@/components/ui/button/Button";
 import { ApiError, authApi } from "@/lib/api";
 import { useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type RequiredField = "phone";
@@ -15,7 +16,8 @@ type RequiredField = "phone";
 export default function ForgotPasswordForm() {
   const { t } = useTranslation();
   const [phone, setPhone] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked: a repeated Enter or double click can't fire a second auth request.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { touch, showError, setSubmitted } = useRequiredFields<RequiredField>();
@@ -28,15 +30,14 @@ export default function ForgotPasswordForm() {
       setError(PHONE_VALIDATION_MESSAGE);
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await authApi.forgotPassword(phone);
-      setMessage(res.message);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : t("auth.unableToRequestReset"));
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      try {
+        const res = await authApi.forgotPassword(phone);
+        setMessage(res.message);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : t("auth.unableToRequestReset"));
+      }
+    });
   };
 
   return (

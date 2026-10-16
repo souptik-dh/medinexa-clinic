@@ -6,7 +6,7 @@ import { requireRoles } from "@api/lib/auth";
 import { notFound } from "@api/lib/errors";
 
 import { getAppointmentInScope, getAppointmentNames, transition, serializeAppointment } from "@api/lib/appointments";
-import { createPatientNotification, notifyClinicSide, notifyPhonesWhatsapp, branchContactPhones, personalizeForPatient } from "@api/lib/notifications";
+import { createPatientNotification, notifyClinicSide, emailPatient, emailBranchContacts } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 
 const schema = z.object({
@@ -17,6 +17,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["patient", "branch_staff", "clinic_owner"]);
   const body = parseBody(schema, await readJson(ctx.request));
 
+  const pendingEmails: Array<() => Promise<void>> = [];
   await withTransaction(async (conn) => {
     const appt = await getAppointmentInScope(conn, ctx.params.id, auth);
 
@@ -33,7 +34,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
     const names = await getAppointmentNames(conn, appt.id);
 
     if (auth.role === "patient") {
-      await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "appointment_cancelled", {
+      const clinicPayload = {
         appointment_id: appt.id,
         patient_id: appt.patient_id,
         reason: body.reason ?? null,
@@ -42,47 +43,29 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         doctor_name: names.doctor_name,
         branch_name: names.branch_name,
         visitor_name: names.visitor_name ?? names.patient_name,
-      });
+      };
+      await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "appointment_cancelled", clinicPayload);
+      pendingEmails.push(() => emailBranchContacts(pool, appt.branch_id, "appointment_cancelled", clinicPayload));
     } else {
-      await createPatientNotification(conn, appt.patient_id, "appointment_cancelled", {
+      const patientPayload = {
         appointment_id: appt.id,
         date: appt.scheduled_date,
         time: appt.scheduled_time,
         reason: body.reason ?? null,
         doctor_name: names.doctor_name,
         branch_name: names.branch_name,
-      });
+      };
+      await createPatientNotification(conn, appt.patient_id, "appointment_cancelled", patientPayload);
+      pendingEmails.push(() => emailPatient(pool, appt.patient_id, "appointment_cancelled", patientPayload));
     }
     return appt;
   });
 
+  await Promise.all(pendingEmails.map((send) => send()));
+
   const [rows] = await pool.query<Row[]>(`SELECT * FROM appointments WHERE id = ?`, [ctx.params.id]);
   const appointment = rows[0];
   if (!appointment) throw notFound("APPOINTMENT_NOT_FOUND", "Appointment not found.");
-
-  const [details] = await pool.query<Row[]>(
-    `SELECT u.phone AS patient_phone, ap.phone AS visitor_phone, ap.name AS visitor_name,
-            ap.relationship AS visitor_relationship, d.name AS doctor_name, b.name AS branch_name
-       FROM appointments a
-       JOIN users u ON u.id = a.patient_id
-       LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
-       JOIN doctors d ON d.id = a.doctor_id
-       JOIN branches b ON b.id = a.branch_id
-      WHERE a.id = ?`,
-    [ctx.params.id],
-  );
-  const info = details[0];
-  const cancelBody = `The appointment with Dr. ${info?.doctor_name} at ${info?.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time} has been cancelled.${body.reason ? ` Reason: ${body.reason}` : ""}`;
-
-  const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-  void notifyPhonesWhatsapp(clinicPhones, `Jido Healthcare: ${cancelBody}`);
-  // Prefer the walk-in patient's number when a patient_details.phone was provided,
-  // otherwise fall back to the account holder's recorded phone.
-  const patientPhone = info?.visitor_phone || info?.patient_phone || null;
-  if (patientPhone) {
-    const patientCancelText = personalizeForPatient(cancelBody, info?.visitor_name, info?.visitor_relationship);
-    void notifyPhonesWhatsapp([patientPhone], patientCancelText);
-  }
 
   return json(serializeAppointment(appointment));
 });

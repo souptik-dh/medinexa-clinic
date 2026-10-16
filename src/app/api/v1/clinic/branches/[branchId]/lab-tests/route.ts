@@ -4,14 +4,17 @@ import { pool } from "@api/lib/db";
 import { newId } from "@api/lib/ids";
 import { parseBody } from "@api/lib/validators";
 import { serializeBranchLabTest, auditLabAction } from "@api/lib/lab-tests";
+import { withTestPrecautions } from "@api/lib/lab-test-precautions";
 import { requireBranchAccess } from "@api/lib/permissions";
-import { badRequest, notFound } from "@api/lib/errors";
+import { assertBranchHasLabSchedule, assertBranchReadable } from "@api/lib/lab-test-library";
+import { badRequest, conflict, notFound } from "@api/lib/errors";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
 export const GET = api({ rateLimit: 120 }, async (ctx) => {
-  requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
+  const auth = requireRoles(ctx.auth, ["clinic_owner", "branch_staff", "sys_admin"]);
   const { branchId } = ctx.params;
+  await assertBranchReadable(pool, auth, branchId);
   const sp = ctx.request.nextUrl.searchParams;
   const status = sp.get("status");
 
@@ -35,7 +38,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     params,
   );
 
-  return json({ items: (rows as any[]).map(serializeBranchLabTest) });
+  return json({ items: await withTestPrecautions(pool, (rows as any[]).map(serializeBranchLabTest), "test_id") });
 });
 
 const createSchema = z.object({
@@ -54,6 +57,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const body = parseBody(createSchema, await ctx.request.json());
 
   await requireBranchAccess(pool, auth, branchId, "lab_tests:manage");
+  await assertBranchHasLabSchedule(pool, branchId);
 
   const [testRows] = await pool.query<RowDataPacket[]>(
     `SELECT id, clinic_id FROM lab_tests WHERE id = ? AND status = 'active'`,
@@ -81,7 +85,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     [branchId, body.test_id],
   );
   if (existing.length > 0) {
-    throw badRequest("DUPLICATE_TEST", "This test is already configured for this branch.");
+    throw conflict("DUPLICATE_TEST", "This test has already been added.");
   }
 
   const id = newId();

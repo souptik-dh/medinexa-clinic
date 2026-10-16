@@ -13,18 +13,21 @@ export type NotificationType =
   | "staff_joined"
   | "appointment_cancelled"
   | "appointment_rescheduled"
+  | "appointment_reminder"
   | "lab_test_booked"
   | "lab_test_approved"
   | "lab_test_rejected"
   | "lab_test_cancelled"
   | "lab_test_completed"
   | "lab_test_payment_success"
+  | "lab_test_reminder"
   | "subscription_expiring"
   | "subscription_expired"
   | "subscription_activated"
   | "subscription_deactivated"
   | "subscription_offer"
-  | "patient_document_uploaded";
+  | "patient_document_uploaded"
+  | "new_clinic_nearby";
 
 export async function createNotification(
   db: Pick<PoolConnection, "query">,
@@ -81,12 +84,22 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function asStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+}
+
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
 function money(amount: unknown, currency: unknown): string | null {
   return typeof amount === "number" ? `${amount}${typeof currency === "string" ? ` ${currency}` : ""}` : null;
+}
+
+/** "tomorrow" / "in 3 days" for a reminder's days_before. */
+function daysAway(daysBefore: unknown): string | null {
+  if (typeof daysBefore !== "number") return null;
+  return daysBefore === 1 ? "tomorrow" : `in ${daysBefore} days`;
 }
 
 /** Maps an in-app notification type to a user-facing push title/body. */
@@ -167,26 +180,51 @@ export function pushContentFor(
         body: `Please reschedule your appointment${doctor ? ` with ${doctorAt}` : ""} — the doctor's availability changed${oldWhen ? `, so your visit on ${oldWhen}` : ""}${newWhen ? ` has been moved to ${newWhen}` : ""}.${reasonSuffix}`,
       };
     }
-    case "lab_test_booked":
+    case "appointment_reminder": {
+      const away = daysAway(payload.days_before);
+      return {
+        title: "Appointment reminder",
+        body: `Reminder: your appointment${doctor ? ` with ${doctorAt}` : ""} is ${away ?? "coming up"}${when ? ` (${when})` : ""}. Please arrive a few minutes early.`,
+      };
+    }
+    case "lab_test_reminder": {
+      const away = daysAway(payload.days_before);
+      const precautions = asStringList(payload.precautions);
+      const clinic = asString(payload.clinic_name);
+      const place = clinic && branch && clinic !== branch ? `${clinic} – ${branch}` : clinic || branch;
+      const homeVisit = payload.service_mode === "HOME";
+      return {
+        title: "Lab test reminder",
+        body:
+          `Reminder: your lab test${apptNoSuffix}${testName ? ` (${testName})` : ""}${homeVisit ? " home collection" : place ? ` at ${place}` : ""} is ${away ?? "coming up"}${when ? ` (${when})` : ""}.` +
+          (precautions.length > 0 ? ` Please follow these precautions before your test: ${precautions.join("; ")}` : ""),
+      };
+    }
+    case "lab_test_booked": {
+      const precautions = asStringList(payload.precautions);
       return {
         title: "Lab test booked",
-        body: testName
+        body: (testName
           ? `Your lab test booking${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` for ${when}` : ""} has been submitted.`
           : when
             ? `Your lab test booking for ${when} has been submitted.`
-            : "Your lab test booking has been submitted.",
+            : "Your lab test booking has been submitted.") +
+          (precautions.length > 0 ? ` Please follow these precautions before your test: ${precautions.join("; ")}` : ""),
       };
+    }
     case "lab_test_approved": {
-      const precautions = Array.isArray(payload.precautions)
-        ? payload.precautions.filter((p): p is string => typeof p === "string")
-        : [];
+      const precautions = asStringList(payload.precautions);
+      // "Medinova Diagnostic Center – Salt Lake" — the clinic, and the branch when it differs.
+      const clinic = asString(payload.clinic_name);
+      const place = clinic && branch && clinic !== branch ? `${clinic} – ${branch}` : clinic || branch;
       return {
         title: "Lab test confirmed",
-        body: testName
-          ? `Your lab test${apptNoSuffix} (${testName})${branch ? ` at ${branch}` : ""}${when ? ` on ${when}` : ""} has been confirmed.${precautions.length > 0 ? ` Precautions: ${precautions.join(", ")}` : ""}`
+        body: (testName
+          ? `Your lab test${apptNoSuffix} (${testName})${place ? ` at ${place}` : ""}${when ? ` on ${when}` : ""} has been confirmed.`
           : when
             ? `Your lab test appointment for ${when} has been confirmed.`
-            : "Your lab test appointment has been confirmed.",
+            : "Your lab test appointment has been confirmed.") +
+          (precautions.length > 0 ? ` Precautions: ${precautions.join("; ")}` : ""),
       };
     }
     case "lab_test_rejected":
@@ -224,20 +262,20 @@ export function pushContentFor(
         title: "Subscription expiring soon",
         body:
           typeof payload.days_left === "number"
-            ? `Your MediBook subscription expires in ${payload.days_left} day${payload.days_left === 1 ? "" : "s"}. Renew now to keep your clinic online.`
-            : "Your MediBook subscription is expiring soon. Renew now to keep your clinic online.",
+            ? `Your Jido Healthcare subscription expires in ${payload.days_left} day${payload.days_left === 1 ? "" : "s"}. Renew now to keep your clinic online.`
+            : "Your Jido Healthcare subscription is expiring soon. Renew now to keep your clinic online.",
       };
     case "subscription_expired":
       return {
         title: "Subscription expired",
-        body: "Your MediBook subscription has expired. Clinic operations are paused until you renew.",
+        body: "Your Jido Healthcare subscription has expired. Clinic operations are paused until you renew.",
       };
     case "subscription_activated":
       return {
         title: "Subscription active",
         body: typeof payload.period_end === "string"
-          ? `Your MediBook subscription is active through ${String(payload.period_end).slice(0, 10)}.`
-          : "Your MediBook subscription is active. Welcome aboard!",
+          ? `Your Jido Healthcare subscription is active through ${String(payload.period_end).slice(0, 10)}.`
+          : "Your Jido Healthcare subscription is active. Welcome aboard!",
       };
     case "subscription_deactivated":
       return {
@@ -265,15 +303,59 @@ export function pushContentFor(
 }
 
 /**
+ * Who should receive a patient-facing notification. Callers pass the booking's
+ * account id, which for a reception booking is the staff member; the right person is
+ * the booking's profile (the Patient App account that owns it). A family member with no
+ * phone of their own is reached through the account that books for them. Returns null
+ * when the only candidate is a clinic-side account: patient messages never go to staff.
+ */
+export async function patientRecipient(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: string,
+  payload: Record<string, unknown> = {},
+): Promise<string | null> {
+  try {
+    let recipient = userId;
+    const apptId = typeof payload.appointment_id === "string" ? payload.appointment_id : null;
+    if (apptId) {
+      const table = type.startsWith("lab_test") ? "lab_test_appointment_patients" : "appointment_patients";
+      const [rows] = await db.query<RowDataPacket[]>(
+        `SELECT profile_user_id FROM ${table} WHERE appointment_id = ?`,
+        [apptId],
+      );
+      if (rows[0]?.profile_user_id) recipient = String(rows[0].profile_user_id);
+    }
+    const [users] = await db.query<RowDataPacket[]>(`SELECT role, phone FROM users WHERE id = ?`, [recipient]);
+    const user = users[0];
+    if (!user || user.role !== "patient") return null;
+    if (!user.phone) {
+      const [links] = await db.query<RowDataPacket[]>(
+        `SELECT profile_user_id FROM patient_family_links WHERE patient_id = ? ORDER BY created_at LIMIT 1`,
+        [recipient],
+      );
+      if (links[0]?.profile_user_id) recipient = String(links[0].profile_user_id);
+    }
+    return recipient;
+  } catch (err) {
+    console.error(`[notify] could not resolve recipient for ${type}:`, err);
+    return userId;
+  }
+}
+
+/**
  * Creates the in-app notification AND delivers an FCM push to every device the
  * patient is registered on. Push failures never fail the underlying request.
+ * The recipient is resolved by `patientRecipient` (the booking's profile).
  */
 export async function createPatientNotification(
   db: Pick<PoolConnection, "query">,
-  userId: string,
+  accountUserId: string,
   type: NotificationType,
   payload: Record<string, unknown> = {},
 ): Promise<void> {
+  const userId = await patientRecipient(db, accountUserId, type, payload);
+  if (!userId) return;
   await createNotification(db, userId, type, payload);
   const content = pushContentFor(type, payload);
   await sendFcmToUser(userId, {
@@ -423,6 +505,66 @@ export async function notifyClinicSide(
 }
 
 /**
+ * Email counterparts of the in-app notifications above: each sends the same
+ * title/body the recipient sees in-app (pushContentFor for patients,
+ * pushContentForClinic for clinic users), so every notification also reaches
+ * the recipient's inbox. Call them after the triggering transaction commits.
+ * Silently skip recipients with no email on file. Never throw.
+ */
+export async function emailPatient(
+  db: Pick<PoolConnection, "query">,
+  accountUserId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  const userId = (await patientRecipient(db, accountUserId, type, payload)) ?? "";
+  if (!userId) return;
+  try {
+    const [rows] = await db.query<RowDataPacket[]>(`SELECT email FROM users WHERE id = ?`, [userId]);
+    const email = asString(rows[0]?.email);
+    if (!email) return;
+    const { title, body } = pushContentFor(type, payload);
+    await sendEmail(email, title, body, patientEmailHtml(body));
+  } catch (err) {
+    console.error(`[email] ${type} to patient ${userId} failed:`, err);
+  }
+}
+
+export async function emailClinicUser(
+  db: Pick<PoolConnection, "query">,
+  userId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const [rows] = await db.query<RowDataPacket[]>(`SELECT email FROM users WHERE id = ?`, [userId]);
+    const email = asString(rows[0]?.email);
+    if (!email) return;
+    const { title, body } = pushContentForClinic(type, payload);
+    await sendEmail(email, title, body, emailHtml(body));
+  } catch (err) {
+    console.error(`[email] ${type} to clinic user ${userId} failed:`, err);
+  }
+}
+
+/** Emails every branch staff member plus the clinic owner (see branchContactEmails). */
+export async function emailBranchContacts(
+  db: Pick<PoolConnection, "query">,
+  branchId: string,
+  type: NotificationType,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const emails = (await branchContactEmails(db, branchId)).filter(Boolean);
+    const { title, body } = pushContentForClinic(type, payload);
+    const html = emailHtml(body);
+    await Promise.all(emails.map((email) => sendEmail(email, title, body, html)));
+  } catch (err) {
+    console.error(`[email] ${type} to branch ${branchId} contacts failed:`, err);
+  }
+}
+
+/**
  * Emails for everyone tied to a branch: its staff and the owning clinic's
  * owner. The UNION dedupes in case the same address appears in both roles.
  */
@@ -437,19 +579,6 @@ export async function branchContactEmails(
     [branchId, branchId],
   );
   return rows.map((r) => r.email as string);
-}
-
-export async function branchContactPhones(
-  db: Pick<PoolConnection, "query">,
-  branchId: string,
-): Promise<string[]> {
-  const [rows] = await db.query<RowDataPacket[]>(
-    `SELECT u.phone FROM branch_staff bs JOIN users u ON u.id = bs.user_id WHERE bs.branch_id = ? AND u.phone IS NOT NULL
-     UNION
-     SELECT co.phone FROM branches b JOIN clinics c ON c.id = b.clinic_id JOIN users co ON co.id = c.owner_user_id WHERE b.id = ? AND co.phone IS NOT NULL`,
-    [branchId, branchId],
-  );
-  return rows.map((r) => r.phone as string);
 }
 
 export async function clinicOwnerContact(
@@ -614,7 +743,7 @@ export function detailsEmailHtml(opts: {
       (row, i) => `<tr>
 <td style="padding:${i === 0 ? "0" : "12px"} 0 12px 0;${i < opts.rows.length - 1 ? "border-bottom:1px solid #e2e8f0;" : ""}">
 <span style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">${escapeHtml(row.label)}</span>
-<p style="font-size:15px;color:#1e293b;font-weight:700;margin:4px 0 0;">${escapeHtml(row.value)}</p>
+<p style="font-size:15px;color:#1e293b;font-weight:700;margin:4px 0 0;white-space:pre-line;">${escapeHtml(row.value)}</p>
 ${row.sub ? `<p style="font-size:13px;color:#64748b;margin:2px 0 0;">${escapeHtml(row.sub)}</p>` : ""}
 </td>
 </tr>`,
@@ -648,7 +777,7 @@ export function branchAccessEmailHtml(opts: {
 You have been successfully added to <strong>${escapeHtml(opts.branchName)}</strong> under <strong>${escapeHtml(opts.clinicName)}</strong>.
 </p>
 <p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">
-You can now manage your schedule and appointments at this branch using your existing MediBook account. No further action is required.
+You can now manage your schedule and appointments at this branch using your existing Jido Healthcare account. No further action is required.
 </p>
 <p style="color:#94a3b8;font-size:13px;margin:0;">If you have any questions, please contact the clinic administrator.</p>`;
   return emailShell(appIconImg(), body);
@@ -729,13 +858,12 @@ export async function sendEmail(
  * in local dev when SMS_API_KEY is not configured. Never throws — resolves
  * true when the gateway accepted the message, false otherwise.
  *
- * Not exported. Policy: SMS is reserved for OTP/confirmation codes and doctor
- * invitations — every other notification (to patients, clinic owners, doctors,
- * and branch staff alike) goes out over WhatsApp + email + push only, with no
- * SMS fallback if those fail. This is the one place that can reach the SMS
- * gateway, so keeping it unexported is what actually enforces the policy —
- * route handlers can't call it even by accident. The only callers are
- * `sendOtpSms`/`sendOtpDual` (OTP) and `sendInviteDual` (doctor invites) below.
+ * Not exported. Policy: SMS is reserved for OTP/confirmation codes only —
+ * every other notification goes out over email + push (plus WhatsApp for the
+ * few messages sendWhatsapp allows), with no SMS fallback. This is the one
+ * place that can reach the SMS gateway, so keeping it unexported is what
+ * actually enforces the policy — route handlers can't call it even by
+ * accident. The only caller is `sendOtpSms` (used by `sendOtpDual`) below.
  */
 async function sendSms(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.SMS_API_KEY;
@@ -892,8 +1020,14 @@ async function runWahaSessionRecovery(
 /**
  * Resolves true when WAHA accepted the message, false otherwise (a background
  * session-recovery retry may still deliver it later). Never throws.
+ *
+ * Not exported. Policy: WhatsApp carries only OTP/confirmation codes (clinic
+ * and patient), the patient's booking confirmation, and doctor invitations —
+ * everything else goes by email + push. Keeping this unexported means routes
+ * can only reach WhatsApp through `sendOtpWhatsapp`,
+ * `sendBookingConfirmationWhatsapp`, and `sendInviteWhatsapp` below.
  */
-export async function sendWhatsapp(to: string, body: string): Promise<boolean> {
+async function sendWhatsapp(to: string, body: string): Promise<boolean> {
   const apiKey = process.env.WAHA_API_KEY;
   const baseUrl = process.env.WAHA_BASE_URL ?? "http://localhost:3000";
   const session = process.env.WAHA_SESSION ?? "default";
@@ -920,49 +1054,6 @@ export async function sendWhatsapp(to: string, body: string): Promise<boolean> {
     console.error(`[whatsapp] send to ${to} failed:`, err);
     return false;
   }
-}
-
-/**
- * Sends a document (e.g. a receipt PDF) as a WhatsApp file attachment through WAHA's
- * /api/sendFile. `data` is the raw file bytes — base64-encoded here, not by the caller.
- * Same config/stub/recovery behavior as sendWhatsapp. Never throws.
- */
-export async function sendWhatsappFile(
-  to: string,
-  file: { filename: string; mimetype: string; data: Buffer },
-  caption?: string,
-): Promise<void> {
-  const apiKey = process.env.WAHA_API_KEY;
-  const baseUrl = process.env.WAHA_BASE_URL ?? "http://localhost:3000";
-  const session = process.env.WAHA_SESSION ?? "default";
-  if (!apiKey) {
-    console.log(`[whatsapp:stub] to=${to} file=${file.filename}`);
-    return;
-  }
-  const chatId = `${to.replace(/\D/g, "")}@c.us`;
-  const payload = {
-    session,
-    chatId,
-    file: { mimetype: file.mimetype, filename: file.filename, data: file.data.toString("base64") },
-    caption,
-  };
-  try {
-    const res = await wahaPost(baseUrl, apiKey, "/api/sendFile", payload);
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error(`[whatsapp] WAHA rejected file send to ${to} (${res.status}): ${detail}`);
-      if (res.status === 404 || res.status === 422) {
-        void recoverWahaSessionAndRetry(baseUrl, apiKey, session, "/api/sendFile", payload);
-      }
-    }
-  } catch (err) {
-    console.error(`[whatsapp] file send to ${to} failed:`, err);
-  }
-}
-
-/** Sends the same message to every phone number over WhatsApp. */
-export async function notifyPhonesWhatsapp(phones: string[], text: string): Promise<void> {
-  await Promise.all(phones.map((phone) => sendWhatsapp(phone, text)));
 }
 
 /**
@@ -1095,16 +1186,24 @@ export function sendOtpDual(opts: {
 }
 
 /**
- * Sends a doctor invitation link via SMS + WhatsApp (email is sent separately by the
- * caller, since it also carries the branded invite card). Doctor invitations are the
- * one non-OTP flow allowed to use SMS.
+ * Sends a patient's booking confirmation (appointment confirmed / lab test
+ * approved) via WhatsApp. `text` is the full message, typically built with
+ * personalizeForPatient. Never throws.
  */
-export async function sendInviteDual(opts: {
+export async function sendBookingConfirmationWhatsapp(phone: string, text: string): Promise<boolean> {
+  return sendWhatsapp(phone, text);
+}
+
+/**
+ * Sends a doctor invitation link via WhatsApp (email is sent separately by the
+ * caller, since it also carries the branded invite card). Never throws.
+ */
+export async function sendInviteWhatsapp(opts: {
   phone: string;
   doctorName: string;
   clinicName: string;
   inviteUrl: string;
-}): Promise<void> {
-  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on MediBook. Accept your invitation here: ${opts.inviteUrl}`;
-  await Promise.allSettled([sendSms(opts.phone, text), sendWhatsapp(opts.phone, text)]);
+}): Promise<boolean> {
+  const text = `Dr. ${opts.doctorName}, you have been invited to join ${opts.clinicName} on Jido Healthcare. Accept your invitation here: ${opts.inviteUrl}`;
+  return sendWhatsapp(opts.phone, text);
 }

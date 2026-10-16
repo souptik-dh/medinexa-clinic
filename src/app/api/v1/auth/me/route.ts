@@ -11,7 +11,7 @@ const EMAIL_CHANGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 async function loadProfile(userId: string) {
   const [rows] = await pool.query<Row[]>(
-    `SELECT id, name, email, phone, phone_verified, role FROM users WHERE id = ?`,
+    `SELECT id, name, email, phone, phone_verified, photo_url, role FROM users WHERE id = ?`,
     [userId],
   );
   const u = rows[0];
@@ -26,6 +26,7 @@ function toProfile(u: Row) {
     email: u.email,
     phone: u.phone,
     phone_verified: u.phone_verified === 1 || u.phone_verified === true,
+    photo_url: u.photo_url ?? null,
     role: u.role,
   };
 }

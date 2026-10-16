@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { CardGridSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import toast from "react-hot-toast";
 import { BranchGalleryImage, branchesApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
@@ -10,6 +10,7 @@ import {
 } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 interface BranchGalleryPanelProps {
   branchId: string;
@@ -20,9 +21,12 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
   const { t } = useTranslation();
   const [images, setImages] = useState<BranchGalleryImage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const { pending: uploading, run: runUpload } = useAsyncAction();
   const [error, setError] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Per-image delete state: deleting one image never blocks the others.
+  const imageAction = useKeyedAction<string>();
+  const { begin, isLatest } = useLatestRequest();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { user } = useAuth();
@@ -33,18 +37,25 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
   const canDelete = isAdmin || canDeleteBranch(userPermissions);
 
   const loadGallery = useCallback(async () => {
+    const token = begin();
     setLoading(true);
     setError(null);
+    setLoadFailed(false);
+    // Don't let the previous branch's images pose as this branch's gallery.
+    setImages([]);
     try {
       const res = await branchesApi.listGallery(branchId);
+      if (!isLatest(token)) return;
       setImages(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("gallery.failedToLoad")));
+      setLoadFailed(true);
       setImages([]);
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [branchId, t]);
+  }, [branchId, t, begin, isLatest]);
 
   useEffect(() => {
     loadGallery();
@@ -58,22 +69,22 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       return;
     }
 
-    setUploading(true);
     setError(null);
-    try {
-      await branchesApi.uploadGalleryImage(branchId, file);
-      await loadGallery();
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+    await runUpload(async () => {
+      try {
+        const img = await branchesApi.uploadGalleryImage(branchId, file);
+        // Targeted update - the response is the new image, newest first.
+        setImages((prev) => [img, ...prev]);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        toast.success(t("gallery.uploadSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("gallery.uploadFailed"));
+        setError(message);
+        toast.error(message);
       }
-      toast.success(t("gallery.uploadSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("gallery.uploadFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setUploading(false);
-    }
+    });
   };
 
   const deleteImage = async (imageId: string) => {
@@ -81,20 +92,21 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       toast.error(t("appointments.noPermission"));
       return;
     }
+    if (imageAction.isPending(imageId)) return;
     if (!window.confirm(t("gallery.deleteConfirm"))) return;
-    setDeleting(imageId);
     setError(null);
-    try {
-      await branchesApi.removeGalleryImage(branchId, imageId);
-      await loadGallery();
-      toast.success(t("gallery.deleteSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("gallery.deleteFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeleting(null);
-    }
+    await imageAction.run(imageId, async () => {
+      try {
+        await branchesApi.removeGalleryImage(branchId, imageId);
+        // Targeted update - drop just this image instead of refetching.
+        setImages((prev) => prev.filter((img) => img.id !== imageId));
+        toast.success(t("gallery.deleteSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("gallery.deleteFailed"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   return (
@@ -106,9 +118,10 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
         </div>
         {canUpload && (
           <button
+            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
             {uploading ? t("doctors.uploading") : `+ ${t("gallery.addImage")}`}
           </button>
@@ -125,12 +138,25 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
       {error && (
         <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {loadFailed && (
+            <button
+              type="button"
+              onClick={() => loadGallery()}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
       {loading ? (
-        <CardGridSkeleton count={8} />
-      ) : images.length === 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="status" aria-busy="true">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="aspect-square w-full rounded-lg" />
+          ))}
+        </div>
+      ) : loadFailed ? null : images.length === 0 ? (
         <div className="py-12 text-center">
           <svg
             className="mx-auto mb-4 h-12 w-12 text-gray-300 dark:text-gray-600"
@@ -154,7 +180,9 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {images.map((img) => (
+          {images.map((img) => {
+            const deleting = imageAction.isPending(img.id);
+            return (
             <div
               key={img.id}
               className="group relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800"
@@ -165,13 +193,14 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
                 className="aspect-square w-full object-cover"
               />
               {canDelete && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className={`absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity group-hover:opacity-100 ${deleting ? "opacity-100" : "opacity-0"}`}>
                   <button
+                    type="button"
                     onClick={() => deleteImage(img.id)}
-                    disabled={deleting === img.id}
-                    className="flex items-center gap-2 rounded-lg bg-error-600 px-3 py-2 text-sm font-medium text-white hover:bg-error-700 disabled:bg-error-400"
+                    disabled={deleting}
+                    className="flex items-center gap-2 rounded-lg bg-error-600 px-3 py-2 text-sm font-medium text-white hover:bg-error-700 disabled:cursor-not-allowed disabled:bg-error-400"
                   >
-                    {deleting === img.id ? t("gallery.deleting") : t("common.delete")}
+                    {deleting ? t("gallery.deleting") : t("common.delete")}
                   </button>
                 </div>
               )}
@@ -181,7 +210,8 @@ export default function BranchGalleryPanel({ branchId, branchName }: BranchGalle
                 </p>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

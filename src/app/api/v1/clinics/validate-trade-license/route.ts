@@ -2,7 +2,7 @@ import { z } from "zod";
 import { api, json, readJson } from "@api/lib/http";
 import { parseBody } from "@api/lib/validators";
 import { requireRoles } from "@api/lib/auth";
-import { checkTradeLicense } from "@api/lib/tradeLicense";
+import { TradeLicenseServiceBusyError, checkTradeLicense } from "@api/lib/tradeLicense";
 
 const bodySchema = z.object({
   trade_license_number: z.string().trim().min(1).max(100),
@@ -28,6 +28,16 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         : "Trade License Number could not be validated.",
     });
   } catch (err) {
+    if (err instanceof TradeLicenseServiceBusyError) {
+      console.warn("[trade-license]", err.message);
+      return json({
+        success: false,
+        validated: false,
+        status: "PENDING",
+        retry_after_seconds: err.retryAfterSeconds,
+        message: `The trade license verification service is busy. Please try again in ${err.retryAfterSeconds} seconds.`,
+      });
+    }
     console.error("[trade-license] PRDEODB lookup failed:", err);
     return json({
       success: false,

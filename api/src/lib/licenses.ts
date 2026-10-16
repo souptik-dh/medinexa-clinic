@@ -1,5 +1,5 @@
 import type { Row } from "@api/lib/db";
-import { badRequest } from "@api/lib/errors";
+import { badRequest, unprocessable } from "@api/lib/errors";
 
 export const LICENSE_TYPES = [
   "trade-license",
@@ -49,4 +49,14 @@ export function tradeLicenseValidationFields(row: Row) {
     trade_license_validation_status: row.trade_license_validation_status ?? "PENDING",
     trade_license_validated_at: row.trade_license_validated_at ?? null,
   };
+}
+
+// A trade license number whose check came back VALID is locked for good — the client
+// disables the field, and the clinic routes refuse to change it with this error.
+export function tradeLicenseLockedError() {
+  return unprocessable(
+    "TRADE_LICENSE_LOCKED",
+    "This trade license number has been verified and can't be changed.",
+    "trade_license_number",
+  );
 }

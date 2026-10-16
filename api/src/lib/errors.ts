@@ -19,7 +19,8 @@ export const unauthorized = (code = "UNAUTHORIZED", message = "Authentication re
   new ApiError(401, code, message);
 export const forbidden = (code: string, message: string) => new ApiError(403, code, message);
 export const notFound = (code: string, message: string) => new ApiError(404, code, message);
-export const conflict = (code: string, message: string) => new ApiError(409, code, message);
+export const conflict = (code: string, message: string, field: string | null = null) =>
+  new ApiError(409, code, message, field);
 export const unprocessable = (code: string, message: string, field: string | null = null) =>
   new ApiError(422, code, message, field);
 export const tooLarge = (code: string, message: string) => new ApiError(413, code, message);

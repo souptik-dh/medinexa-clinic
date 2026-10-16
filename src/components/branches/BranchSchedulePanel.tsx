@@ -15,6 +15,7 @@ import { formatDate, today } from "@/lib/utils";
 import { inputClass, SlotTypeOption } from "@/components/doctors/scheduleShared";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 const WEEKDAY_KEYS = [
   "sunday",
@@ -42,49 +43,69 @@ export default function BranchSchedulePanel({
   const [operatingDays, setOperatingDays] = useState<BranchOperatingDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dayBusy, setDayBusy] = useState(false);
+  const [scheduleLoadFailed, setScheduleLoadFailed] = useState(false);
+  // Shared lock across all weekday toggles: each response returns the full
+  // week, so overlapping toggles could let an older response overwrite a
+  // newer one. `togglingDay` marks which day is in flight.
+  const { pending: dayBusy, run: runDayToggle } = useAsyncAction();
+  const [togglingDay, setTogglingDay] = useState<number | null>(null);
+  const { begin: beginSchedule, isLatest: isLatestSchedule } = useLatestRequest();
 
   const [closures, setClosures] = useState<BranchClosure[]>([]);
   const [closuresLoading, setClosuresLoading] = useState(false);
   const [closuresError, setClosuresError] = useState<string | null>(null);
+  const [closuresLoadFailed, setClosuresLoadFailed] = useState(false);
+  const { begin: beginClosures, isLatest: isLatestClosures } = useLatestRequest();
   const [closureMode, setClosureMode] = useState<"single" | "range">("single");
   const [singleDate, setSingleDate] = useState(today());
   const [rangeFrom, setRangeFrom] = useState(today());
   const [rangeTo, setRangeTo] = useState(today());
   const [reason, setReason] = useState("");
-  const [closureBusy, setClosureBusy] = useState(false);
+  const { pending: isAddingClosure, run: runAddClosure } = useAsyncAction();
+  const closureAction = useKeyedAction<string>();
 
   const loadSchedule = useCallback(async () => {
     if (!branchId) {
       setLoading(false);
       return;
     }
+    const token = beginSchedule();
     setLoading(true);
     setError(null);
+    setScheduleLoadFailed(false);
     try {
       const res = await branchScheduleApi.get(branchId);
+      if (!isLatestSchedule(token)) return;
       setOperatingDays(res.operating_days);
     } catch (err) {
+      if (!isLatestSchedule(token)) return;
       setError(getErrorMessage(err, t("schedule.failedToLoadSchedule")));
+      setScheduleLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (isLatestSchedule(token)) setLoading(false);
     }
-  }, [branchId, t]);
+  }, [branchId, t, beginSchedule, isLatestSchedule]);
 
-  const loadClosures = useCallback(async () => {
+  // `silent` refreshes after a mutation without flashing the list skeleton.
+  const loadClosures = useCallback(async (opts?: { silent?: boolean }) => {
     if (!branchId) return;
-    setClosuresLoading(true);
+    const token = beginClosures();
+    if (!opts?.silent) setClosuresLoading(true);
     setClosuresError(null);
+    setClosuresLoadFailed(false);
     try {
       const res = await branchScheduleApi.listClosures(branchId);
+      if (!isLatestClosures(token)) return;
       setClosures(res.items);
     } catch (err) {
-      setClosures([]);
+      if (!isLatestClosures(token)) return;
+      if (!opts?.silent) setClosures([]);
       setClosuresError(getErrorMessage(err, t("schedule.failedToLoadClosures")));
+      setClosuresLoadFailed(true);
     } finally {
-      setClosuresLoading(false);
+      if (isLatestClosures(token)) setClosuresLoading(false);
     }
-  }, [branchId, t]);
+  }, [branchId, t, beginClosures, isLatestClosures]);
 
   useEffect(() => {
     loadSchedule();
@@ -92,64 +113,68 @@ export default function BranchSchedulePanel({
   }, [loadSchedule, loadClosures]);
 
   const toggleDay = async (weekday: number) => {
-    if (!canEdit || dayBusy) return;
+    if (!canEdit) return;
     const current = operatingDays.find((d) => d.weekday === weekday)?.is_open ?? true;
-    setDayBusy(true);
-    setError(null);
-    try {
-      const res = await branchScheduleApi.updateOperatingDays(branchId, [
-        { weekday, is_open: !current },
-      ]);
-      setOperatingDays(res.operating_days);
-      toast.success(t("schedule.updateSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("schedule.updateDayFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDayBusy(false);
-    }
+    await runDayToggle(async () => {
+      setTogglingDay(weekday);
+      setError(null);
+      try {
+        const res = await branchScheduleApi.updateOperatingDays(branchId, [
+          { weekday, is_open: !current },
+        ]);
+        setOperatingDays(res.operating_days);
+        toast.success(t("schedule.updateSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("schedule.updateDayFailed"));
+        setError(message);
+        toast.error(message);
+      } finally {
+        setTogglingDay(null);
+      }
+    });
   };
 
   const addClosure = async () => {
     if (!branchId || !canEdit) return;
     if (closureMode === "single" && !singleDate) return;
     if (closureMode === "range" && (!rangeFrom || !rangeTo || rangeTo < rangeFrom)) return;
-    setClosureBusy(true);
     setClosuresError(null);
-    try {
-      await branchScheduleApi.createClosure(branchId, {
-        start_date: closureMode === "range" ? rangeFrom : singleDate,
-        end_date: closureMode === "range" ? rangeTo : undefined,
-        reason: reason.trim() || null,
-      });
-      setReason("");
-      await loadClosures();
-      toast.success(t("schedule.closureAddedSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("schedule.addClosureFailed"));
-      setClosuresError(message);
-      toast.error(message);
-    } finally {
-      setClosureBusy(false);
-    }
+    await runAddClosure(async () => {
+      try {
+        await branchScheduleApi.createClosure(branchId, {
+          start_date: closureMode === "range" ? rangeFrom : singleDate,
+          end_date: closureMode === "range" ? rangeTo : undefined,
+          reason: reason.trim() || null,
+        });
+        setReason("");
+        toast.success(t("schedule.closureAddedSuccess"));
+        // Server-assigned fields (id, end_date, status) are needed - refresh
+        // silently so the existing list stays on screen.
+        await loadClosures({ silent: true });
+      } catch (err) {
+        // The entered dates/reason are kept so the user can retry.
+        const message = getErrorMessage(err, t("schedule.addClosureFailed"));
+        setClosuresError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const removeClosure = async (closure: BranchClosure) => {
     if (!canEdit) return;
-    setClosureBusy(true);
     setClosuresError(null);
-    try {
-      await branchScheduleApi.removeClosure(branchId, closure.id);
-      await loadClosures();
-      toast.success(t("schedule.closureRemovedSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("schedule.removeClosureFailed"));
-      setClosuresError(message);
-      toast.error(message);
-    } finally {
-      setClosureBusy(false);
-    }
+    await closureAction.run(closure.id, async () => {
+      try {
+        await branchScheduleApi.removeClosure(branchId, closure.id);
+        // Targeted update - drop just this closure instead of refetching.
+        setClosures((prev) => prev.filter((c) => c.id !== closure.id));
+        toast.success(t("schedule.closureRemovedSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("schedule.removeClosureFailed"));
+        setClosuresError(message);
+        toast.error(message);
+      }
+    });
   };
 
   if (loading) {
@@ -172,6 +197,15 @@ export default function BranchSchedulePanel({
       {error && (
         <div className="mt-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {scheduleLoadFailed && (
+            <button
+              type="button"
+              onClick={() => loadSchedule()}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -186,6 +220,7 @@ export default function BranchSchedulePanel({
             return (
               <button
                 key={weekday}
+                type="button"
                 onClick={() => toggleDay(weekday)}
                 disabled={!canEdit || dayBusy}
                 title={dayName}
@@ -196,8 +231,12 @@ export default function BranchSchedulePanel({
                 }`}
               >
                 <span className="block truncate">{dayName}</span>
-                <div className="mt-1 text-[10px] font-normal">
-                  {isOpen ? t("schedule.open") : t("schedule.closed")}
+                <div className="mt-1 truncate text-[10px] font-normal">
+                  {togglingDay === weekday
+                    ? t("common.updatingEllipsis")
+                    : isOpen
+                      ? t("schedule.open")
+                      : t("schedule.closed")}
                 </div>
               </button>
             );
@@ -216,16 +255,27 @@ export default function BranchSchedulePanel({
         {closuresError && (
           <div className="mb-3 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {closuresError}
+            {closuresLoadFailed && (
+              <button
+                type="button"
+                onClick={() => loadClosures()}
+                className="ml-3 font-medium underline"
+              >
+                {t("common.retry")}
+              </button>
+            )}
           </div>
         )}
 
         {closuresLoading ? (
-          <ListSkeleton rows={3} />
-        ) : activeClosures.length === 0 ? (
+          <ListSkeleton rows={3} className="mb-4 space-y-2" />
+        ) : closuresLoadFailed ? null : activeClosures.length === 0 ? (
           <p className="text-sm text-gray-500 dark:text-gray-400">{t("schedule.noClosures")}</p>
         ) : (
           <ul className="mb-4 space-y-2">
-            {activeClosures.map((closure) => (
+            {activeClosures.map((closure) => {
+              const removing = closureAction.isPending(closure.id);
+              return (
               <li
                 key={closure.id}
                 className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-800"
@@ -242,15 +292,17 @@ export default function BranchSchedulePanel({
                 </div>
                 {canEdit && (
                   <button
+                    type="button"
                     onClick={() => removeClosure(closure)}
-                    disabled={closureBusy}
-                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-40 dark:hover:bg-error-500/10"
+                    disabled={removing}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-error-500/10"
                   >
-                    {t("schedule.remove")}
+                    {removing ? t("common.removingEllipsis") : t("schedule.remove")}
                   </button>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 
@@ -326,11 +378,12 @@ export default function BranchSchedulePanel({
                 />
               </div>
               <button
+                type="button"
                 onClick={addClosure}
-                disabled={closureBusy}
-                className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                disabled={isAddingClosure}
+                className="h-11 shrink-0 rounded-lg bg-brand-500 px-4 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
               >
-                {closureBusy ? t("schedule.adding") : t("common.add")}
+                {isAddingClosure ? t("schedule.adding") : t("common.add")}
               </button>
             </div>
           </>
@@ -340,6 +393,7 @@ export default function BranchSchedulePanel({
       {showBackButton && (
         <div className="mt-6 flex items-center justify-end">
           <button
+            type="button"
             onClick={() => router.push("/branches")}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >

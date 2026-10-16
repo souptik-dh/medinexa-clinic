@@ -23,6 +23,8 @@ import {
 } from "@/lib/api";
 import { formatCurrency, formatDateISO, formatDateTime } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { Skeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 const DEFAULT_CHANNELS: SuperAdminOfferChannels = {
   sms: true,
@@ -49,6 +51,8 @@ export default function SuperAdminOffersPanel() {
   useEffect(() => {
     if (!clinicQuery.trim()) {
       setClinicResults([]);
+      // A search cancelled by clearing the box must not leave the loader on.
+      setClinicSearchLoading(false);
       return;
     }
     let active = true;
@@ -108,25 +112,24 @@ export default function SuperAdminOffersPanel() {
     !!validUntil;
 
   // ── preview / send ──────────────────────────────────────────────────
-  const [previewing, setPreviewing] = useState(false);
+  const { pending: previewing, run: runPreviewAction } = useAsyncAction();
   const [preview, setPreview] = useState<SuperAdminOfferPreviewResponse | null>(null);
-  const [sending, setSending] = useState(false);
+  const { pending: sending, run: runSendAction } = useAsyncAction();
 
   const runPreview = async () => {
     if (!formReady) {
       toast.error(t("superAdminOffers.selectAtLeastOneClinic"));
       return;
     }
-    setPreviewing(true);
-    setPreview(null);
-    try {
-      const res = await superAdminApi.previewOffer(buildInput());
-      setPreview(res);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToPreviewOffer"));
-    } finally {
-      setPreviewing(false);
-    }
+    await runPreviewAction(async () => {
+      setPreview(null);
+      try {
+        const res = await superAdminApi.previewOffer(buildInput());
+        setPreview(res);
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToPreviewOffer"));
+      }
+    });
   };
 
   const runSend = async () => {
@@ -134,48 +137,63 @@ export default function SuperAdminOffersPanel() {
       toast.error(t("superAdminOffers.selectAtLeastOneClinic"));
       return;
     }
-    setSending(true);
-    try {
-      const res = await superAdminApi.createOffer(buildInput());
-      toast.success(res.message || t("superAdminOffers.offerSent"));
-      setSelected(new Map());
-      setTitle("");
-      setMessage(t("superAdminOffers.messagePlaceholder"));
-      setDiscountedAmount("");
-      setDurationMonths("3");
-      setValidUntil(defaultValidUntil());
-      setChannels(DEFAULT_CHANNELS);
-      setPreview(null);
-      loadOffers();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToSendOffer"));
-    } finally {
-      setSending(false);
-    }
+    await runSendAction(async () => {
+      try {
+        const res = await superAdminApi.createOffer(buildInput());
+        toast.success(res.message || t("superAdminOffers.offerSent"));
+        setSelected(new Map());
+        setTitle("");
+        setMessage(t("superAdminOffers.messagePlaceholder"));
+        setDiscountedAmount("");
+        setDurationMonths("3");
+        setValidUntil(defaultValidUntil());
+        setChannels(DEFAULT_CHANNELS);
+        setPreview(null);
+        // The new offer's server-assigned fields (id, counts) are needed, so
+        // refresh the list - silently, keeping the existing rows on screen.
+        loadOffers(undefined, false, { silent: true });
+      } catch (err) {
+        // Form fields are kept so the user can correct and retry.
+        toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToSendOffer"));
+      }
+    });
   };
 
   // ── past offers list ─────────────────────────────────────────────────
   const [offers, setOffers] = useState<SuperAdminOffer[]>([]);
   const [offersCursor, setOffersCursor] = useState<string | undefined>();
-  const [offersLoading, setOffersLoading] = useState(false);
+  const [offersLoading, setOffersLoading] = useState(true);
+  const [offersLoadingMore, setOffersLoadingMore] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const { begin: beginOffers, isLatest: isLatestOffers } = useLatestRequest();
 
+  // `silent` refreshes after a mutation without flashing the table skeleton.
   const loadOffers = useCallback(
-    async (nextCursor?: string, append = false) => {
-      setOffersLoading(true);
+    async (nextCursor?: string, append = false, opts?: { silent?: boolean }) => {
+      const token = beginOffers();
+      if (append) setOffersLoadingMore(true);
+      else {
+        setOffersLoadingMore(false);
+        if (!opts?.silent) setOffersLoading(true);
+      }
       setOffersError(null);
       try {
         const res = await superAdminApi.offers({ limit: nextCursor ? undefined : 20, cursor: nextCursor });
+        if (!isLatestOffers(token)) return;
         setOffers((prev) => (append ? [...prev, ...res.items] : res.items));
         setOffersCursor(res.next_cursor ?? undefined);
       } catch (err) {
-        if (!append) setOffers([]);
+        if (!isLatestOffers(token)) return;
+        if (!append && !opts?.silent) setOffers([]);
         setOffersError(err instanceof ApiError ? err.message : t("superAdminOffers.failedToLoadOffers"));
       } finally {
-        setOffersLoading(false);
+        if (isLatestOffers(token)) {
+          setOffersLoading(false);
+          setOffersLoadingMore(false);
+        }
       }
     },
-    [t]
+    [t, beginOffers, isLatestOffers]
   );
 
   useEffect(() => {
@@ -185,37 +203,56 @@ export default function SuperAdminOffersPanel() {
   // ── detail modal ──────────────────────────────────────────────────────
   const [detail, setDetail] = useState<SuperAdminOfferDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const { begin: beginDetail, isLatest: isLatestDetail } = useLatestRequest();
 
   const openDetail = async (offerId: string) => {
+    const token = beginDetail();
     setDetailLoading(true);
     try {
       const res = await superAdminApi.offer(offerId);
+      if (!isLatestDetail(token)) return;
       setDetail(res);
     } catch (err) {
+      if (!isLatestDetail(token)) return;
       toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToLoadOffers"));
     } finally {
-      setDetailLoading(false);
+      if (isLatestDetail(token)) setDetailLoading(false);
     }
   };
 
   // ── cancel ──────────────────────────────────────────────────────────
   const [cancelTarget, setCancelTarget] = useState<SuperAdminOffer | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  // Keyed per offer, so a cancel in flight only locks that offer's buttons.
+  const { run: runOfferAction, isPending: isOfferPending } = useKeyedAction<string>();
+  const cancelling = cancelTarget ? isOfferPending(cancelTarget.id) : false;
 
   const runCancel = async () => {
     if (!cancelTarget) return;
-    setCancelling(true);
-    try {
-      const res = await superAdminApi.cancelOffer(cancelTarget.id);
-      toast.success(res.message || t("superAdminOffers.offerCancelled"));
-      setCancelTarget(null);
-      if (detail?.offer.id === cancelTarget.id) setDetail({ ...detail, offer: res.offer });
-      loadOffers();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToCancelOffer"));
-    } finally {
-      setCancelling(false);
-    }
+    const target = cancelTarget;
+    await runOfferAction(target.id, async () => {
+      try {
+        const res = await superAdminApi.cancelOffer(target.id);
+        toast.success(res.message || t("superAdminOffers.offerCancelled"));
+        setCancelTarget(null);
+        if (detail?.offer.id === target.id) setDetail({ ...detail, offer: res.offer });
+        // Targeted update - patch just this row from the response; keep the
+        // list counts if the response omits them.
+        setOffers((prev) =>
+          prev.map((o) =>
+            o.id === target.id
+              ? {
+                  ...o,
+                  ...res.offer,
+                  recipient_count: res.offer.recipient_count ?? o.recipient_count,
+                  redeemed_count: res.offer.redeemed_count ?? o.redeemed_count,
+                }
+              : o
+          )
+        );
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("superAdminOffers.failedToCancelOffer"));
+      }
+    });
   };
 
   const channelPlanColor = (plan: OfferChannelPlan): "success" | "light" | "warning" =>
@@ -245,13 +282,29 @@ export default function SuperAdminOffersPanel() {
           placeholder={t("superAdminOffers.searchClinicsPlaceholder")}
           className="mt-3 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
         />
-        {clinicSearchLoading && (
-          <p className="mt-2 text-xs text-gray-400">{t("common.loading")}</p>
-        )}
-        {clinicResults.length > 0 && (
+        {clinicSearchLoading ? (
+          // New query in flight: don't let the previous results pose as current.
+          <div
+            role="status"
+            aria-busy="true"
+            className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-800"
+          >
+            <span className="sr-only">{t("common.loading")}</span>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="flex flex-1 items-center gap-2">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="h-3 w-3" />
+              </div>
+            ))}
+          </div>
+        ) : clinicResults.length > 0 && (
           <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800">
             {clinicResults.map((c) => (
               <button
+                type="button"
                 key={c.id}
                 onClick={() => toggleClinic(c)}
                 className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-white/[0.03] ${
@@ -281,6 +334,7 @@ export default function SuperAdminOffersPanel() {
               >
                 {name}
                 <button
+                  type="button"
                   onClick={() =>
                     setSelected((prev) => {
                       const next = new Map(prev);
@@ -295,6 +349,7 @@ export default function SuperAdminOffersPanel() {
               </span>
             ))}
             <button
+              type="button"
               onClick={() => setSelected(new Map())}
               className="text-xs font-medium text-error-500 hover:underline"
             >
@@ -403,16 +458,18 @@ export default function SuperAdminOffersPanel() {
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={runPreview}
             disabled={previewing || !formReady}
-            className="h-11 rounded-lg border border-brand-500/40 px-5 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-60 dark:hover:bg-brand-500/10"
+            className="h-11 rounded-lg border border-brand-500/40 px-5 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-brand-500/10"
           >
             {previewing ? t("superAdminOffers.previewing") : t("superAdminOffers.previewButton")}
           </button>
           <button
+            type="button"
             onClick={runSend}
             disabled={sending || !formReady}
-            className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+            className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {sending ? t("superAdminOffers.sending") : t("superAdminOffers.sendButton")}
           </button>
@@ -465,13 +522,27 @@ export default function SuperAdminOffersPanel() {
         <h3 className="p-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 sm:p-6 sm:pb-0">
           {t("superAdminOffers.pastOffers")}
         </h3>
-        {offersError && <p className="p-6 text-sm text-error-500">{offersError}</p>}
+        {offersError && (
+          <div className="flex flex-wrap items-center gap-3 p-6">
+            <p className="text-sm text-error-500">{offersError}</p>
+            {offers.length === 0 && (
+              <button
+                type="button"
+                onClick={() => loadOffers()}
+                disabled={offersLoading}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+              >
+                {t("common.retry")}
+              </button>
+            )}
+          </div>
+        )}
         {!offersError && !offersLoading && offers.length === 0 && (
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("superAdminOffers.noOffersYet")}
           </p>
         )}
-        {offers.length > 0 && (
+        {(offersLoading || offers.length > 0) && (
           <div className="overflow-x-auto p-4 sm:p-6">
             <Table>
               <TableHeader>
@@ -487,7 +558,11 @@ export default function SuperAdminOffersPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {offers.map((o) => (
+                {offersLoading ? (
+                  <TableRowsSkeleton rows={5} cols={8} actions cellClassName="px-4 py-3" />
+                ) : offers.map((o) => {
+                  const offerCancelling = isOfferPending(o.id);
+                  return (
                   <TableRow key={o.id}>
                     <TableCell className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-white/90">{o.title}</TableCell>
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">
@@ -508,6 +583,7 @@ export default function SuperAdminOffersPanel() {
                     <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">{o.redeemed_count ?? "—"}</TableCell>
                     <TableCell className="px-4 py-3 text-right text-sm">
                       <button
+                        type="button"
                         onClick={() => openDetail(o.id)}
                         className="mr-3 font-medium text-brand-500 hover:underline"
                       >
@@ -515,38 +591,66 @@ export default function SuperAdminOffersPanel() {
                       </button>
                       {o.status === "ACTIVE" && (
                         <button
+                          type="button"
                           onClick={() => setCancelTarget(o)}
-                          className="font-medium text-error-500 hover:underline"
+                          disabled={offerCancelling}
+                          className="font-medium text-error-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {t("superAdminOffers.cancelOffer")}
+                          {offerCancelling ? t("superAdminOffers.cancelling") : t("superAdminOffers.cancelOffer")}
                         </button>
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
+                {offersLoadingMore && (
+                  <TableRowsSkeleton rows={3} cols={8} actions cellClassName="px-4 py-3" />
+                )}
               </TableBody>
             </Table>
-            {offersCursor && (
+            {!offersLoading && offersCursor && (
               <div className="mt-3 text-center">
                 <button
+                  type="button"
                   onClick={() => loadOffers(offersCursor, true)}
-                  disabled={offersLoading}
-                  className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
+                  disabled={offersLoadingMore}
+                  className="text-sm font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {offersLoading ? t("common.loading") : t("superAdminOffers.loadMore")}
+                  {offersLoadingMore ? t("common.loading") : t("superAdminOffers.loadMore")}
                 </button>
               </div>
             )}
           </div>
         )}
-        {offersLoading && offers.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-400">{t("common.loading")}</p>
-        )}
       </div>
 
       {/* Detail modal */}
       <Modal isOpen={detailLoading || !!detail} onClose={() => setDetail(null)} className="max-w-3xl p-6">
-        {detailLoading && <p className="py-10 text-center text-sm text-gray-400">{t("common.loading")}</p>}
+        {detailLoading && (
+          <div role="status" aria-busy="true" className="space-y-4">
+            <span className="sr-only">{t("common.loading")}</span>
+            <div className="flex items-center justify-between gap-2">
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+            <Skeleton className="h-4 w-5/6" />
+            <div className="grid gap-x-6 gap-y-3 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <Skeleton className="h-3 w-16" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+              <table className="min-w-full">
+                <tbody>
+                  <TableRowsSkeleton rows={4} cols={7} cellClassName="px-3 py-2.5" />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         {!detailLoading && detail && (
           <div className="max-h-[75vh] space-y-4 overflow-y-auto">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -577,10 +681,12 @@ export default function SuperAdminOffersPanel() {
 
             {detail.offer.status === "ACTIVE" && (
               <button
+                type="button"
                 onClick={() => setCancelTarget(detail.offer)}
-                className="h-9 rounded-lg bg-error-500 px-3 text-sm font-medium text-white hover:bg-error-600"
+                disabled={isOfferPending(detail.offer.id)}
+                className="h-9 rounded-lg bg-error-500 px-3 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {t("superAdminOffers.cancelOffer")}
+                {isOfferPending(detail.offer.id) ? t("superAdminOffers.cancelling") : t("superAdminOffers.cancelOffer")}
               </button>
             )}
 
@@ -629,13 +735,14 @@ export default function SuperAdminOffersPanel() {
       </Modal>
 
       {/* Cancel confirm modal */}
-      <Modal isOpen={!!cancelTarget} onClose={() => setCancelTarget(null)} className="max-w-md p-6">
+      <Modal isOpen={!!cancelTarget} onClose={() => setCancelTarget(null)} closeDisabled={cancelling} className="max-w-md p-6">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{t("superAdminOffers.confirmCancelTitle")}</h3>
         <p className="mt-1 mb-4 text-sm text-gray-500 dark:text-gray-400">{t("superAdminOffers.confirmCancelDesc")}</p>
         <button
+          type="button"
           onClick={runCancel}
           disabled={cancelling}
-          className="h-11 w-full rounded-lg bg-error-500 text-sm font-medium text-white hover:bg-error-600 disabled:opacity-60"
+          className="h-11 w-full rounded-lg bg-error-500 text-sm font-medium text-white hover:bg-error-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {cancelling ? t("superAdminOffers.cancelling") : t("superAdminOffers.cancelOffer")}
         </button>

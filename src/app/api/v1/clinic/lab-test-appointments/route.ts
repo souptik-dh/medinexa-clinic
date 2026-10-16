@@ -2,6 +2,7 @@ import { api, json } from "@api/lib/http";
 import { requireRoles } from "@api/lib/auth";
 import { pool } from "@api/lib/db";
 import { serializeLabTestAppointment, labApptScopeWhere } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import { parsePagination } from "@api/lib/validators";
 import { encodeCursor, decodeCursor } from "@api/lib/http";
 import type { RowDataPacket } from "mysql2/promise";
@@ -45,8 +46,10 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
     params.push(paymentStatus.toUpperCase());
   }
   if (patientName) {
-    conditions.push("u.name LIKE ?");
-    params.push(`%${patientName}%`);
+    // The patient's name, or the booking account's (a reception booking's account is staff).
+    const like = `%${patientName.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    conditions.push("(ltap.name LIKE ? OR u.name LIKE ?)");
+    params.push(like, like);
   }
   if (appointmentNumber) {
     conditions.push("a.appointment_number = ?");
@@ -71,11 +74,13 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT a.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
             b.name AS branch_name, c.name AS clinic_name,
-            u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+            u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone, u.photo_url AS patient_photo_url,
+            b.photo_url AS branch_photo_url,
+            (SELECT vu.photo_url FROM users vu WHERE vu.id = ltap.patient_id) AS visitor_photo_url,
             ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
             ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
             ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-            ltap.booked_by AS visitor_booked_by
+            ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
        FROM lab_test_appointments a
        JOIN lab_tests lt ON lt.id = a.test_id
        JOIN branches b ON b.id = a.branch_id
@@ -100,5 +105,5 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
   const items = hasMore ? rows.slice(0, limit) : rows;
   const nextCursor = hasMore && items.length > 0 ? encodeCursor({ offset: offset + items.length }) : null;
 
-  return json({ items: items.map(serializeLabTestAppointment), next_cursor: nextCursor });
+  return json({ items: await withAppointmentPrecautions(pool, items.map(serializeLabTestAppointment)), next_cursor: nextCursor });
 });

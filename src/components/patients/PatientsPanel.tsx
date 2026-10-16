@@ -10,7 +10,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, Patient, patientsApi } from "@/lib/api";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { useLatestRequest } from "@/hooks/useAsyncAction";
 import { formatDate } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/context/AuthContext";
@@ -34,16 +35,26 @@ export default function PatientsPanel() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [docsPatient, setDocsPatient] = useState<Patient | null>(null);
+  // Search/filter/branch changes fire overlapping requests; only the newest may land.
+  const { begin, isLatest } = useLatestRequest();
 
   const load = useCallback(
     async (b: BranchSelectValue | null, nextOffset: number, append: boolean) => {
+      const token = begin();
       if (!b) {
         setItems([]);
         setHasMore(false);
+        setLoading(false);
+        setLoadingMore(false);
         return;
       }
       if (append) setLoadingMore(true);
-      else setLoading(true);
+      else {
+        // A new query supersedes any in-flight "load more" and shows skeleton
+        // rows instead of the previous results.
+        setLoading(true);
+        setLoadingMore(false);
+      }
       setError(null);
       try {
         const res = await patientsApi.listAllByBranch(b.id, {
@@ -52,18 +63,22 @@ export default function PatientsPanel() {
           limit: PAGE_SIZE,
           offset: nextOffset,
         });
+        if (!isLatest(token)) return;
         setItems((prev) => (append ? [...prev, ...res.items] : res.items));
         setHasMore(res.has_more);
         setOffset(nextOffset);
       } catch (err) {
+        if (!isLatest(token)) return;
         if (!append) setItems([]);
         setError(err instanceof ApiError ? err.message : t("patients.failedToLoad"));
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (isLatest(token)) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
-    [search, type, t]
+    [search, type, t, begin, isLatest]
   );
 
   useEffect(() => {
@@ -76,7 +91,7 @@ export default function PatientsPanel() {
   };
 
   const loadMore = () => {
-    if (!branch) return;
+    if (!branch || loading || loadingMore) return;
     load(branch, offset + PAGE_SIZE, true);
   };
 
@@ -123,6 +138,15 @@ export default function PatientsPanel() {
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {branch && !loading && items.length === 0 && (
+            <button
+              type="button"
+              onClick={() => load(branch, 0, false)}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -142,9 +166,7 @@ export default function PatientsPanel() {
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("patients.selectBranchHint")}
           </p>
-        ) : loading ? (
-          <TableSkeleton rows={6} cols={7} />
-        ) : items.length === 0 ? (
+        ) : !loading && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("patients.noPatientsForBranch")}
           </p>
@@ -183,7 +205,9 @@ export default function PatientsPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {items.map((patient) => (
+                  {loading ? (
+                    <TableRowsSkeleton rows={6} cols={canViewDocuments ? 8 : 7} actions={canViewDocuments} cellClassName="py-3" />
+                  ) : items.map((patient) => (
                     <TableRow key={patient.id}>
                       <TableCell className="py-3">
                         <div className="flex items-center gap-2">
@@ -229,6 +253,7 @@ export default function PatientsPanel() {
                       {canViewDocuments && (
                         <TableCell className="py-3 text-end">
                           <button
+                            type="button"
                             onClick={() => setDocsPatient(patient)}
                             className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                           >
@@ -238,16 +263,20 @@ export default function PatientsPanel() {
                       )}
                     </TableRow>
                   ))}
+                  {!loading && loadingMore && (
+                    <TableRowsSkeleton rows={3} cols={canViewDocuments ? 8 : 7} actions={canViewDocuments} cellClassName="py-3" />
+                  )}
                 </TableBody>
               </Table>
             </div>
 
-            {hasMore && (
+            {!loading && hasMore && (
               <div className="mt-4 flex justify-center">
                 <button
+                  type="button"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
                   {loadingMore ? t("common.loading") : t("patients.loadMore")}
                 </button>

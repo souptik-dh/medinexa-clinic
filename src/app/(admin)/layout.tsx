@@ -7,6 +7,7 @@ import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
 import SubscriptionGateBanner from "@/components/subscription/SubscriptionGateBanner";
 import SubscriptionTrialBanner from "@/components/subscription/SubscriptionTrialBanner";
+import { AppShellSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useRouter } from "next/navigation";
 import React, { useEffect } from "react";
 
@@ -33,7 +34,10 @@ export default function AdminLayout({
   // UI content is shown, matching the API side which already refuses
   // requests without a valid token.
   if (!user) {
-    return null;
+    // While the stored session is still being read, show the app chrome as
+    // a skeleton instead of a blank screen; once it's confirmed there is no
+    // user, render nothing while the redirect above takes over.
+    return isAuthReady ? null : <AppShellSkeleton />;
   }
 
   // Dynamic class for main content margin based on sidebar state

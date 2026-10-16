@@ -223,6 +223,22 @@ describe("notificationLink", () => {
   it("returns /dashboard for unknown type", () => {
     expect(notificationLink("unknown" as NotificationType)).toBe("/dashboard");
   });
+
+  it("deep-links lab notifications to the lab appointment", () => {
+    expect(notificationLink("lab_test_booked", { appointment_id: "L1" })).toBe("/lab-test-appointments/L1");
+    expect(notificationLink("lab_test_cancelled")).toBe("/lab-test-appointments");
+  });
+
+  it("routes subscription, staff and document notifications", () => {
+    expect(notificationLink("subscription_expiring")).toBe("/billing");
+    expect(notificationLink("staff_joined")).toBe("/staff");
+    expect(notificationLink("patient_document_uploaded")).toBe("/patients");
+    expect(notificationLink("appointment_reminder")).toBe("/appointments");
+  });
+
+  it("falls back to /appointments for unknown types with an appointment_id", () => {
+    expect(notificationLink("unknown" as NotificationType, { appointment_id: "A1" })).toBe("/appointments");
+  });
 });
 
 describe("inviteStatusColor", () => {

@@ -8,21 +8,22 @@ import {
   serializeLabTestAppointment,
   auditLabAction,
 } from "@api/lib/lab-tests";
-import { generateLabTestSlots } from "@api/lib/lab-test-availability";
+import { assertLabDateBookable } from "@api/lib/lab-test-availability";
+import { precautionLines, snapshotAppointmentPrecautions, withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import {
   notifyBranchStaff,
   createClinicUserNotification,
   branchContactEmails,
-  branchContactPhones,
   sendEmail,
   detailsEmailHtml,
-  notifyPhonesWhatsapp,
-  personalizeForPatient,
+  emailPatient,
+  createPatientNotification,
 } from "@api/lib/notifications";
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertClinicOperational } from "@api/lib/subscriptions";
-import { badRequest, conflict, notFound } from "@api/lib/errors";
-import { resolveServicePatient } from "@api/lib/patient-identity";
+import { badRequest, conflict, notFound, unprocessable } from "@api/lib/errors";
+import { todayInTz } from "@api/lib/availability";
+import { resolveServicePatient, type ResolvedServicePatient } from "@api/lib/patient-identity";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -31,12 +32,19 @@ const patientDetailsSchema = z.object({
   // instead of registering a new one. Ignored for the "patient" role — a patient
   // account can never point a booking at an arbitrary patient_id it doesn't control.
   patient_id: z.string().uuid().optional(),
+  // Reception only: the Patient App account (profile) the booking belongs to — picked
+  // via /patients/lookup — or, for a new walk-in, the profile's name. The entered
+  // phone is the profile's. Profile and patient are stored apart (patient-identity.ts).
+  profile_user_id: z.string().uuid().optional(),
+  profile_name: z.string().trim().max(255).optional().nullable(),
   relationship: z.enum(["self", "spouse", "child", "parent", "sibling", "friend", "other"]).default("self"),
   name: z.string().trim().min(1).max(255),
   // Normalized to +91XXXXXXXXXX so downstream SMS/WhatsApp dispatch (which needs the
   // country code for both the SMS gateway and WhatsApp's chatId) doesn't reject a
   // plain 10-digit number typed by staff at booking time.
-  phone: phoneSchema,
+  // Optional when a known person is picked (patient_id / profile_user_id) or for an app
+  // user's family member (defaults to the account's phone); required for a new walk-in.
+  phone: phoneSchema.optional().nullable(),
   age: z.number().int().min(0).max(150),
   gender: z.enum(["male", "female", "other", "prefer_not_to_say"]),
 });
@@ -46,7 +54,9 @@ const createSchema = z.object({
   branch_lab_test_id: z.string().uuid(),
   service_mode: z.enum(["CLINIC", "HOME"]),
   appointment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  start_time: z.string().regex(/^\d{2}:\d{2}$/),
+  // No longer chosen by the booker — the clinic assigns the time when it confirms.
+  // Still accepted (and ignored) so older app versions keep working.
+  start_time: z.string().optional(),
   prescription_id: z.string().uuid().optional(),
   referring_doctor_name: z.string().trim().min(1).max(255).optional(),
   patient_notes: z.string().max(1000).optional(),
@@ -119,7 +129,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       throw badRequest("SERVICE_MODE_NOT_SUPPORTED", "Clinic visit is not available for this test.");
     }
 
-    if (blt.prescription_required && !body.prescription_id) {
+    // A patient attaches their uploaded prescription here. Reception has the paper
+    // prescription in hand and attaches it right after booking (POST /patient-documents/upload
+    // with lab_test_appointment_id) — the booking can't be confirmed until it is.
+    if (blt.prescription_required && !body.prescription_id && auth.role === "patient") {
       throw badRequest("PRESCRIPTION_REQUIRED", "Prescription is required for this test.");
     }
 
@@ -129,43 +142,32 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    if (body.appointment_date < today) {
-      throw badRequest("VALIDATION_ERROR", "Cannot book for a past date.");
+    // "Today" is the branch's date, not the server's UTC date.
+    const tz = String(branch.timezone);
+    if (body.appointment_date < todayInTz(tz)) {
+      throw unprocessable("DATE_IN_PAST", "Cannot book for a past date.", "appointment_date");
     }
 
-    const slots = await generateLabTestSlots(
+    // The date must still be bookable: lab hours that day, today's hours not over,
+    // and at least one time the clinic can still assign.
+    await assertLabDateBookable(
       pool,
       body.branch_id,
       body.branch_lab_test_id,
       body.appointment_date,
       Number(blt.duration_minutes),
+      tz,
     );
-    const requestedSlot = slots.find((s) => s.start === body.start_time);
-    if (!requestedSlot || !requestedSlot.available) {
-      throw conflict("SLOT_NOT_AVAILABLE", "The selected time slot is not available.");
-    }
 
-    const [existingAppt] = await pool.query<RowDataPacket[]>(
-      `SELECT id FROM lab_test_appointments
-       WHERE patient_id = ? AND branch_lab_test_id = ? AND appointment_date = ? AND start_time = ?
-         AND status NOT IN ('CANCELLED', 'REJECTED')`,
-      [auth.userId, body.branch_lab_test_id, body.appointment_date, body.start_time],
-    );
-    if (existingAppt.length > 0) {
-      throw conflict("DUPLICATE_BOOKING", "You already have a booking for this slot.");
+    let patientDetails = body.patient_details;
+    if (auth.role !== "patient" && !patientDetails.patient_id && !patientDetails.profile_user_id && !patientDetails.phone) {
+      throw badRequest("VALIDATION_ERROR", "phone is required for a new patient.", "phone");
     }
-
-    const patientDetails = body.patient_details;
+    let resolved: ResolvedServicePatient | null = null;
 
     const appointmentId = newId();
     const appointmentNumber = generateAppointmentNumber();
     const durationMinutes = Number(blt.duration_minutes);
-    const endMinutes =
-      parseInt(body.start_time.split(":")[0]) * 60 +
-      parseInt(body.start_time.split(":")[1]) +
-      durationMinutes;
-    const endTime = `${String(Math.floor(endMinutes / 60)).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
 
     await withTransaction(async (conn) => {
       await conn.query(
@@ -187,8 +189,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           blt.test_id,
           body.service_mode,
           body.appointment_date,
-          body.start_time,
-          endTime,
+          null, // start_time — assigned by the clinic on confirm
+          null, // end_time
           durationMinutes,
           blt.price,
           blt.currency,
@@ -207,30 +209,53 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       );
 
       const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
+      resolved = servicePatient;
+
+      // One active booking per patient, test and date (the time is assigned later, so
+      // the date is the unit). Throwing here rolls the insert back.
+      if (servicePatient.patientId) {
+        const [dupes] = await conn.query<RowDataPacket[]>(
+          `SELECT a.id FROM lab_test_appointments a
+             JOIN lab_test_appointment_patients p ON p.appointment_id = a.id
+            WHERE p.patient_id = ? AND a.branch_lab_test_id = ? AND a.appointment_date = ?
+              AND a.id <> ? AND a.status NOT IN ('CANCELLED', 'REJECTED')
+            LIMIT 1`,
+          [servicePatient.patientId, body.branch_lab_test_id, body.appointment_date, appointmentId],
+        );
+        if (dupes.length > 0) {
+          throw conflict("DUPLICATE_BOOKING", "This patient already has a booking for this test on the selected date.");
+        }
+      }
       await conn.query(
         `INSERT INTO lab_test_appointment_patients
-           (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, appointment_id, patient_id, booking_source, booked_by, profile_user_id, profile_name,
+            relationship, name, phone, age, gender)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId(),
           appointmentId,
           servicePatient.patientId,
           servicePatient.bookingSource,
           servicePatient.bookedBy,
-          patientDetails.relationship,
-          patientDetails.name,
-          patientDetails.phone ?? null,
+          servicePatient.profileUserId,
+          servicePatient.profileName,
+          servicePatient.relationship,
+          servicePatient.name,
+          servicePatient.phone,
           patientDetails.age ?? null,
           patientDetails.gender ?? null,
         ],
       );
 
+      // The test's precautions as they are now — later edits to the test don't change this booking.
+      await snapshotAppointmentPrecautions(conn, appointmentId, blt.test_id);
+
       if (body.prescription_id) {
         await conn.query(
           `INSERT INTO lab_test_prescriptions (id, patient_id, appointment_id, file_name, file_url, mime_type, file_size, uploaded_at)
-           SELECT id, patient_id, ?, file_name, file_url, mime_type, size_bytes, uploaded_at
+           SELECT id, ?, ?, file_name, file_url, mime_type, size_bytes, uploaded_at
            FROM medical_documents WHERE id = ? AND patient_id = ?`,
-          [appointmentId, body.prescription_id, auth.userId],
+          [servicePatient.patientId ?? auth.userId, appointmentId, body.prescription_id, auth.userId],
         );
       }
 
@@ -245,10 +270,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         appointment_number: appointmentNumber,
         test_name: blt.test_name,
         date: body.appointment_date,
-        time: body.start_time,
         branch_name: branch.name,
-        visitor_name: patientDetails.name,
-        visitor_relationship: patientDetails.relationship,
+        visitor_name: servicePatient.name,
+        visitor_relationship: servicePatient.relationship,
       };
       await notifyBranchStaff(conn, body.branch_id, "lab_test_booked", notifyPayload);
       await createClinicUserNotification(conn, branch.owner_user_id, "lab_test_booked", notifyPayload, body.branch_id);
@@ -257,7 +281,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         branch_id: body.branch_id,
         branch_lab_test_id: body.branch_lab_test_id,
         appointment_date: body.appointment_date,
-        start_time: body.start_time,
         service_mode: body.service_mode,
       });
     });
@@ -265,11 +288,13 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     const [saved] = await pool.query<RowDataPacket[]>(
       `SELECT a.*, lt.name AS test_name, lt.code AS test_code, lt.category AS test_category,
               b.name AS branch_name, c.name AS clinic_name,
-              u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+              u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone, u.photo_url AS patient_photo_url,
+              b.photo_url AS branch_photo_url,
+              (SELECT vu.photo_url FROM users vu WHERE vu.id = ltap.patient_id) AS visitor_photo_url,
               ltap.relationship AS visitor_relationship, ltap.name AS visitor_name,
               ltap.phone AS visitor_phone, ltap.age AS visitor_age, ltap.gender AS visitor_gender,
               ltap.patient_id AS visitor_patient_id, ltap.booking_source AS visitor_booking_source,
-              ltap.booked_by AS visitor_booked_by
+              ltap.booked_by AS visitor_booked_by, ltap.profile_user_id AS visitor_profile_user_id, ltap.profile_name AS visitor_profile_name
          FROM lab_test_appointments a
          JOIN lab_tests lt ON lt.id = a.test_id
          JOIN branches b ON b.id = a.branch_id
@@ -281,10 +306,17 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     );
 
     const appointment = saved[0];
+    // Assigned inside the insert transaction's callback, which TS can't follow.
+    const done = resolved as ResolvedServicePatient | null;
+    if (done) {
+      patientDetails = { ...patientDetails, name: done.name, phone: done.phone, relationship: done.relationship };
+    }
     const isForSelf = patientDetails.relationship === "self";
 
     const staffEmails = await branchContactEmails(pool, body.branch_id);
-    const staffPhones = await branchContactPhones(pool, body.branch_id);
+    // The booking's own copy of the test's precautions, sent with the booking notifications.
+    const [created] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(appointment)]);
+    const precautions = precautionLines(created.test_precautions);
 
     const emailSubject = `New Lab Test Booking — ${appointmentNumber}`;
     const emailBody = detailsEmailHtml({
@@ -302,30 +334,34 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           : [{ label: "Booked By", value: appointment.patient_name ?? "-", sub: `${appointment.patient_email ?? "-"} · Phone: ${appointment.patient_phone ?? "-"}` }]),
         { label: "Test", value: blt.test_name },
         { label: "Branch", value: branch.name },
-        { label: "Date & Time", value: `${body.appointment_date} at ${body.start_time}`, sub: body.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
+        { label: "Booking Date", value: body.appointment_date, sub: body.service_mode === "HOME" ? "Home Collection" : "Clinic Visit" },
         { label: "Payment", value: body.payment_method === "ONLINE" ? "Online (Pending)" : "Pay at Clinic" },
+        ...(precautions.length > 0 ? [{ label: "Test Precautions", value: precautions.join("\n") }] : []),
       ],
-      note: "Please review the prescription (if uploaded) and approve or reject this booking.",
+      note: "Please review the prescription (if uploaded), then confirm the booking and assign the test time — or reject it.",
     });
 
     for (const email of staffEmails) {
       await sendEmail(email, emailSubject, "", emailBody);
     }
+    await emailPatient(pool, appointment.patient_id, "lab_test_booked", {
+      appointment_number: appointmentNumber,
+      test_name: blt.test_name,
+      branch_name: branch.name,
+      date: body.appointment_date,
+      precautions,
+    });
+    // In-app + push, so the precautions also reach the patient's phone.
+    await createPatientNotification(pool, appointment.patient_id, "lab_test_booked", {
+      appointment_id: appointmentId,
+      appointment_number: appointmentNumber,
+      test_name: blt.test_name,
+      branch_name: branch.name,
+      date: body.appointment_date,
+      precautions,
+    });
 
-    const staffWhatsappText = `Jido Healthcare: New lab test booking ${appointmentNumber} (${blt.test_name}) for ${patientDetails.name} at ${branch.name} on ${body.appointment_date} at ${body.start_time} — please review and approve/reject.`;
-    void notifyPhonesWhatsapp(staffPhones, staffWhatsappText);
-
-    const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-    if (patientPhone) {
-      const bookedText = personalizeForPatient(
-        `Your lab test booking ${appointmentNumber} (${blt.test_name}) at ${branch.name} on ${body.appointment_date} at ${body.start_time} has been submitted and is awaiting approval.`,
-        patientDetails.name,
-        patientDetails.relationship,
-      );
-      void notifyPhonesWhatsapp([patientPhone], bookedText);
-    }
-
-    return { status: 201, body: serializeLabTestAppointment(appointment) };
+    return { status: 201, body: created };
   });
 
   return json(result.body, result.status);

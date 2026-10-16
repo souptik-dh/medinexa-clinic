@@ -4,6 +4,7 @@ import { ApiError, BranchReview, RatingSummary, reviewsApi } from "@/lib/api";
 import { ListSkeleton } from "@/components/ui/skeleton/Skeleton";
 import RatingStars from "@/components/common/RatingStars";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useLatestRequest } from "@/hooks/useAsyncAction";
 
 interface BranchReviewsPanelProps {
   branchId: string;
@@ -15,21 +16,28 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
   const [reviews, setReviews] = useState<BranchReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { begin, isLatest } = useLatestRequest();
 
   const load = useCallback(async () => {
+    // Switching branches must never show a slower, older branch's reviews.
+    const token = begin();
     setLoading(true);
     setError(null);
+    setRating(null);
+    setReviews([]);
     try {
       const res = await reviewsApi.forBranch(branchId, { limit: 20 });
+      if (!isLatest(token)) return;
       setRating(res.rating);
       setReviews(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(err instanceof ApiError ? err.message : t("reviews.failedToLoad"));
       setReviews([]);
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [branchId, t]);
+  }, [branchId, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -45,9 +53,18 @@ export default function BranchReviewsPanel({ branchId }: BranchReviewsPanelProps
       </div>
 
       {loading ? (
-        <ListSkeleton rows={3} />
+        <ListSkeleton rows={3} className="mt-4 space-y-3" />
       ) : error ? (
-        <p className="mt-4 text-sm text-error-600 dark:text-error-400">{error}</p>
+        <p className="mt-4 text-sm text-error-600 dark:text-error-400">
+          {error}
+          <button
+            type="button"
+            onClick={() => load()}
+            className="ml-3 font-medium underline"
+          >
+            {t("common.retry")}
+          </button>
+        </p>
       ) : reviews.length === 0 ? (
         <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
           {t("reviews.noReviews")}

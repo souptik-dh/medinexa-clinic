@@ -10,17 +10,14 @@ import {
   notifyClinicSide,
   sendEmail,
   detailsEmailHtml,
-  sendWhatsappFile,
-  notifyPhonesWhatsapp,
-  branchContactPhones,
-  personalizeForPatient,
+  emailPatient,
+  branchContactEmails,
 } from "@api/lib/notifications";
 import { newId } from "@api/lib/ids";
 import { runIdempotent } from "@api/lib/idempotency";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { issueReceipt } from "@api/lib/receipts";
-import { buildReceiptPdf } from "@api/lib/pdf";
 
 const schema = z.object({
   fee_amount: z.coerce.number().positive().max(1_000_000),
@@ -49,6 +46,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
 
   const result = await runIdempotent(`appointments:${ctx.params.id}:payment`, idemKey, rawBody, async () => {
     const paymentId = newId();
+    const pendingEmails: Array<() => Promise<void>> = [];
     await withTransaction(async (conn) => {
       const appt = await getAppointmentInScope(conn, ctx.params.id, auth);
       await assertClinicOperational(conn, appt.clinic_id);
@@ -80,7 +78,7 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         [newId(), appt.clinic_id, appt.branch_id, appt.currency, body.fee_amount],
       );
       const names = await getAppointmentNames(conn, appt.id);
-      await createPatientNotification(conn, appt.patient_id, "payment_received", {
+      const patientPayload = {
         appointment_id: appt.id,
         amount: body.fee_amount,
         method: body.method,
@@ -89,7 +87,9 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
         time: appt.scheduled_time,
         doctor_name: names.doctor_name,
         branch_name: names.branch_name,
-      });
+      };
+      await createPatientNotification(conn, appt.patient_id, "payment_received", patientPayload);
+      pendingEmails.push(() => emailPatient(pool, appt.patient_id, "payment_received", patientPayload));
       await notifyClinicSide(conn, appt.branch_id, appt.clinic_id, "payment_received", {
         appointment_id: appt.id,
         patient_id: appt.patient_id,
@@ -101,31 +101,26 @@ export const PATCH = api({ rateLimit: 200 }, async (ctx) => {
       });
     });
 
+    await Promise.all(pendingEmails.map((send) => send()));
+
     const [rows] = await pool.query<Row[]>(`SELECT * FROM appointments WHERE id = ?`, [ctx.params.id]);
     const appointment = rows[0];
     if (!appointment) throw notFound("APPOINTMENT_NOT_FOUND", "Appointment not found.");
 
 const [details] = await pool.query<Row[]>(
-    `SELECT u.name AS patient_name, u.phone AS patient_phone,
-            ap.phone AS visitor_phone, ap.name AS visitor_name, ap.relationship AS visitor_relationship,
-            co.email AS owner_email, co.phone AS owner_phone,
-            b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name, d.name AS doctor_name
+    `SELECT u.name AS patient_name,
+                        b.name AS branch_name, b.address AS branch_address, b.phone AS branch_phone, c.name AS clinic_name, d.name AS doctor_name
        FROM appointments a
        JOIN users u ON u.id = a.patient_id
-       LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
        JOIN clinics c ON c.id = a.clinic_id
-       JOIN users co ON co.id = c.owner_user_id
        JOIN branches b ON b.id = a.branch_id
        JOIN doctors d ON d.id = a.doctor_id
       WHERE a.id = ?`,
     [ctx.params.id],
   );
   const info = details[0];
-  // Prefer the walk-in patient's number when a patient_details.phone was provided,
-  // otherwise fall back to the account holder's recorded phone.
-  const patientPhone = info?.visitor_phone || info?.patient_phone || null;
 
-    const receipt = await issueReceipt(pool, {
+    await issueReceipt(pool, {
       sourceType: "appointment",
       sourceId: appointment.id,
       eventType: "payment_received",
@@ -153,43 +148,9 @@ const [details] = await pool.query<Row[]>(
         paid: true,
       },
     });
-    const clinicPhones = await branchContactPhones(pool, appointment.branch_id);
-    const clinicPaymentText = `Jido Healthcare: Payment of ${body.fee_amount} ${appointment.currency} collected via ${body.method} from ${info.patient_name ?? "a patient"} at ${info.branch_name}.`;
-    void notifyPhonesWhatsapp(clinicPhones, clinicPaymentText);
-    if (patientPhone) {
-      const paymentText = personalizeForPatient(
-        `Payment of ${body.fee_amount} ${appointment.currency} received for your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${appointment.scheduled_date} at ${appointment.scheduled_time}.${receipt ? ` Receipt No: ${receipt.receiptNumber}.` : ""}`,
-        info.visitor_name,
-        info.visitor_relationship,
-      );
-      void notifyPhonesWhatsapp([patientPhone], paymentText);
-      if (receipt) {
-        const pdf = buildReceiptPdf({
-          title: "Payment Receipt",
-          receiptNumber: receipt.receiptNumber,
-          issuedAt: new Date().toISOString(),
-          clinicName: info.clinic_name ?? "Clinic",
-          branchName: info.branch_name,
-          branchAddress: info.branch_address ?? null,
-          branchPhone: info.branch_phone ?? null,
-          patientName: info.patient_name ?? "Patient",
-          rows: [
-            { label: "Doctor", value: `Dr. ${info.doctor_name}` },
-            { label: "Date & Time", value: `${appointment.scheduled_date} at ${appointment.scheduled_time}` },
-            { label: "Payment Method", value: body.method },
-            ...(body.reference_no ? [{ label: "Reference No.", value: body.reference_no }] : []),
-          ],
-          amount: { label: "Amount", value: `${body.fee_amount} ${appointment.currency}`, due: false },
-          copy: "patient",
-        });
-        void sendWhatsappFile(
-          patientPhone,
-          { filename: `receipt-${receipt.receiptNumber}.pdf`, mimetype: "application/pdf", data: pdf },
-          "Your payment receipt",
-        );
-      }
-    }
-    if (info?.owner_email) {
+    // Staff and the clinic owner alike get the payment email.
+    const clinicEmails = await branchContactEmails(pool, appointment.branch_id);
+    if (clinicEmails.length > 0) {
       const paymentBody = `A payment of ${body.fee_amount} ${appointment.currency} was collected via ${body.method} from ${info.patient_name ?? "a patient"} at ${info.branch_name}.${body.reference_no ? `\nReference: ${body.reference_no}` : ""}`;
       const paymentHtml = detailsEmailHtml({
         heading: "Payment Received",
@@ -202,11 +163,10 @@ const [details] = await pool.query<Row[]>(
           ...(body.reference_no ? [{ label: "Reference", value: body.reference_no }] : []),
         ],
       });
-      await sendEmail(
-        info.owner_email,
-        `Payment received — ${info.patient_name ?? "Patient"}`,
-        paymentBody,
-        paymentHtml,
+      await Promise.all(
+        clinicEmails.map((email) =>
+          sendEmail(email, `Payment received — ${info.patient_name ?? "Patient"}`, paymentBody, paymentHtml),
+        ),
       );
     }
 

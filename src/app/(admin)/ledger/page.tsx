@@ -5,7 +5,7 @@ import React from "react";
 
 export const metadata: Metadata = {
   title: "Payment Ledger | Jido Healthcare",
-  description: "Monthly payment totals per clinic and branch",
+  description: "Individual payments by method and monthly totals per clinic and branch",
 };
 
 export default function LedgerPage() {

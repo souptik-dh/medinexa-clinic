@@ -9,7 +9,7 @@ const SELECT_FIELDS = `u.id, u.name, u.first_name, u.last_name, u.email, u.phone
        u.height_cm, u.weight_kg, u.bmi,
        u.address, u.nearby_location, u.city, u.district, u.pin_code, u.state, u.post_office,
        u.photo_url, u.preferred_clinic_id, u.preferred_branch_id,
-       pc.name AS preferred_clinic_name, pb.name AS preferred_branch_name,
+       pc.name AS preferred_clinic_name, pb.name AS preferred_branch_name, pb.photo_url AS preferred_branch_photo_url,
        u.created_at, u.updated_at`;
 
 const FROM_CLAUSE = `FROM users u
@@ -45,6 +45,7 @@ function toProfile(u: Row) {
     preferred_clinic_name: u.preferred_clinic_name,
     preferred_branch_id: u.preferred_branch_id,
     preferred_branch_name: u.preferred_branch_name,
+    preferred_branch_photo_url: u.preferred_branch_photo_url ?? null,
     created_at: u.created_at,
     updated_at: u.updated_at,
   };

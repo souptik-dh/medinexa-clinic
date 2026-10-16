@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 import {
   ApiError,
   BranchOperatingDay,
@@ -53,9 +53,28 @@ export default function DoctorMySchedulePanel() {
   }, [load]);
 
   if (loading) {
+    // Mirrors the loaded layout: doctor header card + one card per branch.
     return (
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <DetailSkeleton rows={3} />
+      <div className="space-y-4" role="status" aria-busy="true">
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="mt-2 h-3.5 w-32" />
+        </div>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3.5 w-3/4 max-w-72" />
+                <Skeleton className="h-3 w-1/2 max-w-48" />
+              </div>
+              <Skeleton className="h-9 w-36 shrink-0 rounded-lg" />
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -63,8 +82,15 @@ export default function DoctorMySchedulePanel() {
   if (error) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 underline hover:bg-error-100 dark:text-error-400 dark:hover:bg-error-500/20"
+          >
+            {t("common.retry")}
+          </button>
         </div>
       </div>
     );

@@ -20,6 +20,7 @@ function displayTime(info: { status: string; is_bookable: boolean; slots: { time
   if (info.status === "leave") return "Doctor on leave";
   if (info.status === "clinic_closed") return "Clinic closed";
   if (info.status === "fully_booked") return "Fully booked";
+  if (info.status === "booking_time_ended") return "Booking time ended";
   if (!info.is_bookable) return "No slots";
   const first = info.slots.find((s) => s.available);
   return first ? formatTime12h(first.time) : "No slots";

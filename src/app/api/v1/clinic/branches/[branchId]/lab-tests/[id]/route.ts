@@ -4,6 +4,8 @@ import { pool } from "@api/lib/db";
 import { parseBody } from "@api/lib/validators";
 import { serializeBranchLabTest, getBranchLabTestForManagement, auditLabAction } from "@api/lib/lab-tests";
 import { requireBranchAccess } from "@api/lib/permissions";
+import { assertBranchHasLabSchedule } from "@api/lib/lab-test-library";
+import { notFound } from "@api/lib/errors";
 import { z } from "zod";
 import type { RowDataPacket } from "mysql2/promise";
 
@@ -25,6 +27,11 @@ export const PUT = api({ rateLimit: 200 }, async (ctx) => {
   await requireBranchAccess(pool, auth, branchId, "lab_tests:manage");
 
   const existing = await getBranchLabTestForManagement(pool, id, auth);
+  if (existing.branch_id !== branchId) throw notFound("BRANCH_TEST_NOT_FOUND", "Branch lab test not found.");
+  // Re-activating a test makes it bookable again, which needs a lab schedule.
+  if (body.status === "active" && existing.status !== "active") {
+    await assertBranchHasLabSchedule(pool, branchId);
+  }
 
   const updates: string[] = [];
   const params: unknown[] = [];

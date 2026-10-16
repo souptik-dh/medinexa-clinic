@@ -15,10 +15,11 @@ import {
 } from "@/lib/api";
 
 import { getErrorMessage } from "@/lib/errorMessage";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton, StatGridSkeleton } from "@/components/ui/skeleton/Skeleton";
 import FormDrawer from "@/components/common/FormDrawer";
 import BranchForm from "@/components/branches/BranchForm";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 export default function BranchOverviewPanel() {
   const { t } = useTranslation();
@@ -35,9 +36,15 @@ export default function BranchOverviewPanel() {
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [uploadingGallery, setUploadingGallery] = useState(false);
-  const [uploadingDoc, setUploadingDoc] = useState<BranchLicenseType | null>(null);
+  // Each upload has its own lock, so e.g. a slow photo upload never blocks
+  // the gallery or a licence upload.
+  const { pending: uploadingPhoto, run: runPhotoUpload } = useAsyncAction();
+  const { pending: uploadingGallery, run: runGalleryUpload } = useAsyncAction();
+  const docUpload = useKeyedAction<BranchLicenseType>();
+  const galleryRemove = useKeyedAction<string>();
+  // Set by the embedded BranchForm so the drawer can't be closed mid-save.
+  const [formSaving, setFormSaving] = useState(false);
+  const { begin, isLatest } = useLatestRequest();
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -45,9 +52,11 @@ export default function BranchOverviewPanel() {
   const drugInputRef = useRef<HTMLInputElement>(null);
   const clinicalInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
+  // `silent` refreshes after an edit without flashing the page skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!clinicId || !branchId) return;
-    setLoading(true);
+    const token = begin();
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const [branchesRes, doctorsRes, labTestsRes, scheduleRes, galleryRes] =
@@ -58,6 +67,7 @@ export default function BranchOverviewPanel() {
           labTestSchedulesApi.list(branchId),
           branchesApi.listGallery(branchId),
         ]);
+      if (!isLatest(token)) return;
       const found = branchesRes.items.find((b) => b.id === branchId) ?? null;
       if (!found) {
         setError(t("branchOverview.branchNotFound"));
@@ -69,11 +79,12 @@ export default function BranchOverviewPanel() {
       setScheduleCount(scheduleRes.items.length);
       setGalleryImages(galleryRes.items ?? []);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("branchOverview.failedToLoadOverview")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [clinicId, branchId, t]);
+  }, [clinicId, branchId, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -82,15 +93,18 @@ export default function BranchOverviewPanel() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !branch) return;
-    setUploadingPhoto(true);
     try {
-      const res = await branchesApi.uploadPhoto(branchId, file);
-      setBranch({ ...branch, photo_url: res.photo_url });
-      toast.success(t("branchOverview.photoUpdated"));
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadPhoto")));
+      await runPhotoUpload(async () => {
+        try {
+          const res = await branchesApi.uploadPhoto(branchId, file);
+          // Functional update: other uploads may patch the branch concurrently.
+          setBranch((prev) => (prev ? { ...prev, photo_url: res.photo_url } : prev));
+          toast.success(t("branchOverview.photoUpdated"));
+        } catch (err) {
+          toast.error(getErrorMessage(err, t("branchOverview.failedToUploadPhoto")));
+        }
+      });
     } finally {
-      setUploadingPhoto(false);
       if (photoInputRef.current) photoInputRef.current.value = "";
     }
   };
@@ -98,15 +112,17 @@ export default function BranchOverviewPanel() {
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadingGallery(true);
     try {
-      const img = await branchesApi.uploadGalleryImage(branchId, file);
-      setGalleryImages((prev) => [img, ...prev]);
-      toast.success(t("branchOverview.imageUploadedToGallery"));
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadImage")));
+      await runGalleryUpload(async () => {
+        try {
+          const img = await branchesApi.uploadGalleryImage(branchId, file);
+          setGalleryImages((prev) => [img, ...prev]);
+          toast.success(t("branchOverview.imageUploadedToGallery"));
+        } catch (err) {
+          toast.error(getErrorMessage(err, t("branchOverview.failedToUploadImage")));
+        }
+      });
     } finally {
-      setUploadingGallery(false);
       if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   };
@@ -116,30 +132,59 @@ export default function BranchOverviewPanel() {
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
+    const input = e.target;
     if (!file || !branch) return;
-    setUploadingDoc(type);
     try {
-      const res = await branchesApi.uploadLicense(branchId, type, file);
-      setBranch({
-        ...branch,
-        [`${type.replace(/-/g, "_")}_url`]: res.url,
+      await docUpload.run(type, async () => {
+        try {
+          const res = await branchesApi.uploadLicense(branchId, type, file);
+          // Functional update: other licence/photo uploads may run concurrently.
+          setBranch((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  [`${type.replace(/-/g, "_")}_url`]: res.url,
+                }
+              : prev
+          );
+          toast.success(t("branchOverview.documentUploaded"));
+        } catch (err) {
+          toast.error(getErrorMessage(err, t("branchOverview.failedToUploadDocument")));
+        }
       });
-      toast.success(t("branchOverview.documentUploaded"));
-    } catch (err) {
-      toast.error(getErrorMessage(err, t("branchOverview.failedToUploadDocument")));
     } finally {
-      setUploadingDoc(null);
-      e.target.value = "";
+      input.value = "";
     }
   };
 
+  const removeGalleryImage = async (img: BranchGalleryImage) => {
+    await galleryRemove.run(img.id, async () => {
+      try {
+        await branchesApi.removeGalleryImage(branchId, img.id);
+        setGalleryImages((prev) =>
+          prev.filter((g) => g.id !== img.id)
+        );
+        toast.success(t("branchOverview.imageRemoved"));
+      } catch {
+        /* silent */
+      }
+    });
+  };
+
   if (loading) {
-    return <DetailSkeleton rows={5} />;
+    return <OverviewSkeleton />;
   }
   if (error || !branch) {
     return (
       <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
         {error ?? t("branchOverview.branchNotFound")}
+        <button
+          type="button"
+          onClick={() => load()}
+          className="ml-3 font-medium underline"
+        >
+          {t("common.retry")}
+        </button>
       </div>
     );
   }
@@ -198,6 +243,7 @@ export default function BranchOverviewPanel() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setEditOpen(true)}
               className="rounded-lg border border-brand-500/40 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
             >
@@ -248,9 +294,10 @@ export default function BranchOverviewPanel() {
             {t("branchOverview.branchImage")}
           </h4>
           <button
+            type="button"
             onClick={() => photoInputRef.current?.click()}
             disabled={uploadingPhoto}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {uploadingPhoto ? t("doctors.uploading") : t("branchOverview.uploadPhoto")}
           </button>
@@ -286,21 +333,21 @@ export default function BranchOverviewPanel() {
             number={branch.trade_license_number}
             url={branch.trade_license_url}
             status={branch.trade_license_validation_status}
-            uploading={uploadingDoc === "trade-license"}
+            uploading={docUpload.isPending("trade-license")}
             onUpload={() => tradeInputRef.current?.click()}
           />
           <DocumentCard
             label={t("branchOverview.drugLicense")}
             number={branch.drug_license_number}
             url={branch.drug_license_url}
-            uploading={uploadingDoc === "drug-license"}
+            uploading={docUpload.isPending("drug-license")}
             onUpload={() => drugInputRef.current?.click()}
           />
           <DocumentCard
             label={t("branchOverview.clinicalEstablishment")}
             number={branch.clinical_establishment_reg_number}
             url={branch.clinical_establishment_reg_url}
-            uploading={uploadingDoc === "clinical-establishment-registration"}
+            uploading={docUpload.isPending("clinical-establishment-registration")}
             onUpload={() => clinicalInputRef.current?.click()}
           />
         </div>
@@ -316,9 +363,10 @@ export default function BranchOverviewPanel() {
             {t("branchOverview.gallery")}
           </h4>
           <button
+            type="button"
             onClick={() => galleryInputRef.current?.click()}
             disabled={uploadingGallery}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -339,33 +387,33 @@ export default function BranchOverviewPanel() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {galleryImages.map((img) => (
+            {galleryImages.map((img) => {
+              const removing = galleryRemove.isPending(img.id);
+              return (
               <div key={img.id} className="group relative">
                 <img
                   src={img.image_url}
                   alt={t("branchOverview.gallery")}
-                  className="h-32 w-full rounded-xl object-cover"
+                  className={`h-32 w-full rounded-xl object-cover ${removing ? "opacity-50" : ""}`}
                 />
                 <button
-                  onClick={async () => {
-                    try {
-                      await branchesApi.removeGalleryImage(branchId, img.id);
-                      setGalleryImages((prev) =>
-                        prev.filter((g) => g.id !== img.id)
-                      );
-                      toast.success(t("branchOverview.imageRemoved"));
-                    } catch {
-                      /* silent */
-                    }
-                  }}
-                  className="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white opacity-0 transition group-hover:opacity-100"
+                  type="button"
+                  onClick={() => removeGalleryImage(img)}
+                  disabled={removing}
+                  aria-label={removing ? t("common.removingEllipsis") : undefined}
+                  className={`absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white transition group-hover:opacity-100 disabled:cursor-not-allowed ${removing ? "opacity-100" : "opacity-0"}`}
                 >
+                  {removing ? (
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  ) : (
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
+                  )}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -374,6 +422,7 @@ export default function BranchOverviewPanel() {
       <FormDrawer
         isOpen={editOpen}
         onClose={() => setEditOpen(false)}
+        closeDisabled={formSaving}
         title={t("branches.editBranch")}
         description={branch?.name}
       >
@@ -383,11 +432,41 @@ export default function BranchOverviewPanel() {
           branchId={branchId}
           onDone={() => {
             setEditOpen(false);
-            load();
+            load({ silent: true });
           }}
           onCancel={() => setEditOpen(false)}
+          onPendingChange={setFormSaving}
         />
       </FormDrawer>
+    </div>
+  );
+}
+
+/** Mirrors the overview layout: header card, three stat cards, section cards. */
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-busy="true">
+      <Skeleton className="h-5 w-48" />
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
+        <div className="flex items-start gap-4">
+          <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-3.5 w-1/2" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+        </div>
+      </div>
+      <StatGridSkeleton count={3} className="grid grid-cols-1 gap-4 sm:grid-cols-3" />
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]"
+        >
+          <Skeleton className="mb-3 h-4 w-32" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -462,9 +541,10 @@ function DocumentCard({
           </span>
         )}
         <button
+          type="button"
           onClick={onUpload}
           disabled={uploading}
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-brand-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1 rounded-md bg-brand-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {uploading ? t("doctors.uploading") : hasFile ? t("branchOverview.replace") : t("branchOverview.upload")}
         </button>

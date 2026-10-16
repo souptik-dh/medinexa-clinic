@@ -4,12 +4,14 @@ import OtpInput from "@/components/form/input/OtpInput";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useState } from "react";
 import { REQUIRED_FIELD_MESSAGE, useRequiredFields } from "@/hooks/useRequiredFields";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { isValidPhone, PHONE_VALIDATION_MESSAGE, sanitizePhoneDigits } from "@/lib/phone";
 
 type Mode = "owner" | "staff" | "doctor";
@@ -22,11 +24,13 @@ export default function SignInForm() {
   const [loginMethod, setLoginMethod] = useState<LoginMethod>("otp");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState("");
   const [stage, setStage] = useState<"request" | "verify">("request");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Ref-locked: a repeated Enter or double click can't fire a second auth request.
+  const { pending: submitting, run: runSubmit } = useAsyncAction();
   const {
     sendOwnerLoginOtp,
     verifyOwnerOtp,
@@ -35,6 +39,7 @@ export default function SignInForm() {
     verifyDoctorOtp,
     staffLogin,
     verifyStaffOtp,
+    loginStaffWithPassword,
   } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -47,24 +52,23 @@ export default function SignInForm() {
       setError(PHONE_VALIDATION_MESSAGE);
       return;
     }
-    setSubmitting(true);
-    try {
-      if (mode === "owner") {
-        const msg = await sendOwnerLoginOtp(phoneValue);
-        setMessage(msg);
-      } else if (mode === "doctor") {
-        const msg = await sendDoctorLoginOtp(phoneValue);
-        setMessage(msg);
-      } else {
-        await staffLogin(phoneValue);
-        setMessage(t("auth.otpSentPhoneMessage"));
+    await runSubmit(async () => {
+      try {
+        if (mode === "owner") {
+          const msg = await sendOwnerLoginOtp(phoneValue);
+          setMessage(msg);
+        } else if (mode === "doctor") {
+          const msg = await sendDoctorLoginOtp(phoneValue);
+          setMessage(msg);
+        } else {
+          await staffLogin(phoneValue);
+          setMessage(t("auth.otpSentPhoneMessage"));
+        }
+        setStage("verify");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
       }
-      setStage("verify");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToRequestOtp"));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const verifyOtp = async () => {
@@ -73,21 +77,20 @@ export default function SignInForm() {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
-    setSubmitting(true);
-    try {
-      if (mode === "owner") {
-        await verifyOwnerOtp(phone, otp);
-      } else if (mode === "doctor") {
-        await verifyDoctorOtp(phone, otp);
-      } else {
-        await verifyStaffOtp(phone, otp);
+    await runSubmit(async () => {
+      try {
+        if (mode === "owner") {
+          await verifyOwnerOtp(phone, otp);
+        } else if (mode === "doctor") {
+          await verifyDoctorOtp(phone, otp);
+        } else {
+          await verifyStaffOtp(phone, otp);
+        }
+        router.push("/dashboard");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
       }
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToVerifyOtp"));
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const handleRequestSubmit = (e: React.FormEvent) => {
@@ -110,15 +113,18 @@ export default function SignInForm() {
       setError(t("auth.pleaseFillRequired"));
       return;
     }
-    setSubmitting(true);
-    try {
-      await loginOwnerWithPassword(phone, password);
-      router.push("/dashboard");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
-    } finally {
-      setSubmitting(false);
-    }
+    await runSubmit(async () => {
+      try {
+        if (mode === "staff") {
+          await loginStaffWithPassword(phone, password);
+        } else {
+          await loginOwnerWithPassword(phone, password);
+        }
+        router.push("/dashboard");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("auth.unableToSignIn"));
+      }
+    });
   };
 
   const switchMode = (m: Mode) => {
@@ -166,7 +172,9 @@ export default function SignInForm() {
                   ? t("auth.signInClinicOwner")
                   : mode === "doctor"
                     ? t("auth.signInDoctor")
-                    : t("auth.signInStaff")}
+                    : loginMethod === "password"
+                      ? t("auth.signInStaffPassword")
+                      : t("auth.signInStaff")}
               </p>
           </div>
 
@@ -202,7 +210,7 @@ export default function SignInForm() {
             */}
           </div>
 
-          {mode === "owner" && loginMethod === "password" ? (
+          {mode !== "doctor" && loginMethod === "password" ? (
             <form onSubmit={handlePasswordSubmit} className="space-y-6">
               <div>
                 <Label>
@@ -235,16 +243,33 @@ export default function SignInForm() {
                 <Label>
                   {t("auth.password")} <span className="text-error-500">*</span>
                 </Label>
-                <Input
-                  type="password"
-                  placeholder={t("auth.enterPasswordPlaceholder")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onBlur={() => touch("password")}
-                  error={showError("password", !password.trim())}
-                  hint={showError("password", !password.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t("auth.enterPasswordPlaceholder")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => touch("password")}
+                    error={showError("password", !password.trim())}
+                    hint={showError("password", !password.trim()) ? REQUIRED_FIELD_MESSAGE : undefined}
+                    className="pr-12"
+                    required
+                  />
+                  {/* Pinned to the input's own height (h-11) so a validation hint below doesn't shift it. */}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute right-4 top-[22px] z-30 -translate-y-1/2 cursor-pointer"
+                  >
+                    {showPassword ? (
+                      <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+                    ) : (
+                      <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+                    )}
+                  </button>
+                </div>
               </div>
               {error && (
                 <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
@@ -311,7 +336,7 @@ export default function SignInForm() {
                   {submitting ? t("auth.sendingOtp") : t("auth.sendOtp")}
                 </Button>
               </div>
-              {mode === "owner" && (
+              {mode !== "doctor" && (
                 <div className="flex items-center justify-between">
                   <button
                     type="button"
@@ -370,7 +395,8 @@ export default function SignInForm() {
                     setError(null);
                     setMessage(null);
                   }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                  disabled={submitting}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
                 >
                   {t("auth.back")}
                 </button>

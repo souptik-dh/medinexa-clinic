@@ -25,8 +25,13 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
   // patient. 404 (not 403) so the response can't be used to probe which patient ids
   // exist.
   if (auth.role === "patient") {
+    // Their own documents, or those of a family member they book for (patient_family_links).
     if (patientId !== auth.userId) {
-      throw notFound("PATIENT_NOT_FOUND", "Patient not found.");
+      const [link] = await pool.query<RowDataPacket[]>(
+        `SELECT 1 FROM patient_family_links WHERE profile_user_id = ? AND patient_id = ?`,
+        [auth.userId, patientId],
+      );
+      if (!link[0]) throw notFound("PATIENT_NOT_FOUND", "Patient not found.");
     }
   } else if (auth.role !== "sys_admin") {
     await assertPatientExists(pool, patientId);
@@ -86,7 +91,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const ids = rows.map((r) => r.id);
   const [deliveryRows] = await pool.query<RowDataPacket[]>(
-    `SELECT * FROM patient_document_deliveries WHERE document_id IN (${ids.map(() => "?").join(",")}) ORDER BY created_at ASC`,
+    `SELECT pdd.*, (SELECT u.photo_url FROM users u WHERE u.id = pdd.attempted_by) AS attempted_by_photo_url
+       FROM patient_document_deliveries pdd WHERE pdd.document_id IN (${ids.map(() => "?").join(",")}) ORDER BY pdd.created_at ASC`,
     ids,
   );
   const byDocument = new Map<string, RowDataPacket[]>();

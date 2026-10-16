@@ -5,7 +5,8 @@ import { Clinic, ClinicLicenseType, clinicsApi } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { canUpdateClinic } from "@/lib/permissions";
 import { getErrorMessage } from "@/lib/errorMessage";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { useKeyedAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { useTranslation } from "@/hooks/useTranslation";
 
 interface ClinicLicensesPanelProps {
@@ -53,7 +54,9 @@ export default function ClinicLicensesPanel({
 }: ClinicLicensesPanelProps) {
   const [clinic, setClinic] = useState<Clinic | null>(null);
   const [loading, setLoading] = useState(true);
-  const [uploadingType, setUploadingType] = useState<ClinicLicenseType | null>(null);
+  // Each license type uploads independently - one in flight never blocks the others.
+  const upload = useKeyedAction<ClinicLicenseType>();
+  const { begin, isLatest } = useLatestRequest();
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const fileRefs = useRef<Record<ClinicLicenseType, HTMLInputElement | null>>({
@@ -68,16 +71,20 @@ export default function ClinicLicensesPanel({
   const isAdmin = user?.role === "clinic_owner" || user?.role === "sys_admin";
   const canUpload = isAdmin || canUpdateClinic(userPermissions);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes after an upload without flashing the skeleton.
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const token = begin();
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const c = await clinicsApi.get(clinicId);
+      if (!isLatest(token)) return;
       setClinic(c);
     } catch (err) {
+      if (!isLatest(token)) return;
       setError(getErrorMessage(err, t("licenses.failedToLoad")));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
@@ -96,24 +103,25 @@ export default function ClinicLicensesPanel({
       toast.error(t("appointments.noPermission"));
       return;
     }
-    setUploadingType(type);
+    if (upload.isPending(type)) return;
     setError(null);
     setOk(null);
-    try {
-      const res = await clinicsApi.uploadLicense(clinicId, type, file);
-      await load();
-      onLicenseUpdated?.(res.type, res.url);
-      setOk(t("licenses.documentUploaded"));
-      toast.success(t("licenses.uploadSuccess"));
-    } catch (err) {
-      const message = getErrorMessage(err, t("licenses.uploadFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setUploadingType(null);
-      const ref = fileRefs.current[type];
-      if (ref) ref.value = "";
-    }
+    await upload.run(type, async () => {
+      try {
+        const res = await clinicsApi.uploadLicense(clinicId, type, file);
+        await load({ silent: true });
+        onLicenseUpdated?.(res.type, res.url);
+        setOk(t("licenses.documentUploaded"));
+        toast.success(t("licenses.uploadSuccess"));
+      } catch (err) {
+        const message = getErrorMessage(err, t("licenses.uploadFailed"));
+        setError(message);
+        toast.error(message);
+      } finally {
+        const ref = fileRefs.current[type];
+        if (ref) ref.value = "";
+      }
+    });
   };
 
   return (
@@ -126,6 +134,15 @@ export default function ClinicLicensesPanel({
       {error && (
         <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {!clinic && !loading && (
+            <button
+              type="button"
+              onClick={() => load()}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
       {ok && (
@@ -135,13 +152,28 @@ export default function ClinicLicensesPanel({
       )}
 
       {loading ? (
-        <DetailSkeleton rows={3} />
+        // One placeholder card per license row, same footprint as the real ones.
+        <div className="space-y-3" aria-busy="true">
+          {LICENSE_DEFS.map((def) => (
+            <div
+              key={def.type}
+              className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3.5 w-36" />
+              </div>
+              {canUpload && <Skeleton className="h-9 w-32 rounded-lg" />}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="space-y-3">
           {LICENSE_DEFS.map((def) => {
             const number = clinic?.[def.numberField] ?? null;
             const url = clinic?.[def.urlField] ?? null;
-            const uploading = uploadingType === def.type;
+            const uploading = upload.isPending(def.type);
             return (
               <div
                 key={def.type}
@@ -180,12 +212,14 @@ export default function ClinicLicensesPanel({
                       type="file"
                       accept="image/jpeg,image/png,image/webp,application/pdf"
                       onChange={(e) => handleFileSelect(def.type, e)}
+                      disabled={uploading}
                       className="hidden"
                     />
                     <button
+                      type="button"
                       onClick={() => fileRefs.current[def.type]?.click()}
                       disabled={uploading}
-                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+                      className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
                     >
                       {uploading
                         ? t("doctors.uploading")

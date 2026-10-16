@@ -7,12 +7,13 @@ import { badRequest, conflict, notFound, unprocessable, isUniqueViolation } from
 import { newId } from "@api/lib/ids";
 import { runIdempotent } from "@api/lib/idempotency";
 import { scopeWhere, serializeAppointment, APPT_STATUSES } from "@api/lib/appointments";
-import { resolveServicePatient } from "@api/lib/patient-identity";
-import { notifyBranchStaff, createClinicUserNotification, branchContactEmails, branchContactPhones, sendEmail, detailsEmailHtml, notifyPhonesWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { resolveServicePatient, type ResolvedServicePatient, type PatientDetailsInput } from "@api/lib/patient-identity";
+import { notifyBranchStaff, patientRecipient, createClinicUserNotification, branchContactEmails, sendEmail, detailsEmailHtml, patientEmailHtml } from "@api/lib/notifications";
 import {
   todayInTz,
   weekdayInTz,
-  currentTimeKeyInTz,
+  hasSlotEndedInTz,
+  BOOKING_TIME_ENDED_MESSAGE,
   findNextSequentialSlot,
   getBranchSchedule,
   isWeekdayOpen,
@@ -42,6 +43,22 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     whereParts.push("a.clinic_id = ?");
     params.push(clinicId);
   }
+  const doctorId = sp.get("doctor_id");
+  if (doctorId) {
+    if (!idSchema.safeParse(doctorId).success) {
+      throw badRequest("VALIDATION_ERROR", "Invalid doctor_id filter.");
+    }
+    whereParts.push("a.doctor_id = ?");
+    params.push(doctorId);
+  }
+  const branchId = sp.get("branch_id");
+  if (branchId) {
+    if (!idSchema.safeParse(branchId).success) {
+      throw badRequest("VALIDATION_ERROR", "Invalid branch_id filter.");
+    }
+    whereParts.push("a.branch_id = ?");
+    params.push(branchId);
+  }
   const status = sp.get("status");
   if (status) {
     if (!(APPT_STATUSES as readonly string[]).includes(status)) {
@@ -63,6 +80,17 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
     params.push(dateTo);
   }
 
+  // When the payment was collected — ISO timestamps, so the client can ask for its
+  // own local day ("collected today") regardless of the visit date.
+  for (const [key, op] of [["paid_from", ">="], ["paid_to", "<"]] as const) {
+    const raw = sp.get(key);
+    if (!raw) continue;
+    const at = new Date(raw);
+    if (Number.isNaN(at.getTime())) throw badRequest("VALIDATION_ERROR", `${key} must be an ISO timestamp.`);
+    whereParts.push(`EXISTS (SELECT 1 FROM payments p WHERE p.appointment_id = a.id AND p.collected_at ${op} ?)`);
+    params.push(at.toISOString().slice(0, 23).replace("T", " "));
+  }
+
   // Filters live inside the derived table (rather than as fetchPage's `where`) so the
   // outer query only ever sees one set of `created_at`/`id` columns — appointment_patients
   // has its own `id`/`created_at`, which would otherwise make the cursor clause ambiguous.
@@ -74,11 +102,15 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
                (SELECT d.name FROM doctors d WHERE d.id = a.doctor_id) AS doctor_name,
                (SELECT d.photo_url FROM doctors d WHERE d.id = a.doctor_id) AS doctor_photo_url,
                (SELECT b.name FROM branches b WHERE b.id = a.branch_id) AS branch_name,
+               (SELECT b.photo_url FROM branches b WHERE b.id = a.branch_id) AS branch_photo_url,
                (SELECT b.phone FROM branches b WHERE b.id = a.branch_id) AS branch_phone,
+               (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url,
+               (SELECT MAX(p.collected_at) FROM payments p WHERE p.appointment_id = a.id) AS paid_at,
                ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-               ap.booked_by AS visitor_booked_by
+               ap.booked_by AS visitor_booked_by, ap.profile_user_id AS visitor_profile_user_id, ap.profile_name AS visitor_profile_name,
+               (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url
           FROM appointments a
           LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
          WHERE ${whereParts.join(" AND ")}
@@ -99,6 +131,11 @@ const patientDetailsSchema = z.object({
   // instead of registering a new one. Ignored for the "patient" role — a patient
   // account can never point a booking at an arbitrary patient_id it doesn't control.
   patient_id: idSchema.optional(),
+  // Reception only: the Patient App account (profile) the booking belongs to — picked
+  // via /patients/lookup — or, for a new walk-in, the profile's name. The entered
+  // phone is the profile's. Profile and patient are stored apart (patient-identity.ts).
+  profile_user_id: idSchema.optional(),
+  profile_name: z.string().trim().max(255).optional().nullable(),
   relationship: z.enum(["self", "spouse", "child", "parent", "sibling", "friend", "other"]).default("self"),
   name: z.string().trim().min(1).max(255),
   // Required (not just normalized) so a staff/owner walk-in booking can never omit the
@@ -107,7 +144,9 @@ const patientDetailsSchema = z.object({
   // instead of never reaching the actual patient. Normalized to +91XXXXXXXXXX so
   // downstream SMS/WhatsApp dispatch (which needs the country code for both the SMS
   // gateway and WhatsApp's chatId) doesn't reject a plain 10-digit number typed by staff.
-  phone: phoneSchema,
+  // Optional when a known person is picked (patient_id / profile_user_id) or for an app
+  // user's family member (defaults to the account's phone); required for a new walk-in.
+  phone: phoneSchema.optional().nullable(),
   age: z.number().int().min(0).max(150).optional().nullable(),
   gender: z.enum(["male", "female", "other", "prefer_not_to_say"]).optional().nullable(),
 });
@@ -164,6 +203,10 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         "VALIDATION_ERROR",
         "patient_details is required when booking an appointment on behalf of a patient.",
       );
+    }
+    const pd = body.patient_details;
+    if (auth.role !== "patient" && pd && !pd.patient_id && !pd.profile_user_id && !pd.phone) {
+      throw badRequest("VALIDATION_ERROR", "phone is required for a new patient.", "phone");
     }
 
     // New bookings are rejected while the clinic's subscription is inactive.
@@ -233,6 +276,20 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       );
     }
 
+    // Every generated key across all of today's templates (a doctor can have several
+    // ranges per weekday with different durations/capacities, not just templates[0]).
+    const capacityMap = buildSlotCapacityMap(templates);
+
+    // Booking end-time rule: once every slot of today has ended in the branch's tz the
+    // day is closed for new bookings (all roles) — reported as BOOKING_TIME_ENDED rather
+    // than DOCTOR_FULLY_BOOKED so the client can tell "too late" from "no capacity".
+    if (
+      capacityMap.size > 0 &&
+      [...capacityMap.entries()].every(([key, c]) => hasSlotEndedInTz(body.date, key, c.durationMinutes, tz))
+    ) {
+      throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "time");
+    }
+
     // Patients cannot book once the doctor's final slot for the day is within 30
     // minutes (fixed or sequential schedule alike); reception/clinic-owner walk-in
     // bookings are exempt, mirroring the patient-only checks above.
@@ -244,10 +301,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     }
 
     const isSequential = template.slot_type === "sequential";
-    // A doctor can have several ranges on the same weekday (e.g. morning + evening)
-    // with different durations/capacities, so every generated key across all of
-    // today's templates — not just templates[0] — must be considered.
-    const capacityMap = buildSlotCapacityMap(templates);
     let scheduledTime: string;
 
     if (isSequential) {
@@ -269,8 +322,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           "The requested time is not an available slot for this doctor.",
         );
       }
-      if (body.date === today && body.time <= currentTimeKeyInTz(tz)) {
-        throw unprocessable("DATE_IN_PAST", "This time slot has already passed.");
+      // A slot can be booked until its END (start + duration) in the branch's tz.
+      if (hasSlotEndedInTz(body.date, body.time, capacityMap.get(body.time)!.durationMinutes, tz)) {
+        throw unprocessable("BOOKING_TIME_ENDED", BOOKING_TIME_ENDED_MESSAGE, "time");
       }
       scheduledTime = body.time;
     }
@@ -280,13 +334,16 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
 
     // Defaults to the account holder's own name/phone when patient_details is omitted
     // (the common "booking for myself" case).
-    let patientDetails = body.patient_details;
-    if (!patientDetails) {
-      const self = selfRows?.[0];
-      patientDetails = { relationship: "self", name: self?.name ?? "Self", phone: self?.phone ?? null, age: null, gender: null };
-    }
+    let patientDetails: PatientDetailsInput = body.patient_details ?? {
+      relationship: "self",
+      name: selfRows?.[0]?.name ?? "Self",
+      phone: selfRows?.[0]?.phone ?? null,
+      age: null,
+      gender: null,
+    };
 
     const id = newId();
+    let resolved: ResolvedServicePatient | null = null;
     const triedTimes = new Set<string>();
     let attemptsLeft = isSequential ? 25 : 1;
     for (;;) {
@@ -320,19 +377,23 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
               ],
             );
             const servicePatient = await resolveServicePatient(conn, auth, patientDetails);
+            resolved = servicePatient;
             await conn.query(
               `INSERT INTO appointment_patients
-                 (id, appointment_id, patient_id, booking_source, booked_by, relationship, name, phone, age, gender)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 (id, appointment_id, patient_id, booking_source, booked_by, profile_user_id, profile_name,
+                  relationship, name, phone, age, gender)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 newId(),
                 id,
                 servicePatient.patientId,
                 servicePatient.bookingSource,
                 servicePatient.bookedBy,
-                patientDetails.relationship,
-                patientDetails.name,
-                patientDetails.phone ?? null,
+                servicePatient.profileUserId,
+                servicePatient.profileName,
+                servicePatient.relationship,
+                servicePatient.name,
+                servicePatient.phone,
                 patientDetails.age ?? null,
                 patientDetails.gender ?? null,
               ],
@@ -345,8 +406,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
               patient_id: auth.userId,
               date: body.date,
               time: scheduledTime,
-              visitor_name: patientDetails.name,
-              visitor_relationship: patientDetails.relationship,
+              visitor_name: servicePatient.name,
+              visitor_relationship: servicePatient.relationship,
             };
             await notifyBranchStaff(conn, body.branch_id, "new_booking", payload);
             await createClinicUserNotification(conn, branch.owner_user_id, "new_booking", payload, body.branch_id);
@@ -381,13 +442,21 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       scheduledTime = next;
     }
 
+    // Assigned inside the insert transaction's callback, which TS can't follow.
+    const done = resolved as ResolvedServicePatient | null;
+    if (done) {
+      patientDetails = { ...patientDetails, name: done.name, phone: done.phone, relationship: done.relationship };
+    }
+
     // Independent reads — none depends on the others — so they run as one round trip.
-    const [[rows], [details], recipients, recipientPhones] = await Promise.all([
+    const [[rows], [details], recipients] = await Promise.all([
       pool.query<Row[]>(
         `SELECT a.*, ap.relationship AS visitor_relationship, ap.name AS visitor_name,
                 ap.phone AS visitor_phone, ap.age AS visitor_age, ap.gender AS visitor_gender,
                 ap.patient_id AS visitor_patient_id, ap.booking_source AS visitor_booking_source,
-                ap.booked_by AS visitor_booked_by
+                ap.booked_by AS visitor_booked_by, ap.profile_user_id AS visitor_profile_user_id, ap.profile_name AS visitor_profile_name,
+                (SELECT vu.photo_url FROM users vu WHERE vu.id = ap.patient_id) AS visitor_photo_url,
+                (SELECT pu.photo_url FROM users pu WHERE pu.id = a.patient_id) AS patient_photo_url
            FROM appointments a
            LEFT JOIN appointment_patients ap ON ap.appointment_id = a.id
           WHERE a.id = ?`,
@@ -404,13 +473,11 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
         [id],
       ),
       branchContactEmails(pool, body.branch_id),
-      branchContactPhones(pool, body.branch_id),
     ]);
     const info = details[0];
     if (info) {
       const isForSelf = patientDetails.relationship === "self";
       const subject = `New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name}`;
-      const clinicWhatsappText = `Jido Healthcare: New appointment booked — ${patientDetails.name} with Dr. ${info.doctor_name} on ${body.date} at ${scheduledTime} at ${info.branch_name}.`;
       const emailBody = [
         `A new appointment has been booked at ${info.branch_name}.`,
         "",
@@ -446,22 +513,17 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           },
         ],
       });
-      // sendEmail/notifyPhonesWhatsapp already catch their own errors — no reason to hold
+      // sendEmail already catches its own errors — no reason to hold
       // the response on the round trips once the booking itself is committed.
       void Promise.all(recipients.map((email) => sendEmail(email, subject, emailBody, emailHtmlBody)));
-      void notifyPhonesWhatsapp(recipientPhones, clinicWhatsappText);
 
-      // Send the booking confirmation to the walk-in patient's number when one was
-      // provided, otherwise fall back to the account holder's recorded phone.
-      const patientPhone = rows[0]?.visitor_phone || info.patient_phone;
-      if (patientPhone) {
-        const bookedText = personalizeForPatient(
-          `Your appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation.`,
-          patientDetails.name,
-          patientDetails.relationship,
-        );
-        void notifyPhonesWhatsapp([patientPhone], bookedText);
-      }
+      // To the booking's profile (the Patient App account), never the staff member who booked it.
+      const bookedBody = `${isForSelf ? "Your" : `${patientDetails.name}'s`} appointment with Dr. ${info.doctor_name} at ${info.branch_name} on ${body.date} at ${scheduledTime} has been booked and is awaiting confirmation from the clinic.`;
+      void patientRecipient(pool, auth.userId, "new_booking", { appointment_id: id }).then(async (recipient) => {
+        if (!recipient) return;
+        const [to] = await pool.query<Row[]>(`SELECT email FROM users WHERE id = ?`, [recipient]);
+        if (to[0]?.email) await sendEmail(to[0].email, "Appointment booked", bookedBody, patientEmailHtml(bookedBody));
+      }).catch((err) => console.error("[email] appointment booked:", err));
     }
 
     return { status: 201, body: serializeAppointment(rows[0]) };

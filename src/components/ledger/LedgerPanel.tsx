@@ -10,20 +10,31 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ApiError, Clinic, LedgerEntry, clinicsApi, ledgerApi } from "@/lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { SelectSkeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useLatestRequest } from "@/hooks/useAsyncAction";
+import LedgerPaymentsSection from "@/components/ledger/LedgerPaymentsSection";
+
+type LedgerTab = "payments" | "monthly";
 
 export default function LedgerPanel() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
+  // The per-payment view reads GET /appointments, which sys_admin can't call.
+  const canViewPayments = user?.role === "clinic_owner";
+  const [tab, setTab] = useState<LedgerTab>(canViewPayments ? "payments" : "monthly");
+  const activeTab: LedgerTab = canViewPayments ? tab : "monthly";
 
   const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [clinicsLoading, setClinicsLoading] = useState(isOwner);
   const [clinicId, setClinicId] = useState("");
   const [month, setMonth] = useState("");
   const [items, setItems] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Clinic/month changes fire overlapping requests; only the newest may land.
+  const { begin, isLatest } = useLatestRequest();
 
   useEffect(() => {
     if (!isOwner) return;
@@ -35,26 +46,33 @@ export default function LedgerPanel() {
       })
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
-      });
+      })
+      .finally(() => setClinicsLoading(false));
   }, [isOwner, t]);
 
   const load = useCallback(async () => {
+    const token = begin();
     if (!clinicId) {
       setItems([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
+    // Don't let the previous clinic/month's rows pose as this query's results.
+    setItems([]);
     setError(null);
     try {
       const res = await ledgerApi.list(clinicId, month || undefined);
+      if (!isLatest(token)) return;
       setItems(res.items);
     } catch (err) {
+      if (!isLatest(token)) return;
       setItems([]);
       setError(err instanceof ApiError ? err.message : t("ledger.failedToLoad"));
     } finally {
-      setLoading(false);
+      if (isLatest(token)) setLoading(false);
     }
-  }, [clinicId, month, t]);
+  }, [clinicId, month, t, begin, isLatest]);
 
   useEffect(() => {
     load();
@@ -72,18 +90,45 @@ export default function LedgerPanel() {
     acc[item.currency] = (acc[item.currency] ?? 0) + item.total_amount;
     return acc;
   }, {});
+  // Also covers the gap before the clinic list has picked a default clinic.
+  const showSkeleton = loading || (clinicsLoading && !clinicId);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] sm:p-6">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          {t("ledger.title")}
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            {t("ledger.title")}
+          </h3>
+          {canViewPayments && (
+            <div className="inline-flex rounded-lg bg-gray-100 p-0.5 dark:bg-gray-900" role="tablist">
+              {(["payments", "monthly"] as LedgerTab[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === key}
+                  onClick={() => setTab(key)}
+                  className={`rounded-md px-3 py-2 text-sm font-medium transition ${
+                    activeTab === key
+                      ? "bg-white text-gray-900 shadow-theme-xs dark:bg-gray-800 dark:text-white"
+                      : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+                  }`}
+                >
+                  {key === "payments" ? t("ledger.tabPayments") : t("ledger.tabMonthly")}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="sm:w-64">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               {t("billing.clinic")}
             </label>
+            {clinicsLoading ? (
+              <SelectSkeleton />
+            ) : (
             <select
               value={clinicId}
               onChange={(e) => setClinicId(e.target.value)}
@@ -96,7 +141,9 @@ export default function LedgerPanel() {
                 </option>
               ))}
             </select>
+            )}
           </div>
+          {activeTab === "monthly" && (
           <div className="sm:w-48">
             <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
               {t("ledger.month")}
@@ -108,8 +155,10 @@ export default function LedgerPanel() {
               className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
             />
           </div>
-          {month && (
+          )}
+          {activeTab === "monthly" && month && (
             <button
+              type="button"
               onClick={() => setMonth("")}
               className="h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
             >
@@ -119,13 +168,32 @@ export default function LedgerPanel() {
         </div>
       </div>
 
+      {activeTab === "payments" ? (
+        clinicId ? (
+          <LedgerPaymentsSection clinicId={clinicId} />
+        ) : !clinicsLoading ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+            {t("ledger.selectClinicHint")}
+          </div>
+        ) : null
+      ) : (
+      <>
       {error && (
         <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {clinicId && !loading && items.length === 0 && (
+            <button
+              type="button"
+              onClick={load}
+              className="ml-3 font-medium underline hover:no-underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
-      {items.length > 0 && (
+      {!loading && items.length > 0 && (
         <div className="flex flex-wrap gap-3">
           {Object.entries(totalsByCurrency).map(([currency, total]) => (
             <div
@@ -144,13 +212,11 @@ export default function LedgerPanel() {
       )}
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pb-4 pt-4 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6">
-        {!clinicId ? (
+        {!clinicId && !showSkeleton ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("ledger.selectClinicHint")}
           </p>
-        ) : loading ? (
-          <TableSkeleton rows={5} cols={5} />
-        ) : items.length === 0 ? (
+        ) : !showSkeleton && items.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("ledger.noPaymentsRecorded", { suffix: month ? t("ledger.inThisMonth") : "" })}
           </p>
@@ -177,7 +243,9 @@ export default function LedgerPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {items.map((entry) => (
+                {showSkeleton ? (
+                  <TableRowsSkeleton rows={5} cols={5} cellClassName="py-3" />
+                ) : items.map((entry) => (
                   <TableRow key={entry.id}>
                     <TableCell className="py-3">
                       <p className="font-medium text-gray-800 text-theme-sm dark:text-white/90">
@@ -203,6 +271,8 @@ export default function LedgerPanel() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

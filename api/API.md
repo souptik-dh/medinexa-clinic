@@ -1,8 +1,8 @@
 # Jido Healthcare — REST API Reference
 
-Live implementation reference for the MediBook API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
+Live implementation reference for the Jido Healthcare API. Every endpoint below documents the **actual request/response payloads** produced by the code in `src/app/api/v1`, with JSON examples.
 
-- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://api.medibook.app/api/v1` (prod)
+- **Base URL:** `http://localhost:3000/api/v1` (dev) or `https://healthcare.jido.co.in/api/v1` (prod)
 - **Format:** JSON only (`Content-Type: application/json`), except legacy upload endpoints (certificates, prescription scans, medical documents) and clinic/branch license uploads which use `multipart/form-data`, and photo uploads which use a two-step Cloudinary flow (see [File uploads](#file-uploads)).
 - **Auth:** `Authorization: Bearer <access_token>` (JWT, 15 min TTL). Refresh via `POST /auth/refresh`.
 - **IDs:** all resource IDs are UUIDs (v4), generated server-side.
@@ -1222,7 +1222,7 @@ Auth: `clinic_owner`.
 | Field | Type | Notes |
 |---|---|---|
 | `trade_license_number` | string | **required**, issued by the local municipality, 1–100 |
-| `trade_license_validation_status` | string | **required, must be `"VALID"`** — the `status` a prior `POST /clinics/validate-trade-license` call returned for this exact number. A clinic cannot be created at all until that number has been validated; `PENDING`/`INVALID`/omitted all fail the same way. See [Trade license validation](#trade-license-validation). |
+| `trade_license_validation_status` | string? | optional — `PENDING` (default), `VALID` or `INVALID`, persisted as given. Validation is not required to create a clinic. See [Trade license validation](#trade-license-validation). |
 | `drug_license_number` | string? | optional — only if selling/stocking medicines, max 100 |
 | `clinical_establishment_reg_number` | string? | optional — Clinical Establishment Registration, max 100 |
 
@@ -1255,7 +1255,7 @@ Auth: `clinic_owner`.
 
 License document URLs are `null` until uploaded via `POST /clinics/:clinicId/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
 
-**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`), `422 TRADE_LICENSE_NOT_VALIDATED` (`trade_license_validation_status` isn't `"VALID"`).
+**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`).
 
 ### GET /clinics/:clinicId
 
@@ -1304,6 +1304,8 @@ Auth: `clinic_owner`, must own the clinic.
 
 `trade_license_validation_status` follows the same "only right after validating this exact number" rule as `POST /clinics` — see [Trade license validation](#trade-license-validation). If `trade_license_number` is being changed to a new value and this request does **not** also include `trade_license_validation_status`, the server resets `trade_license_validated`/`trade_license_validation_status`/`trade_license_validated_at` to `false`/`PENDING`/`null` regardless of their previous value — a number change always invalidates a prior validation unless the client re-validated the new number in the same request.
 
+**Verified number is locked.** Once a clinic's `trade_license_validation_status` is `VALID`, its `trade_license_number` can't be changed: a PATCH with a different number fails with `422 TRADE_LICENSE_LOCKED` (`field: "trade_license_number"`), and any `trade_license_validation_status` sent is ignored, so the status can't be downgraded to unlock it. Re-sending the same number is a no-op.
+
 **Response `200`**
 
 ```json
@@ -1335,11 +1337,11 @@ Auth: `clinic_owner`, must own the clinic.
 
 ### Trade license validation
 
-A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. Entering a number is never itself validation: **`POST /clinics` hard-requires `trade_license_validation_status: "VALID"` and rejects the request with `422 TRADE_LICENSE_NOT_VALIDATED` otherwise** — a clinic simply cannot exist without a validated trade license. `PATCH /clinics/:clinicId` is less strict (existing clinics can still be edited while `PENDING`/`INVALID`), but changing an already-validated number resets it to `PENDING` server-side, see below.
+A clinic's `trade_license_number` is checked against the West Bengal PRDEODB acknowledgement service via `POST /clinics/validate-trade-license`, called from both the create-clinic and edit-clinic forms. That endpoint is a stateless proxy — it never touches a clinic row — so the client is responsible for persisting the outcome by passing `trade_license_validation_status` back in the following `POST /clinics` (create) or `PATCH /clinics/:clinicId` (edit) call. The API itself doesn't enforce validation: neither `POST /clinics` nor `POST /clinics/:clinicId/branches` requires it, and an omitted `trade_license_validation_status` is stored as `PENDING`. The clinic portal app calls this endpoint from the Quick Setup clinic step (`/portal/clinic-setup/clinic`): the owner must press **Validate** first. A `VALID` result locks the field, and **Save & Continue** refuses to submit until the number is verified. The app only continues on `VALID`, then sends `trade_license_validation_status: "VALID"` in the `PATCH /clinics/:clinicId` body; on `INVALID` or `PENDING` it shows the message under the field and doesn't save. `POST /clinics` and `PATCH /clinics/:clinicId` store `trade_license_validation_status` as sent, without re-checking it. PRDEODB drops connections from the API server's (non-Indian datacenter) IP, so the mobile app checks the number against PRDEODB directly from the device and sends the result; this endpoint remains available but the mobile app no longer calls it. On `PATCH /clinics/:clinicId`, changing an already-validated number resets it to `PENDING` server-side, see below.
 
 ### POST /clinics/validate-trade-license
 
-Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Proxies a lookup against the West Bengal PRDEODB acknowledgement service server-side, so the browser never talks to (or holds a session/cookie for) that third-party site directly. Stateless — doesn't touch any clinic row, since it's also used from the create-clinic form before a clinic exists yet; the caller persists the result by echoing `status` back in the next `POST /clinics` or `PATCH /clinics/:clinicId` call (see the note on those endpoints above).
+Auth: `clinic_owner` or `sys_admin`. Rate limited 200/min. Proxies a lookup against the West Bengal PRDEODB acknowledgement service server-side, so the browser never talks to (or holds a session/cookie for) that third-party site directly. Stateless — doesn't touch any clinic row, since it's also used from the create-clinic form before a clinic exists yet; the caller persists the result by echoing `status` back in the next `POST /clinics` or `PATCH /clinics/:clinicId` call (see the note on those endpoints above).
 
 **Body:** `{ "trade_license_number": "SSNOCJRKJ30370340N" }`
 
@@ -1367,7 +1369,18 @@ Rejected by PRDEODB:
 }
 ```
 
-PRDEODB unreachable or returned something unparseable:
+PRDEODB rate-limited this server. PRDEODB allows roughly 20 lookups in a short burst per IP, and every clinic shares the API server's IP. It then answers "Too Many Requests" for about a minute. The server stops calling PRDEODB for 60 s and answers this immediately:
+```json
+{
+  "success": false,
+  "validated": false,
+  "status": "PENDING",
+  "retry_after_seconds": 60,
+  "message": "The trade license verification service is busy. Please try again in 60 seconds."
+}
+```
+
+PRDEODB unreachable, slower than 20 s (the server gives up at that point), or returned something unparseable:
 ```json
 {
   "success": false,
@@ -1377,7 +1390,92 @@ PRDEODB unreachable or returned something unparseable:
 }
 ```
 
-**Errors:** `400 VALIDATION_ERROR` (missing `trade_license_number`), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `429 RATE_LIMITED`.
+Results are cached in server memory per number (case-insensitive): `VALID` for 12 h, `INVALID` for 10 min, so a repeat check (e.g. Validate then Save) answers instantly. `PENDING` is never cached. Simultaneous checks of the same number share one PRDEODB request.
+
+The client should branch on `status`, not the HTTP code: `VALID` → mark verified; `INVALID` → show a "not found" error on the field; `PENDING` → "couldn't verify right now, try again" (not the same as invalid).
+
+**Errors** (standard envelope `{ "error": { "code", "message", "field", "request_id" } }`):
+
+| HTTP | `code` | `message` | `field` |
+|---|---|---|---|
+| 400 | `VALIDATION_ERROR` | `Invalid input: expected string, received undefined` (missing) | `trade_license_number` |
+| 400 | `VALIDATION_ERROR` | `Too small: expected string to have >=1 characters` (empty / whitespace) | `trade_license_number` |
+| 400 | `VALIDATION_ERROR` | `Too big: expected string to have <=100 characters` | `trade_license_number` |
+| 401 | `UNAUTHORIZED` | `Authentication required.` | `null` |
+| 403 | `INSUFFICIENT_ROLE` | `You do not have permission to perform this action.` | `null` |
+| 429 | `RATE_LIMITED` | `Too many requests. Retry after N seconds.` | `null` |
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Authentication required.",
+    "field": null,
+    "request_id": "req_1c82ca8a"
+  }
+}
+```
+
+### PUT /clinics/:clinicId/trade-license-validation
+
+Auth: `clinic_owner`, must own the clinic. Rate limited 60/min. Saves the result of a trade license check as soon as it finishes, without waiting for the rest of the clinic form. The mobile app calls this right after its on-device PRDEODB lookup returns `VALID` or `INVALID` (it doesn't call it for `PENDING`). The number is written together with the status, so the stored status always belongs to the number it was checked for. The status is stored as sent, the same trust model as `trade_license_validation_status` on `PATCH /clinics/:clinicId`.
+
+Once the clinic's status is `VALID`, the number and status are locked: reporting the same number as `VALID` again returns the stored record unchanged, and anything else fails with `422 TRADE_LICENSE_LOCKED` (`field: "trade_license_number"`).
+
+**Body:**
+```json
+{ "trade_license_number": "SSNOCJRKJ30370340N", "status": "VALID" }
+```
+`status` is one of `VALID`, `INVALID`, `PENDING`. `VALID` sets `trade_license_validated = true` and `trade_license_validated_at` to now; anything else clears both.
+
+**Response `200`**
+```json
+{
+  "clinic_id": "c_123",
+  "trade_license_number": "SSNOCJRKJ30370340N",
+  "trade_license_validated": true,
+  "trade_license_validation_status": "VALID",
+  "trade_license_validated_at": "2026-10-05T09:50:00.000Z"
+}
+```
+
+**Errors:** `400 VALIDATION_ERROR` (missing/empty `trade_license_number`, or `status` not one of the three values), `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`, `429 RATE_LIMITED`.
+
+### POST /clinics/:clinicId/photo/signature
+
+Auth: `clinic_owner`, must own the clinic. Returns a Cloudinary upload grant for the clinic profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "clinics/<uuid>"`.
+
+Upload the file directly to `upload_url` as `multipart/form-data` with fields `file`, `public_id`, `timestamp`, `api_key`, `allowed_formats`, `signature`, then call `POST /clinics/:clinicId/photo` to persist.
+
+**Errors:** `404 CLINIC_NOT_FOUND`.
+
+### POST /clinics/:clinicId/photo
+
+Auth: `clinic_owner`, must own the clinic. Persists the clinic profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "clinics/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /clinics/:clinicId/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/clinics/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+The clinic's `photo_url` is also returned by `GET /clinics`, `GET /clinics/mine`, `GET /clinics/:clinicId` and `PATCH /clinics/:clinicId`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`, `404 CLINIC_NOT_FOUND`.
 
 ### DELETE /clinics/:clinicId
 
@@ -1519,10 +1617,12 @@ Auth: `clinic_owner`, must own the clinic.
 | `trade_license_number` | string | **required**, issued by the local municipality, 1–100 |
 | `drug_license_number` | string? | optional — only if selling/stocking medicines, max 100 |
 | `clinical_establishment_reg_number` | string? | optional — Clinical Establishment Registration, max 100 |
+| `trade_license_validation_status` | string? | optional — `PENDING` (default), `VALID` or `INVALID`, persisted as given. Validation is not required. |
+| `is_main` | boolean? | marks this as the clinic's main (primary) branch. Defaults to `true` for the clinic's first branch, `false` otherwise. A clinic has at most one live main branch. |
 
-**Response `201`** — full Branch object (same shape as the list item above), with license URLs `null` until uploaded via `POST /branches/:id/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
+**Response `201`** — full Branch object (same shape as the list item above, including `is_main`), with license URLs `null` until uploaded via `POST /branches/:id/licenses/:type` (see [Clinic & branch licenses](#clinic--branch-licenses)).
 
-**Errors:** `404 CLINIC_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `400 VALIDATION_ERROR` (invalid timezone or missing `trade_license_number`).
+**Errors:** `404 CLINIC_NOT_FOUND`, `403 NOT_CLINIC_OWNER`, `400 VALIDATION_ERROR` (invalid timezone or missing `trade_license_number`), `409 MAIN_BRANCH_EXISTS` (`is_main: true` but the clinic already has a main branch).
 
 ### GET /branches/:id
 
@@ -1834,6 +1934,11 @@ Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member i
 
 ```json
 {
+  "user": {
+    "id": "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f",
+    "name": "Priya Sharma",
+    "photo_url": null
+  },
   "clinic": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Sunrise Health Clinic"
@@ -1850,6 +1955,72 @@ Auth: `branch_staff`. Returns the clinic and branch the logged-in staff member i
 ```
 
 **Errors:** `404 BRANCH_NOT_FOUND` if the account has no active branch assignment.
+
+### POST /clinic-owners/me/photo/signature
+
+Auth: `clinic_owner`. Returns a Cloudinary upload grant for the owner's own profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "clinic-owners/<uuid>"`.
+
+Upload the file directly to `upload_url` as `multipart/form-data` with fields `file`, `public_id`, `timestamp`, `api_key`, `allowed_formats`, `signature`, then call `POST /clinic-owners/me/photo` to persist.
+
+### POST /clinic-owners/me/photo
+
+Auth: `clinic_owner`. Persists the owner's profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "clinic-owners/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /clinic-owners/me/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/clinic-owners/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+Also returned as `photo_url` by `GET /clinic-owners/me` and `GET /auth/me`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`.
+
+### POST /branch-staff/me/photo/signature
+
+Auth: `branch_staff`. Returns a Cloudinary upload grant for the staff member's own profile image.
+
+**Response `200`** — same shape as `POST /branches/:id/photo/signature`, with `public_id: "branch-staff/<uuid>"`.
+
+### POST /branch-staff/me/photo
+
+Auth: `branch_staff`. Persists the staff member's profile image after a direct Cloudinary upload. The previous image (if any) is deleted from Cloudinary.
+
+**Request body**
+
+```json
+{ "public_id": "branch-staff/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `public_id` | string | required, must be one issued by `POST /branch-staff/me/photo/signature` |
+
+**Response `200`**
+
+```json
+{
+  "photo_url": "https://res.cloudinary.com/p274ocjz/image/upload/branch-staff/3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d"
+}
+```
+
+Also returned as `user.photo_url` by `GET /branch-staff/me` and as `photo_url` by `GET /auth/me`.
+
+**Errors:** `400 INVALID_PUBLIC_ID`.
 
 ### GET /branches/:id/staff
 
@@ -1944,6 +2115,29 @@ Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Full replace —
 **Response `200`** — same shape as GET, with the updated `permissions`.
 
 **Errors:** `404 STAFF_NOT_FOUND`, `400 VALIDATION_ERROR` (unknown key).
+
+### PATCH /branches/:id/staff/:staffId
+
+Auth: `clinic_owner` **or** `branch_staff` with `staff:manage`. Edits a staff member — any subset of the fields below in one request (at least one). Omitted fields are unchanged.
+
+**Request body**
+
+```json
+{
+  "name": "Riya Sen",
+  "phone": "9876543210",
+  "email": "riya@clinic.com",
+  "permissions": ["appointments:confirm", "appointments:payment", "patients:view"]
+}
+```
+
+- `phone` — the staff member's OTP login number (normalized to `+91XXXXXXXXXX`). Changing it marks the number unverified until they sign in with it.
+- `email` — `""` or `null` clears it.
+- `permissions` — full replace, same rules as `PATCH …/permissions`.
+
+**Response `200`** — the staff member, same shape as `GET /branches/:id/staff` items.
+
+**Errors:** `404 STAFF_NOT_FOUND`, `409 PHONE_ALREADY_REGISTERED` (number used by another account), `400 VALIDATION_ERROR` (bad phone/email, unknown key or permission, empty body).
 
 ### DELETE /branches/:id/staff/:staffId
 
@@ -2697,7 +2891,9 @@ Two modes, selected by which query params are present:
 }
 ```
 
-`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one. `capacity` is that slot template range's `max_patients` and `remaining` is `capacity` minus current non-cancelled bookings at that exact time (added additively; `available` is simply `remaining > 0` and stays correct for clients that ignore the new fields).
+`status` ∈ `available | leave | clinic_closed | unavailable | fully_booked | booking_closed | booking_time_ended | outside_schedule | past`. `leave` is `{ start_date, end_date, reason }` when `status = "leave"`, else `null`. `closure` is `{ start_date, end_date, reason }` when `status = "clinic_closed"` **and** it was a specific branch closure (not just a recurring closed weekday), else `null` — see [Branch schedule](#branch-schedule). `slots`/`status`/`is_bookable`/`leave`/`closure` were added additively — `date`+`slots` is unchanged from the prior contract, so existing clients keep working untouched. Each slot carries the `slot_type` of the template it came from (see [Slot types](#slot-types)); for a `sequential` assignment the client should not let the patient pick a slot directly — `POST /appointments` auto-assigns the next open one. `capacity` is that slot template range's `max_patients` and `remaining` is `capacity` minus current non-cancelled bookings at that exact time (added additively; `available` is simply `remaining > 0` and stays correct for clients that ignore the new fields).
+
+**Booking end-time rule.** Each slot also carries `end` (`time` + slot duration, `HH:MM`, branch timezone) and `ended`. On the branch's current date, a slot is `ended: true` (and `available: false`, `remaining: 0`) from the exact minute its `end` is reached — a slot that has started but not yet ended stays bookable. When every slot of today has ended, `status` is `booking_time_ended`. `POST /appointments` enforces the same rule for every role and returns `422 BOOKING_TIME_ENDED` ("Booking is no longer available because the booking time has ended.").
 
 **Range mode** — `?from=2026-08-16&to=2026-08-31&branch_id=<id>` (all three required; range capped at 62 days). Returns calendar availability, leave info, and slots for every date in one response instead of one call per day.
 
@@ -2800,6 +2996,202 @@ Public. Drives a full-month calendar picker (e.g. the booking flow's date step) 
 Every day of the month is included (not just the availability period) so the client can render the full grid and grey out non-bookable days without extra logic — dates with open slots should be visually highlighted; all others (outside the doctor's schedule, the clinic closed, fully booked, on leave, or in the past) rendered disabled.
 
 **Errors:** `400 VALIDATION_ERROR` (missing/invalid `branch_id`, `year`, or `month`), `404 DOCTOR_NOT_FOUND`.
+
+### GET /clinics/:clinicId/doctor-availability
+
+Auth: `clinic_owner` (own clinic), `branch_staff` (own branch only), `sys_admin`. Rate limit `200/min`.
+
+Flat list of every doctor scheduled to work at each active (non-deleted) branch of the clinic on one day — by default **tomorrow**, computed in each branch's own timezone — with their open slots and how many appointments they already have at that branch.
+
+**Query:** `?date=YYYY-MM-DD` (optional; defaults to tomorrow per branch).
+
+```bash
+curl --url 'https://healthcare.jido.co.in/api/v1/clinics/<CLINIC_ID>/doctor-availability' \
+  -H 'accept: application/json' \
+  -H 'authorization: Bearer <ACCESS_TOKEN>'
+```
+
+**Response `200`**
+
+```json
+{
+  "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+  "doctors": [
+    {
+      "doctor_id": "91edecbc-713d-43d2-891e-5affc81986cf",
+      "name": "Dr. Ananya Rao",
+      "degree": "MBBS, MD",
+      "photo_url": null,
+      "specialization": "Cardiology",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "branch_address": "12, SV Road, Andheri West, Mumbai 400058",
+      "branch_city": "Mumbai",
+      "date": "2026-09-28",
+      "day": "Monday",
+      "fee_amount": 500,
+      "currency": "INR",
+      "slot_type": "fixed",
+      "status": "available",
+      "is_bookable": true,
+      "total_slots": 10,
+      "available_slots_count": 6,
+      "available_slots": [
+        { "time": "10:00", "capacity": 1, "remaining": 1 },
+        { "time": "10:20", "capacity": 1, "remaining": 1 }
+      ],
+      "appointments_count": 4,
+      "appointments_by_status": { "confirmed": 3, "pending": 1 }
+    }
+  ]
+}
+```
+
+- One entry per **(doctor, branch)** — a doctor working at two branches that day appears twice, each with that branch's slots and counts. Sorted by doctor name, then branch name.
+- Only doctors actually scheduled that day are listed (`status` is `available` or `fully_booked`); doctors on leave or without a slot template for that weekday are omitted. A branch closed that day (non-operating weekday or active closure) contributes no entries.
+- Slots use the same rules as [`GET /doctors/:id/availability`](#get-doctorsidavailability); `remaining` accounts for the doctor's bookings across all branches (a slot is unique per doctor). The 30-minute patient booking cutoff is **not** applied (staff view).
+- `appointments_count` / `appointments_by_status` count non-cancelled appointments for that doctor **at that branch** on that date.
+
+**Errors:** `400 VALIDATION_ERROR` (bad `date`), `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`.
+
+### GET /clinics/:clinicId/doctor-appointments
+
+Auth: `clinic_owner` (own clinic), `branch_staff` (own branch only), `sys_admin`, `doctor` (own `doctor_id` only). Rate limit `200/min`.
+
+A doctor's non-cancelled appointments at this clinic for one day — by default **tomorrow** per branch timezone — each with full patient details, medical profile, lab reports and the prescriptions the patient uploaded from the app.
+
+**Query:**
+
+| Param | Required | Notes |
+|---|---|---|
+| `doctor_id` | yes | Doctor to list appointments for. |
+| `date` | no | `YYYY-MM-DD`; defaults to tomorrow per branch. |
+| `branch_id` | no | Limit to one branch of the clinic. |
+
+```bash
+curl --url 'https://healthcare.jido.co.in/api/v1/clinics/<CLINIC_ID>/doctor-appointments?doctor_id=91edecbc-713d-43d2-891e-5affc81986cf' \
+  -H 'accept: application/json' \
+  -H 'authorization: Bearer <ACCESS_TOKEN>'
+```
+
+**Response `200`**
+
+```json
+{
+  "clinic_id": "9d2f4c8a-1b3e-4a5d-8f6c-7a8b9c0d1e2f",
+  "doctor": {
+    "doctor_id": "91edecbc-713d-43d2-891e-5affc81986cf",
+    "name": "Dr. Ananya Rao",
+    "degree": "MBBS, MD",
+    "photo_url": null
+  },
+  "dates": ["2026-09-28"],
+  "total": 1,
+  "appointments": [
+    {
+      "appointment_id": "c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+      "branch_id": "5e8f6c7a-9d2f-4c8a-1b3e-4a5d8f6c7a8b",
+      "branch_name": "Sunrise — Andheri",
+      "date": "2026-09-28",
+      "time": "10:00",
+      "duration_minutes": 20,
+      "status": "confirmed",
+      "fee_amount": 500,
+      "currency": "INR",
+      "payment_method": "cash",
+      "booking_source": "PATIENT_APP",
+      "booked_by": { "id": "…", "name": "Rahul Sharma", "phone": "+919876543210" },
+      "patient": {
+        "patient_id": "…",
+        "relationship": "self",
+        "name": "Rahul Sharma",
+        "phone": "+919876543210",
+        "email": "rahul@example.com",
+        "age": 34,
+        "date_of_birth": "1992-03-14",
+        "gender": "male",
+        "height_cm": 175,
+        "weight_kg": 72,
+        "bmi": 23.5,
+        "address": "Flat 4B, Link Road",
+        "city": "Mumbai",
+        "photo_url": null,
+        "medical_profile": {
+          "blood_group": "O+",
+          "allergies": "Penicillin",
+          "medical_conditions": "Hypertension",
+          "current_medications": "Amlodipine 5mg",
+          "previous_surgeries": null,
+          "medical_notes": null,
+          "emergency_contact": { "name": "Priya Sharma", "relationship": "Spouse", "phone": "+919812345678" }
+        }
+      },
+      "lab_reports": {
+        "clinic_issued": [
+          {
+            "id": "…",
+            "document_type": "LAB_REPORT",
+            "title": "CBC Report",
+            "file_name": "cbc.pdf",
+            "mime_type": "application/pdf",
+            "file_url": "https://…/api/v1/patient-documents/<id>/preview?expires=…&sig=…",
+            "branch_name": "Sunrise — Andheri",
+            "uploaded_at": "2026-09-20T10:00:00Z"
+          }
+        ],
+        "patient_uploaded": [
+          {
+            "id": "…",
+            "source": "medical_documents",
+            "file_name": "old-lipid-profile.pdf",
+            "file_url": "https://…",
+            "mime_type": "application/pdf",
+            "size_bytes": 120394,
+            "uploaded_at": "2026-09-10T08:00:00Z",
+            "lab_test_appointment_id": null
+          }
+        ],
+        "lab_tests": [
+          {
+            "id": "…",
+            "appointment_number": "LT-000123",
+            "test_name": "Complete Blood Count",
+            "test_code": "CBC",
+            "test_category": "Hematology",
+            "branch_name": "Sunrise — Andheri",
+            "date": "2026-09-19",
+            "time": "09:00",
+            "service_mode": "CLINIC",
+            "status": "COMPLETED",
+            "payment_status": "PAID",
+            "completed_at": "2026-09-19T09:40:00Z"
+          }
+        ]
+      },
+      "uploaded_prescriptions": [
+        {
+          "id": "…",
+          "source": "medical_documents",
+          "file_name": "rx-aug.jpg",
+          "file_url": "https://…",
+          "mime_type": "image/jpeg",
+          "size_bytes": 88211,
+          "uploaded_at": "2026-08-30T12:00:00Z",
+          "lab_test_appointment_id": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `patient` is who the appointment is **for** — for a family-member booking this is the family member (`relationship` ≠ `self`), while `booked_by` is the account that booked it.
+- `lab_reports.clinic_issued` — `LAB_REPORT` [patient documents](#patient-documents-lab-reports--prescriptions) issued by **this clinic**; `file_url` is a signed preview link valid for 15 minutes.
+- `lab_reports.patient_uploaded` — [medical documents](#medical-documents) the patient uploaded with category `lab_report`.
+- `lab_reports.lab_tests` — lab tests the patient booked at **this clinic**, newest first.
+- `uploaded_prescriptions` — medical documents with category `prescription`, plus prescriptions attached to a lab-test booking (`source: "lab_test_booking"`, with `lab_test_appointment_id`). A file attached to a lab booking from an existing upload is listed once.
+
+**Errors:** `400 VALIDATION_ERROR` (missing `doctor_id`, bad `date`), `403 NOT_CLINIC_OWNER`, `404 CLINIC_NOT_FOUND`, `404 DOCTOR_NOT_FOUND` (doctor not actively assigned to a branch of this clinic visible to the caller, or a doctor querying another doctor's id).
 
 ---
 
@@ -2909,7 +3301,7 @@ patient (registered via the app, or added by reception at another branch) can be
 `POST /lab-test-appointments` — instead of creating a duplicate record. Not branch-scoped, since
 patients aren't owned by a clinic/branch.
 
-**Query:** `?phone=<exact>` or `?q=<partial name/phone/email>` — provide at least one.
+**Query:** `?phone=<number>` (any format — `98765 43210`, `+91…`, `0…` — normalized to `+91XXXXXXXXXX`) or `?q=<partial name / phone / email, or Patient ID>` — provide at least one. A `q` of 4+ hex characters also matches the start of the patient id, i.e. the readable **Patient ID** (`patient_code`).
 
 **Response `200`**
 
@@ -2921,7 +3313,16 @@ patients aren't owned by a clinic/branch.
       "name": "Aisha Verma",
       "email": "aisha@example.com",
       "phone": "+919876543210",
-      "is_registered": true
+      "patient_code": "3F9D6B5E",
+      "gender": "female",
+      "date_of_birth": null,
+      "age": 34,
+      "photo_url": null,
+      "is_registered": true,
+      "family": [
+        { "id": "8c1d…", "name": "Riya Verma", "phone": null, "relationship": "child" }
+      ],
+      "profiles": []
     }
   ]
 }
@@ -2931,7 +3332,74 @@ patients aren't owned by a clinic/branch.
 never signed up in the app themselves — see `patient_details.patient_id` under
 [Appointments](#appointments) for how this resolves at booking time.
 
+`patient_code` is the readable Patient ID (first 8 characters of `id`, uppercased). `age` comes from
+`date_of_birth`, else the most recent age recorded at booking. `family` = people this account books for
+(its [family links](#booking-profile-vs-patient)); `profiles` = Patient App accounts that book for this person
+(e.g. a child with no phone of their own). Reception can pick a family member directly and book with
+`patient_details.patient_id` + `patient_details.profile_user_id`.
+
 **Errors:** `400 VALIDATION_ERROR` (neither `phone` nor `q` given).
+
+### Booking profile vs patient
+
+Every doctor and lab booking keeps two people apart:
+
+- **Booking profile** (`profile_user_id`, `profile_name`) — the Patient App account the booking belongs to:
+  the logged-in user for an app booking; for a reception booking, the account picked by staff, else the
+  account registered to the entered phone, else a new account created from `profile_name` + phone.
+- **Patient** (`patient_id`, `name`) — the person receiving the service.
+
+They are the same person for a `self` booking. A relative booked under a profile is linked to it in
+`patient_family_links` (relationship = what the patient is to the profile). A relative with no phone of their
+own gets a patient record with `phone = null` — phones are unique across accounts, so relatives sharing the
+profile's number are never merged into the profile's own record. Re-booking the same relative (same name under
+the same profile, or by `patient_id`) reuses that record; nothing is duplicated.
+
+Responses for appointments and lab test appointments carry both:
+`patient_details.{patient_id, patient_code, profile_user_id, profile_name, relationship, …}` and a top-level
+`profile: { id, name }`, alongside `booking_source` (`PATIENT_APP` | `RECEPTION`) and `booked_by` (the account
+that made the API call — staff for reception).
+
+Patient-facing notifications and emails about a booking go to the **booking profile** (never to the staff
+member who booked it); a relative with no phone is reached through the account that books for them.
+`GET /appointments`, `GET /patient/lab-test-appointments` and `GET /patients/me/appointment-summary` return the
+bookings a patient account made, is the patient of, or that belong to its profile — so a visit reception booked
+for them shows up in the app.
+
+### GET /patients/me/family
+
+Auth: `patient`. The people this account books for. Members are added automatically when the account books for
+someone else, or when reception books a relative under this account.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "8c1d…",
+      "patient_code": "8C1D2E3F",
+      "name": "Riya Dhar",
+      "phone": null,
+      "gender": "female",
+      "date_of_birth": null,
+      "age": 8,
+      "photo_url": null,
+      "relationship": "child",
+      "linked_at": "2026-10-08T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+Book a listed member again with `patient_details.patient_id` = their `id`.
+
+### DELETE /patients/me/family/:patientId
+
+Auth: `patient`. Removes the person from this account's family list (the link only — their record and past
+bookings are untouched).
+
+**Response `204`** · **Errors:** `404 PATIENT_NOT_FOUND`.
 
 ### GET /patients/me
 
@@ -3203,6 +3671,9 @@ Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `patients:view`. *
 **Query:** `?search=&type=new|old&limit=<1..100>&offset=`
 
 - `search` matches patient name, email, or phone (contains).
+- `profiles` = Patient App accounts that book for this patient (`patient_family_links`), with what the patient is to that
+  account. A relative added without their own phone has `phone: null` and is reached through a profile's `phone`.
+  `[]` when nobody else books for them.
 - `type=new` returns patients with exactly one non-cancelled appointment at this branch; `type=old` returns patients with more than one (returning patients). Omit for both.
 
 **Response `200`**
@@ -3220,7 +3691,11 @@ Auth: `clinic_owner` (owns branch) **or** `branch_staff` with `patients:view`. *
       "visit_count": 3,
       "is_new_patient": false,
       "first_visit_date": "2026-05-01",
-      "last_visit_date": "2026-08-09"
+      "last_visit_date": "2026-08-09",
+      "is_registered": true,
+      "profiles": [
+        { "id": "8b1e…", "name": "Rahul Verma", "phone": "+919812345678", "relationship": "spouse" }
+      ]
     }
   ],
   "has_more": false
@@ -3283,14 +3758,16 @@ deduped by identity across both sources. `visit_count` is the combined total acr
     "name": "Aisha Verma",
     "phone": "+919876543210",
     "age": null,
-    "gender": null
+    "gender": null,
+    "photo_url": null
   },
   "relationship": "self",
   "booking_source": "PATIENT_APP",
   "patient": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
     "name": "Aisha Verma",
-    "mobile": "+919876543210"
+    "mobile": "+919876543210",
+    "photo_url": null
   },
   "booked_by": {
     "id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
@@ -3330,6 +3807,11 @@ List and detail responses enrich this base object:
 
 - `GET /appointments` items additionally include `doctor_name`, `doctor_photo_url`, `branch_name`, and `branch_phone`.
 - `GET /appointments/:id` additionally includes `doctor_name`, `doctor_photo_url`, `branch_name`, and `branch_phone`.
+- Both also add `photo_url` to `patient_details` and `patient`: the **visiting** patient's profile
+  photo (from the `users` row `patient_details.patient_id` points at — never the booking account's,
+  so a family-member booking doesn't show the account holder's face). `null` when that patient has
+  no photo or `patient_details.patient_id` is `null`. Other endpoints returning an appointment
+  (e.g. `POST /appointments`, status changes) omit the field.
 
 ### POST /appointments
 
@@ -3368,31 +3850,35 @@ Behavior depends on the doctor's assignment `slot_type` for `branch_id` (see [Sl
 | `date` | string | required, `YYYY-MM-DD`, not in the past |
 | `time` | string? | required and must be an aligned slot when the doctor's `slot_type` is `fixed`; omit for `sequential` doctors |
 | `patient_details` | object? | optional — omit to book for yourself (defaults to `relationship: "self"` using your own account name/phone). **Required** when `branch_staff`/`clinic_owner` book on behalf of a walk-in patient |
-| `patient_details.patient_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — selects an existing patient found via `GET /patients/lookup`, instead of creating a new one. Ignored for the `patient` role (see below) |
+| `patient_details.patient_id` | string (UUID)? | An existing patient to book. Reception: any patient found via `GET /patients/lookup`. Patient role: their own id or a member of `GET /patients/me/family` (`404 PATIENT_NOT_FOUND` otherwise) |
+| `patient_details.profile_user_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — the Patient App account (booking profile) the booking belongs to; see [Booking profile vs patient](#booking-profile-vs-patient) |
+| `patient_details.profile_name` | string? | **`branch_staff`/`clinic_owner` only**, new walk-in — the profile's name. When it differs from `name`, `relationship` must not be `self` (`422 RELATIONSHIP_REQUIRED`) |
 | `patient_details.relationship` | string? | `self` \| `spouse` \| `child` \| `parent` \| `sibling` \| `friend` \| `other`, defaults to `self` |
 | `patient_details.name` | string | required if `patient_details` is present, 1–255 chars |
-| `patient_details.phone` | string | required if `patient_details` is present, normalized to `+91XXXXXXXXXX` — the confirmation SMS/WhatsApp is sent here, never to the booking account's own phone |
+| `patient_details.phone` | string? | contact phone, normalized to `+91XXXXXXXXXX` — the confirmation SMS/WhatsApp is sent here. Reception: the profile's phone, **required for a new walk-in** (optional when `patient_id`/`profile_user_id` is given). Patient role: optional, defaults to the account's phone |
 | `patient_details.age` | number? | 0–150 |
 | `patient_details.gender` | string? | one of `male`, `female`, `other`, `prefer_not_to_say` |
 
-How `patient_details.patient_id` (the actual patient, exposed on the response as `patient.id`) is
-resolved server-side:
+How the booking profile and the patient are resolved server-side (see
+[Booking profile vs patient](#booking-profile-vs-patient)):
 
-- **`patient` role, `relationship: "self"`** (or `patient_details` omitted) — always the caller's own account. Any `patient_id` sent in the body is ignored.
-- **`patient` role, any other relationship** — the server looks up an existing patient by `patient_details.phone`; if none exists, it registers a new one (same "walk-in" account shape as reception creates — no password, `is_registered: false`). The client-supplied `patient_id` is ignored here too — a patient account can never point a booking at an arbitrary existing `patient_id` it doesn't control.
-- **`branch_staff`/`clinic_owner`** — if `patient_details.patient_id` is given, it's used directly (`404 PATIENT_NOT_FOUND` if it doesn't reference an existing patient). Otherwise, same phone lookup-or-create as above.
+- **`patient` role, `relationship: "self"`** (or `patient_details` omitted) — profile and patient are the caller's own account; a different typed name is ignored.
+- **`patient` role, `patient_id` given** — must be the caller or a linked family member (`404 PATIENT_NOT_FOUND` otherwise).
+- **`patient` role, someone else** — profile = the caller; the patient is the linked member with the same name, else the patient account of a *different* phone whose name matches, else a new record (no phone of its own when the caller's phone was given). The member is linked to the caller.
+- **`branch_staff`/`clinic_owner`, `patient_id` given** — that patient; nothing is created or changed. Profile = `profile_user_id`, else the patient's own account when they have a phone, else the account that books for them.
+- **`branch_staff`/`clinic_owner`, new walk-in** — profile = `profile_user_id`, else the patient account of `phone`, else a new account (`profile_name` + `phone`). Same name as the profile → `self`; otherwise the patient is found/created as the profile's family member with `relationship` (`422 RELATIONSHIP_REQUIRED` if `profile_name` was given, differs, and `relationship` is `self`).
 
 **Response `201`** — Appointment object (`status: "pending"`, `scheduled_time` is the server-assigned time for `sequential` bookings).
 
 The server never trusts the client's disabled-calendar rendering — every check below re-runs against `branch_operating_days`/`branch_closures`/`doctor_slot_templates`/`doctor_slot_exceptions` regardless of what the calendar/availability endpoints previously returned, so a direct API call can't book a leave day, a branch-closed day, or a day outside the doctor's schedule. The branch-level gate is checked first (it's the outermost constraint) and produces `409 CLINIC_CLOSED`; a doctor leave produces `409 DOCTOR_ON_LEAVE`. Neither is folded into the generic `422 OUTSIDE_DOCTOR_AVAILABILITY`, so the client can show the specific reason instead of a generic unavailable message.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR` (`time` missing for a `fixed` doctor), `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED` (`fixed` only), `409 DOCTOR_FULLY_BOOKED` (`sequential` only — no slots left that date), `409 CLINIC_CLOSED` (branch not open, or an active branch closure, on the selected date), `409 DOCTOR_ON_LEAVE` (date falls within an active leave), `422 OUTSIDE_DOCTOR_AVAILABILITY`, `422 DATE_IN_PAST`, `422 BOOKING_TIME_ENDED` (today, and the requested slot's end time — or, for `sequential`, every slot's end — has already passed in the branch's timezone), `404 BRANCH_NOT_FOUND`, `404 DOCTOR_NOT_FOUND`.
 
 ### GET /appointments
 
 Auth: any authenticated role. Scope auto-applied: `patient` → own; `branch_staff` → own branch; `doctor` → own; `clinic_owner` → own clinics. Paginated.
 
-**Query:** `?clinic_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, on top of whatever scope already applies.
+**Query:** `?clinic_id=&doctor_id=&branch_id=&status=&date_from=&date_to=&limit=&cursor=` (`status` must be one of the enum values). `clinic_id` narrows to one clinic, `doctor_id` to one doctor and `branch_id` to one branch, on top of whatever scope already applies. `paid_from` / `paid_to` (ISO timestamps; from inclusive, to exclusive) keep only appointments with a payment collected in that window, whatever the visit date. Each item includes `paid_at`, when the latest payment was collected, or `null` if none was recorded.
 
 **Response `200`**
 
@@ -3521,6 +4007,28 @@ Clinics can additionally pre-register named categories with a display **badge co
 ### Service modes
 
 `service_mode` ∈ `CLINIC | HOME` — `HOME` triggers home collection and requires address fields on the appointment.
+
+### Lab test precautions
+
+Preparation instructions (fasting, sample collection, medication information, …) come from one shared master list, `lab_test_precautions`, seeded by `db-migrate.mjs`. A clinic selects the ones that apply to each of its lab tests (`lab_test_precaution_mappings`). When a booking is created, the test's selected **active** precautions are copied onto it (`lab_test_appointment_precautions`), so the patient, clinic and staff all see the same instructions, and later changes to the test never rewrite an existing booking.
+
+`LabTestPrecaution`:
+
+```json
+{ "id": "5b1c…", "name": "Fasting Required", "description": "Follow the prescribed fasting duration before the test, if instructed.", "category": "Fasting" }
+```
+
+On a booking's copy, `id` is the master precaution it came from (`null` if that entry was since deleted).
+
+| Where | Field |
+|---|---|
+| `GET /lab-test-precautions` (`clinic_owner`, `branch_staff`, `sys_admin`; 120/min) | `{ items: LabTestPrecaution[] }`: the active master list, in display order |
+| `POST /clinic/lab-tests`, `PUT /clinic/lab-tests/:id` | request `precaution_ids?: string[]` (UUIDs, max 100). On `PUT`, it replaces the selection; `[]` clears it; omit it to leave the selection unchanged. Duplicates are ignored. Each id must exist (`422 PRECAUTION_NOT_FOUND`), and an inactive precaution can't be newly selected (`422 PRECAUTION_INACTIVE`) |
+| `LabTest` (`GET /clinic/lab-tests`, create/update responses) | `precautions: LabTestPrecaution[]`: the test's selected active precautions |
+| Branch lab test (`GET /branches/:id/lab-tests`, `GET /branches/:id/lab-tests/:branchTestId`, `GET /clinic/branches/:branchId/lab-tests`) | `precautions: LabTestPrecaution[]`: shown to the patient/reception before booking |
+| `LabTestAppointment` (create response; patient and clinic list and detail; approve, reject, complete and cancel responses) | `test_precautions: LabTestPrecaution[]`: the booking's own copy. Separate from `precautions` (string[]), the free-text extras the clinic may add on approve |
+
+`default_precautions` on `LabTest` is the older free-text list. It is still accepted and returned, but the apps no longer show it.
 
 ### Serialized objects
 
@@ -3686,14 +4194,14 @@ Auth: any authenticated user. Returns available time slots for a given date. Rat
 {
   "date": "2026-08-25",
   "slots": [
-    { "start": "09:00", "end": "09:30", "available": true },
-    { "start": "09:30", "end": "10:00", "available": false },
-    { "start": "10:00", "end": "10:30", "available": true }
+    { "start": "09:00", "end": "09:30", "ended": false, "available": true },
+    { "start": "09:30", "end": "10:00", "ended": false, "available": false },
+    { "start": "10:00", "end": "10:30", "ended": false, "available": true }
   ]
 }
 ```
 
-Slots are generated from `lab_test_schedules` for the branch, filtered against branch closures and existing non-cancelled appointments. Each slot's `duration_minutes` comes from the branch lab test config.
+Slots are generated from `lab_test_schedules` for the branch, filtered against branch closures and existing non-cancelled appointments. Each slot's `duration_minutes` comes from the branch lab test config. On the branch's current date (branch timezone), a slot whose `end` has been reached is returned with `ended: true` and `available: false` — it can no longer be booked.
 
 **Errors:** `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `400 VALIDATION_ERROR` (missing/invalid `date`), `422 DATE_IN_PAST`.
 
@@ -3701,7 +4209,7 @@ Slots are generated from `lab_test_schedules` for the branch, filtered against b
 
 #### POST /lab-test-appointments
 
-Auth: `patient`, `branch_staff`, `clinic_owner`. Rate limited 20/min. Header `Idempotency-Key` **required**. Creates a new lab test appointment. Double-booking is prevented at the database level via a unique constraint on `(branch_id, branch_lab_test_id, appointment_date, slot_key)` excluding cancelled slots. Staff/owner may book on behalf of a walk-in patient, but only at a branch they're scoped to; a patient account can book at any branch.
+Auth: `patient`, `branch_staff`, `clinic_owner`. Rate limited 20/min. Header `Idempotency-Key` **required**. Creates a new lab test appointment for a **date only** — the booker does not pick a time. The booking is created `PENDING` with `start_time`/`end_time` = `null`; the clinic assigns the test time when it confirms it ([approve](#post-cliniclab-test-appointmentsidapprove)). `start_time` from older clients is accepted and ignored. Staff/owner may book on behalf of a walk-in patient, but only at a branch they're scoped to; a patient account can book at any branch.
 
 `patient_details` identifies who the test is actually **for** and is **required on every booking** — including a patient booking for themself (there is no "book for myself" default/omission).
 
@@ -3715,7 +4223,6 @@ On success, an in-app `lab_test_booked` notification is created for every branch
   "branch_lab_test_id": "b2c3d4e5-...",
   "service_mode": "CLINIC",
   "appointment_date": "2026-08-25",
-  "start_time": "09:00",
   "prescription_id": null,
   "referring_doctor_name": "Dr. Sharma",
   "patient_notes": "Fasting since last night",
@@ -3735,9 +4242,8 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `branch_id` | string (UUID) | required |
 | `branch_lab_test_id` | string (UUID) | required |
 | `service_mode` | string | `CLINIC` or `HOME`, defaults to `CLINIC` |
-| `appointment_date` | string | required, `YYYY-MM-DD`, not in the past |
-| `start_time` | string | required, `HH:MM`, must be an available slot |
-| `prescription_id` | string (UUID)? | required when `prescription_required` is `true` on the branch lab test |
+| `appointment_date` | string | required, `YYYY-MM-DD` — not in the past (branch timezone); the branch must have lab hours that day (active `lab_test_schedules` for the weekday, no closure); for today, at least one slot of the day must not have ended yet; and at least one time must still be free of confirmed bookings |
+| `prescription_id` | string (UUID)? | **patient role:** required when `prescription_required` is `true` on the branch lab test (`400 PRESCRIPTION_REQUIRED`). **Reception (`branch_staff`/`clinic_owner`):** optional — attach the prescription right after booking via `POST /patient-documents/upload` with `lab_test_appointment_id`; the booking can't be confirmed until it has one |
 | `referring_doctor_name` | string? | optional, 1–255 chars — free-text name of the doctor who referred the test, independent of any doctor account in the system |
 | `patient_notes` | string? | max 1000 |
 | `payment_method` | string | `PAY_AT_CLINIC` or `ONLINE`, defaults to `PAY_AT_CLINIC` |
@@ -3747,10 +4253,12 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 | `home_contact_phone` | string? | max 32 |
 | `home_notes` | string? | max 500 |
 | `patient_details` | object | **required** — the patient the test is for |
-| `patient_details.patient_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — selects an existing patient found via `GET /patients/lookup`, instead of creating a new one. Ignored for the `patient` role |
+| `patient_details.patient_id` | string (UUID)? | An existing patient to book. Reception: any patient found via `GET /patients/lookup`. Patient role: their own id or a member of `GET /patients/me/family` (`404 PATIENT_NOT_FOUND` otherwise) |
+| `patient_details.profile_user_id` | string (UUID)? | **`branch_staff`/`clinic_owner` only** — the Patient App account (booking profile) the booking belongs to; see [Booking profile vs patient](#booking-profile-vs-patient) |
+| `patient_details.profile_name` | string? | **`branch_staff`/`clinic_owner` only**, new walk-in — the profile's name. When it differs from `name`, `relationship` must not be `self` (`422 RELATIONSHIP_REQUIRED`) |
 | `patient_details.relationship` | string? | `self` \| `spouse` \| `child` \| `parent` \| `sibling` \| `friend` \| `other`, defaults to `self` |
 | `patient_details.name` | string | required, 1–255 chars |
-| `patient_details.phone` | string | required, normalized to `+91XXXXXXXXXX` |
+| `patient_details.phone` | string? | contact phone, normalized to `+91XXXXXXXXXX`; same rules as `POST /appointments` (required for a new reception walk-in) |
 | `patient_details.age` | number | required, 0–150 |
 | `patient_details.gender` | string | required, one of `male`, `female`, `other`, `prefer_not_to_say` |
 
@@ -3758,9 +4266,9 @@ On success, an in-app `lab_test_booked` notification is created for every branch
 way as on `POST /appointments` — see [the note there](#post-appointments) for the full
 self/family-member/reception resolution rules.
 
-**Response `201`** — LabTestAppointment object (`status: "PENDING"`), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
+**Response `201`** — LabTestAppointment object (`status: "PENDING"`, `start_time`/`end_time` `null` until the clinic confirms), including the nested `patient_details` that was submitted. A `lab_test_payment` record is also created with the appointment's price.
 
-**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` doesn't reference an existing patient), `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `409 SLOT_ALREADY_BOOKED`, `422 DATE_IN_PAST`, `422 OUTSIDE_SCHEDULE`, `422 PRESCRIPTION_REQUIRED`.
+**Errors:** `400 IDEMPOTENCY_KEY_REQUIRED`, `400 VALIDATION_ERROR`, `404 BRANCH_NOT_FOUND`, `404 BRANCH_TEST_NOT_FOUND`, `404 PATIENT_NOT_FOUND` (`patient_details.patient_id` isn't an existing patient — or, for the patient role, not linked to the caller), `404 PROFILE_NOT_FOUND` (`profile_user_id` isn't a patient account), `422 RELATIONSHIP_REQUIRED`, `409 PHONE_ALREADY_REGISTERED` (`patient_details.phone` already belongs to a non-patient account), `400 PRESCRIPTION_REQUIRED`, and for the date (field `appointment_date`): `422 DATE_IN_PAST`, `422 OUTSIDE_SCHEDULE` (no lab hours / branch closed that day), `422 BOOKING_TIME_ENDED` (today, and the lab's last slot of the day has already ended in the branch's timezone), `409 DATE_FULLY_BOOKED` (every time that day is assigned to confirmed bookings), `409 DUPLICATE_BOOKING` (the same patient already has an active booking for this test on this date).
 
 #### GET /patient/lab-test-appointments
 
@@ -3879,6 +4387,7 @@ Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Creates a new lab test
 | `category` | string | required, 1–100, free text — see [categories](#lab-test-categories) |
 | `instructions` | string? | max 2000 |
 | `default_precautions` | string[]? | array of strings, max 50 items, each max 255 chars |
+| `precaution_ids` | string[]? | master precaution UUIDs — see [lab test precautions](#lab-test-precautions) |
 
 **Response `201`** — LabTest object.
 
@@ -3987,6 +4496,69 @@ Auth: `clinic_owner` (owns branch) or `branch_staff` (own branch, requires `lab_
 
 **Errors:** `404 BRANCH_NOT_FOUND`.
 
+#### Predefined lab test library & the lab schedule rule
+
+A global, read-only **library** of predefined tests (`lab_test_library`, seeded by `db-migrate.mjs` from `api/src/db/lab-test-library.json`) that clinics add from instead of typing tests by hand. `internal_code` (`JLT-####`) is generated by Jido; it is **not** LOINC or any recognised coding standard. A library entry is never bookable by itself: adding it copies it into the clinic's own `lab_tests` (with `library_test_id` set) and prices it per branch in `branch_lab_tests`, so later library edits never rewrite a clinic's tests, bookings or reports.
+
+**Lab schedule rule.** A test can only be added or assigned to a branch with a *valid lab schedule*: the branch exists and has at least one active day in `lab_test_schedules`. Enforced server-side by `POST /clinic/branches/:branchId/lab-tests/bulk`, `POST /clinic/branches/:branchId/lab-tests`, `PUT /clinic/branches/:branchId/lab-tests/:id` when re-activating (`status: "active"`), and `POST /clinic/lab-tests` (the clinic needs at least one branch with a valid schedule). Failure: `422 LAB_SCHEDULE_REQUIRED` ("Please create a lab schedule before adding lab tests."), `field: "branch_id"`.
+
+`lab_tests` codes are unique per clinic (case-insensitive): create/update return `409 LAB_TEST_CODE_EXISTS` on a clash.
+
+##### GET /lab-test-library
+
+Auth: `clinic_owner`, `branch_staff`, `sys_admin`. 240/min. Active library tests, best matches first.
+
+| Query | Notes |
+|---|---|
+| `search` | matches name, `internal_code`, abbreviations (e.g. `CBC`, `TSH`) or category |
+| `category` | exact category name (see below) |
+| `branch_id` | optional; adds `added_to_branch` and `clinic_test_id` to each item. Caller must be the branch's owner, its staff, or an admin (`403 BRANCH_ACCESS_DENIED`) |
+| `limit`, `cursor` | pagination |
+
+**Response `200`** — `{ items: LibraryLabTest[], next_cursor, total }` where `LibraryLabTest` = `{ id, internal_code, name, category, abbreviations, description, reference_url, status, added_to_branch?, clinic_test_id? }`. `description` / `reference_url` are `null` unless clinically verified text has been added.
+
+##### GET /lab-test-library/categories
+
+Auth: as above. `{ items: [{ name, count }] }` for active tests. Categories: Hematology, Clinical Pathology, Biochemistry, Microbiology, Serology, Immunology, Hormone and Endocrine Tests, Coagulation, Molecular Diagnostics, Histopathology and Cytology, Other Laboratory Tests.
+
+##### POST /lab-test-library
+
+Auth: `sys_admin` only — approving an entry for every clinic (clinics' custom tests otherwise stay in their own `lab_tests`). Body `{ name, category, abbreviations?, description?, reference_url? }`; the next `JLT-####` code is assigned. `201` LibraryLabTest; `409 LIBRARY_TEST_EXISTS` for a duplicate name.
+
+##### GET /clinic/lab-tests/schedule-options
+
+Auth: `clinic_owner` (`clinic_id` required, must own it), `branch_staff` (own branch only), `sys_admin` (`clinic_id` required). The lab schedules tests can be added under, one per live branch:
+
+```json
+{ "items": [{ "branch_id": "…", "branch_name": "Main", "is_main": true, "timezone": "Asia/Kolkata",
+  "valid": true, "days": [{ "weekday": 1, "start_time": "09:00", "end_time": "13:00" }], "test_count": 4 }] }
+```
+
+`valid: false` (no active day) means tests can't be added to that branch yet.
+
+##### POST /clinic/branches/:branchId/lab-tests/bulk
+
+Auth: `clinic_owner` or `sys_admin` with access to the branch (`lab_tests:manage`). 60/min. Adds 1–50 predefined and/or custom tests to the branch in **one transaction** — all or nothing.
+
+```json
+{
+  "items": [
+    { "library_test_id": "uuid", "price": 350, "currency": "INR", "duration_minutes": 30,
+      "clinic_available": true, "home_collection_available": false, "prescription_required": false },
+    { "custom": { "name": "Serum Zinc", "code": "ZN-01", "category": "Biochemistry", "description": null },
+      "price": 900 }
+  ]
+}
+```
+
+Per item: exactly one of `library_test_id` / `custom`; `price` > 0 required; the other options default as in `POST /clinic/branches/:branchId/lab-tests`. Custom `code`: letters, digits and `- . _ /`, must not start with `JLT-`.
+
+Behaviour: the schedule is re-checked inside the transaction. A library test the clinic already has (added for another branch, or an existing clinic test with the same name and no library link) is **reused**, not duplicated (an inactive one is re-activated).
+
+**Response `201`** — `{ items: BranchLabTest[] }`.
+
+**Errors** (`field` names the item, e.g. `items.2` or `items.2.code`): `422 LAB_SCHEDULE_REQUIRED`, `404 BRANCH_NOT_FOUND`, `404 LIBRARY_TEST_NOT_FOUND`, `409 DUPLICATE_TEST` (already on this branch), `400 DUPLICATE_IN_REQUEST`, `409 LAB_TEST_CODE_EXISTS`, `409 LAB_TEST_NAME_EXISTS`, `400 RESERVED_TEST_CODE`, `400 VALIDATION_ERROR`, `403`.
+
 #### POST /clinic/branches/:branchId/lab-tests
 
 Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Configures an existing lab test for a specific branch with pricing and availability settings.
@@ -4017,7 +4589,7 @@ Auth: `clinic_owner` or `sys_admin`. Rate limited 10/min. Configures an existing
 
 **Response `201`** — BranchLabTest object.
 
-**Errors:** `404 BRANCH_NOT_FOUND`, `404 TEST_NOT_FOUND`, `400 VALIDATION_ERROR`, `409 TEST_ALREADY_CONFIGURED_FOR_BRANCH`.
+**Errors:** `422 LAB_SCHEDULE_REQUIRED` (branch has no active lab schedule), `404 BRANCH_NOT_FOUND`, `404 LAB_TEST_NOT_FOUND`, `400 CLINIC_MISMATCH`, `400 VALIDATION_ERROR`, `409 DUPLICATE_TEST`.
 
 #### PUT /clinic/branches/:branchId/lab-tests/:id
 
@@ -4139,14 +4711,15 @@ Auth: `clinic_owner` (own clinics) or `branch_staff` (own branch, with `lab_appo
 
 #### POST /clinic/lab-test-appointments/:id/approve
 
-Auth: `clinic_owner` or `branch_staff` with `lab_appointments:approve` or `sys_admin`. Rate limited 200/min. Approves a `PENDING` appointment. Merges the branch test's `default_precautions` with any custom `precautions` passed in the request body.
+Auth: `clinic_owner` or `branch_staff` with `lab_appointments:approve` or `sys_admin`. Rate limited 200/min. "Confirm Booking": approves a `PENDING` appointment and **assigns its test time** (bookings are made for a date only). The time must fit inside the branch's lab hours for the booking date (whole test, start + `duration_minutes`), must not have already ended (branch timezone), and must not overlap another booking of the same test that already has a time — use `GET /branches/:id/lab-tests/:branchTestId/availability?date=` for the free times (`available && !ended`). Merges the branch test's `default_precautions` with any custom `precautions` passed in the request body.
 
-On success, an in-app `lab_test_approved` notification is sent to the patient and an email is sent with the appointment details.
+On success, the patient gets a `lab_test_approved` notification (in-app/push), an email and a WhatsApp message with the confirmed date **and assigned time**, the test, clinic and branch.
 
 **Request body**
 
 ```json
 {
+  "start_time": "10:30",
   "precautions": ["Fasting required for 8 hours"],
   "clinic_notes": "Patient has a pacemaker — use limb leads only"
 }
@@ -4154,12 +4727,13 @@ On success, an in-app `lab_test_approved` notification is sent to the patient an
 
 | Field | Type | Notes |
 |---|---|---|
+| `start_time` | string? | `HH:MM` (24h) — the assigned test time. **Required when the booking has no time yet** (every booking made date-only); optional for an older booking that already has one (sending it changes it) |
 | `precautions` | string[]? | optional, merged with the test's `default_precautions` |
 | `clinic_notes` | string? | max 2000 |
 
-**Response `200`** — LabTestAppointment object (`status: "APPROVED"`, `precautions` and `clinic_notes` set).
+**Response `200`** — LabTestAppointment object (`status: "APPROVED"`, `start_time`/`end_time`, `precautions` and `clinic_notes` set).
 
-**Errors:** `404 APPOINTMENT_NOT_FOUND`, `409 INVALID_STATUS_TRANSITION`.
+**Errors:** `404 APPOINTMENT_NOT_FOUND`, `409 INVALID_STATUS_TRANSITION` (already confirmed/rejected/cancelled), `400 PRESCRIPTION_REQUIRED`, `400 VALIDATION_ERROR` (field `start_time`: no time assigned, or not `HH:MM`), `422 OUTSIDE_SCHEDULE` (time outside the lab hours / branch closed that date), `422 TIME_IN_PAST` (the time has already passed), `409 SLOT_NOT_AVAILABLE` (another booking of this test already has that time).
 
 #### POST /clinic/lab-test-appointments/:id/reject
 
@@ -4322,7 +4896,7 @@ Auth: `doctor` (assigned). Upserts the prescription and sets `finalized_at`.
 ```json
 {
   "text": "Tab. Aspirin 75mg OD x 30 days\nTab. Atorvastatin 10mg HS x 30 days",
-  "scan_url": "https://api.medibook.app/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
+  "scan_url": "https://healthcare.jido.co.in/api/v1/files/prescription-scan-1f2e...jpg?expires=...&sig=..."
 }
 ```
 
@@ -4449,7 +5023,7 @@ Auth: same as list. Rate limited 200/min.
   "id": "8f7e6d5c-4b3a-2908-1f0e-9d8c7b6a5f4e",
   "patient_id": "3f9d6b5e-8f6b-4e3a-9c1d-2b7a5e4f8c1d",
   "category": "lab_report",
-  "file_url": "https://api.medibook.app/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
+  "file_url": "https://healthcare.jido.co.in/api/v1/files/medical-doc-8f7e...pdf?expires=...&sig=...",
   "file_name": "blood-report.pdf",
   "mime_type": "application/pdf",
   "size_bytes": 245760,
@@ -4578,6 +5152,9 @@ document_type    required — LAB_REPORT | PRESCRIPTION | OTHER
 title            required, 1–255 chars
 description      optional, max 2000 chars
 branch_id        clinic_owner only — which of their branches issued this; ignored for branch_staff
+lab_test_appointment_id  optional, PRESCRIPTION only — attach it to this lab booking (same clinic/branch, and
+                 patient_id must be the patient the test is for). The first one attached becomes the
+                 booking's `prescription_id`, which confirming a prescription-required test needs
 file             required — PDF, JPG, JPEG, or PNG, ≤ 20MB
 ```
 
@@ -4587,7 +5164,7 @@ On success, `status` is set to `GENERATED`, an `APP` delivery row is recorded as
 
 **Response `201`** — PatientDocument object.
 
-**Errors:** `400 VALIDATION_ERROR`, `400 FILE_REQUIRED` / `FILE_EMPTY`, `404 PATIENT_NOT_FOUND`, `404 BRANCH_NOT_FOUND`, `403 PERMISSION_DENIED`, `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
+**Errors:** `400 VALIDATION_ERROR` (incl. `lab_test_appointment_id` with a non-PRESCRIPTION type), `400 FILE_REQUIRED` / `FILE_EMPTY`, `404 PATIENT_NOT_FOUND`, `404 BRANCH_NOT_FOUND`, `404 APPOINTMENT_NOT_FOUND` (`lab_test_appointment_id` not in this branch, or for another patient), `403 PERMISSION_DENIED`, `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`.
 
 ### GET /patient-documents/patient/:patientId
 
@@ -4656,6 +5233,59 @@ Called by the clinic app right after it opens the print-ready view / triggers th
 **Response `201`** — Delivery object (`delivery_method: "PRINT"`).
 
 **Errors:** `404 PATIENT_DOCUMENT_NOT_FOUND`, `403 PERMISSION_DENIED`.
+
+### GET /clinic/prescriptions
+
+Auth: `clinic_owner` (own clinics) or `branch_staff` (own branch). Every prescription the clinic can see, newest upload first, merged from three places:
+
+| `source` | What it is |
+| --- | --- |
+| `clinic_upload` | `PRESCRIPTION` [patient documents](#patient-documents-lab-reports--prescriptions) uploaded by staff/owner, including ones attached to a lab booking |
+| `lab_booking` | A prescription the patient attached to a lab-test booking from the patient app |
+| `patient_upload` | A `prescription` [medical document](#medical-documents) the patient uploaded themselves, for patients with a non-cancelled doctor appointment or a lab booking in scope. A file already listed as a `lab_booking` isn't repeated |
+
+Branch staff see `clinic_upload` and `patient_upload` only with `patient_documents:view`, and `lab_booking` only with `lab_appointments:view`. With neither: `403 PERMISSION_DENIED`.
+
+**Query:** `?source=` (optional; one source or a comma-separated list, e.g. `lab_booking,patient_upload`), `?q=` (patient name, file name, title or lab booking number), `?clinic_id=`, `?branch_id=` (owner only; staff are pinned to their branch), `?limit=` (default 20, max 100), `?cursor=`.
+
+**Response `200`**
+
+```json
+{
+  "items": [
+    {
+      "id": "65c71540-…",
+      "source": "lab_booking",
+      "title": null,
+      "description": null,
+      "file_name": "prescription.png",
+      "mime_type": "image/png",
+      "file_size": 261257,
+      "file_url": "https://healthcare.jido.co.in/api/v1/files/medical-doc-….png?expires=…&sig=…",
+      "uploaded_at": "2026-10-09T11:14:27.832Z",
+      "uploaded_by_name": null,
+      "patient": { "id": "0b7a…", "name": "Basanta Hazra", "photo_url": null },
+      "branch": { "id": "5e13…", "name": "Medinova Diagnostic Center" },
+      "lab_appointment": {
+        "id": "138f…",
+        "appointment_number": "LAB20261009BIGFH7",
+        "appointment_date": "2026-10-14",
+        "status": "APPROVED",
+        "test_name": "CRP"
+      }
+    }
+  ],
+  "counts": { "clinic_upload": 1, "lab_booking": 1, "patient_upload": 0, "total": 2 },
+  "allowed_sources": ["clinic_upload", "lab_booking", "patient_upload"],
+  "next_cursor": null
+}
+```
+
+- `file_url` is a freshly signed link, valid for 15 minutes. For `clinic_upload` it is the patient-document preview link, and `id` works with the other `/patient-documents/:id` endpoints (download, print, email).
+- `branch` is `null` for `patient_upload`, and `lab_appointment` is `null` when the prescription isn't attached to a lab booking.
+- `counts` covers every source the caller may see, with `q`/`branch_id` applied but not `source`, so filter tabs can show their totals.
+
+**Errors:** `400 VALIDATION_ERROR` (field `source`), `403 PERMISSION_DENIED`.
 
 ---
 
@@ -4827,10 +5457,10 @@ Auth: any authenticated role.
 **Request body**
 
 ```json
-{ "token": "f7c3b9...(FCM registration token)", "platform": "android" }
+{ "token": "f7c3b9...(FCM registration token)", "platform": "android", "language": "bn" }
 ```
 
-`platform` ∈ `android | ios`. If the token is already registered to a different user (e.g. a shared device that logged into a new account), it's reassigned to the caller.
+`platform` ∈ `android | ios`. `language` ∈ `en | bn` (optional) is the app's display language. Pushes the server composes itself, such as "new clinic near you", are sent in it. Re-register whenever the user switches language. When it is omitted, the stored value is kept. If the token is already registered to a different user (e.g. a shared device that logged into a new account), it's reassigned to the caller.
 
 **Response `201`** — `{ "registered": true }`
 
@@ -5526,7 +6156,164 @@ The sweep: cancels any doctor appointment still `pending`/`confirmed`, or lab te
 
 **Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
 
+### POST /super-admin/system/send-appointment-reminders
+
+Rate limited `30/min`. Sends patients their upcoming-appointment reminders. **Not** run in-process — trigger it once a day (ideally in the morning, branch time) from an external scheduler.
+
+Auth: **either** header `x-cron-secret` exactly matching the server's `CRON_SECRET` env var (for an external scheduler, no bearer token needed), **or** a Super Admin bearer token. If `CRON_SECRET` isn't configured, only the Super Admin path works.
+
+**Response `200`** — `{ "message": "Appointment reminder sweep complete.", "result": { "doctorReminders": 4, "labTestReminders": 2 } }`
+
+The sweep: for every `confirmed`/`paid` doctor appointment and `APPROVED` lab test appointment that is 1–3 days away (branch timezone), the patient gets an `appointment_reminder` / `lab_test_reminder` notification — in-app, FCM push and email — once per day, so a booking made well ahead is reminded on each of the last 3 days and a short-notice booking still gets the day-before one. Bookings made the same day are skipped. Lab reminders include the booking's test precautions plus any the clinic added on confirmation. Each send is recorded in `appointment_reminders` (unique per appointment and day), so repeated runs never double-send. A Super-Admin-triggered sweep is audit-logged (`appointments.reminder_sweep_triggered`); a cron-secret-triggered one is not.
+
+**Errors:** (only when neither auth path is satisfied) `401 UNAUTHORIZED`, `403 INSUFFICIENT_ROLE`, `403 NOT_SUPER_ADMIN`.
+
 ---
+
+### New clinic near you (automatic announcements)
+
+When a new clinic is ready, patients in its area are told about it automatically. Nothing changes in clinic registration or booking: a background sweep runs every 15 minutes, started from `instrumentation.ts`.
+
+**When a clinic is announced.** All of these must hold:
+- It was created within the last 60 days and has never been announced.
+- It is activated: its trial or subscription is not blocked (the same gate every clinic operation uses), and its trade licence is not `INVALID`.
+- It is bookable: at least one live branch has an active doctor assignment or an active lab test.
+
+A clinic that is not activated yet is left alone and picked up on a later sweep once it is. Clinics that already existed when the feature shipped are marked as announced by `db:migrate`, so they never trigger a notification.
+
+**Who is notified.** Active patient accounts that hold a phone number. Phone-less family profiles are reached through that account. A patient is notified when their registered area matches the clinic or any of its live branches by one of:
+
+| Match | Rule |
+|---|---|
+| PIN code | Equal PIN code (spaces ignored) |
+| Village | Equal post office, in the same district when both districts are known |
+| Nearby location | Equal nearby-location landmark |
+| District | Equal district |
+
+Text matching ignores case and extra spaces.
+
+**What they get.**
+- An in-app notification of type `new_clinic_nearby`. Its payload holds `clinic_id`, `clinic_name`, `branch_id`, `address`, `area`, `doctors` (up to 5 `{name, specialization}`), `doctor_count`, `specializations` and `lab_test_count`. The app renders the text in its current language, and tapping it opens the clinic.
+- A push in each device's app language (see `language` on `POST /notifications/device-tokens`; English when unknown), with `data: { "type": "new_clinic_nearby", "clinic_id", "branch_id" }`. Tapping it opens the clinic details page, where the patient can book.
+- An email when the patient has one on file: name, address, doctors and lab tests, in the language of their latest device, or in both languages when that is unknown.
+
+**No duplicates.** `clinic_announcements` holds one row per clinic, claimed before anyone is contacted. `clinic_announcement_recipients` holds one row per clinic and patient, keyed on `(clinic_id, user_id)`. So a patient is never notified twice about the same clinic, even with several server processes.
+
+#### POST /super-admin/system/announce-new-clinics
+
+Runs the sweep immediately. Callable by a Super Admin, or by an external scheduler sending `x-cron-secret` = `CRON_SECRET`. Idempotent. Rate limit `30/min`.
+
+**Response `200`**
+
+```json
+{
+  "message": "Announced 1 new clinic(s).",
+  "announced": [
+    { "clinic_id": "uuid", "recipients": 42, "push_devices": 38, "push_delivered": 37, "emails_sent": 11 }
+  ],
+  "skipped_inactive": []
+}
+```
+
+### Advertisements (Patient App dashboard)
+
+Banners shown in a swipeable carousel on the Patient App dashboard — insurance companies, clinics, pharmacies, diagnostics, wellness and other sponsors. A Super Admin creates and schedules them, and can push any live ad to every patient device. An ad is **live** when `is_active` is true and the current time is inside its optional `starts_at`/`ends_at` window; nothing is mutated when a window opens or closes.
+
+Each ad has a `link_type` saying what tapping it does:
+
+| `link_type` | `link_value` | Patient App behaviour |
+|---|---|---|
+| `none` | `null` | Banner only |
+| `url` | `http(s)://…` URL | Opens in the system browser |
+| `clinic` | clinic id | Opens the clinic details page |
+| `phone` | phone number (digits, optional leading `+`) | Starts a call |
+
+`category` is one of `insurance`, `clinic`, `pharmacy`, `diagnostic`, `wellness`, `other`.
+
+`placement` picks which dashboard advertisement area shows the ad. Each area is its own carousel and is hidden when it has no live ads:
+
+| `placement` | Where on the dashboard |
+|---|---|
+| `top` | Under the greeting, above the quick actions |
+| `middle` | Between the quick actions and categories |
+| `bottom` | After categories |
+
+#### GET /advertisements
+
+Public (no auth). Returns up to 30 live ads in display order (`sort_order` ascending, then newest first). Each item includes its `placement`; pass `?placement=top|middle|bottom` to get one area only. Rate limit `120/min` per IP.
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "title": "Family health cover from ₹499/month",
+      "description": "Cashless at 10,000+ hospitals.",
+      "sponsor_name": "Star Health Insurance",
+      "category": "insurance",
+      "placement": "top",
+      "image_url": "https://res.cloudinary.com/<cloud>/image/upload/advertisements/<uuid>",
+      "cta_label": "Get a quote",
+      "link_type": "url",
+      "link_value": "https://example.com/quote"
+    }
+  ]
+}
+```
+
+#### POST /super-admin/advertisements/image/signature
+
+Super Admin. Returns a signed Cloudinary upload grant (same shape as the other `…/photo/signature` endpoints) for the `advertisements` folder. Upload the file to Cloudinary, then pass the grant's `public_id` as `image_public_id` on create/update. Rate limit `60/min`.
+
+#### POST /super-admin/advertisements
+
+Super Admin. Creates an ad. Rate limit `30/min`. Body:
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | string, 1–120 | required |
+| `image_public_id` | string | required; from the signature endpoint above |
+| `category` | enum | default `other` |
+| `placement` | `top` \| `middle` \| `bottom` | default `top` |
+| `description` | string ≤ 500 \| null | |
+| `sponsor_name` | string ≤ 150 \| null | |
+| `cta_label` | string ≤ 40 \| null | button text; the app falls back to "Learn more" |
+| `link_type` | enum | default `none` |
+| `link_value` | string \| null | required unless `link_type` is `none`; validated per type, and a `clinic` id must exist |
+| `starts_at`, `ends_at` | ISO datetime \| null | optional window; `ends_at` must be after `starts_at` |
+| `is_active` | boolean | default `true` |
+| `sort_order` | integer −1000…1000 | default `0`; lower shows first |
+
+Returns `201 { "message", "advertisement" }`. The Super Admin `advertisement` shape is the public one plus `starts_at`, `ends_at`, `is_active`, `sort_order`, `status` (`live` \| `scheduled` \| `expired` \| `inactive`), `push_sent_at`, `push_sent_count`, `linked_clinic_name`, `created_by`, `created_at`, `updated_at`.
+
+Errors: `AD_LINK_REQUIRED`, `AD_LINK_INVALID`, `CLINIC_NOT_FOUND`, `AD_SCHEDULE_INVALID`, `INVALID_PUBLIC_ID` (all `400`).
+
+#### GET /super-admin/advertisements
+
+Super Admin. Every ad (any status), in display order: `{ "items": [advertisement] }`.
+
+#### GET /super-admin/advertisements/:adId
+
+Super Admin. `{ "advertisement" }`. `404 AD_NOT_FOUND`.
+
+#### PATCH /super-admin/advertisements/:adId
+
+Super Admin. Partial update with any of the create fields. A new `image_public_id` replaces the image and deletes the old one from Cloudinary. Rate limit `60/min`. Returns `{ "message", "advertisement" }`.
+
+#### DELETE /super-admin/advertisements/:adId
+
+Super Admin. Deletes the ad and its Cloudinary image. Rate limit `30/min`. Returns `{ "message" }`.
+
+#### POST /super-admin/advertisements/:adId/notify
+
+Super Admin. Sends an FCM push to **every** registered Patient App device (in batches of 500; unregistered tokens are pruned). Only a live ad can be pushed (`409 AD_NOT_LIVE`). Rate limit `10/min`.
+
+Body (both optional): `{ "title": string ≤ 120, "body": string ≤ 300 }`. They default to the ad's title and description.
+
+The push carries `data: { "type": "advertisement", "ad_id", "link_type", "link_value" }`. Tapping it opens the ad's target directly, or the dashboard when `link_type` is `none`. No in-app inbox notification is created.
+
+Response: `{ "message", "devices", "delivered", "advertisement" }`, with `push_sent_at`/`push_sent_count` updated. Every create, update, delete and push is written to the Super Admin audit log (`advertisement.*`).
+
 
 ## Webhooks
 
@@ -5624,7 +6411,8 @@ Payment-gateway webhook receiver — the automatic counterpart to the client-dri
 | `CLINIC_ALREADY_DEACTIVATED` / `CLINIC_NOT_DEACTIVATED` | 409 | Clinic deactivation state doesn't match the requested action |
 | `PAYMENT_ALREADY_VERIFIED` / `PAYMENT_FAILED` | 409 | Subscription payment already `PAID` / already `FAILED` — cannot be re-verified |
 | `OUTSIDE_DOCTOR_AVAILABILITY` / `DATE_IN_PAST` / `OUTSIDE_SCHEDULE` | 422 | Booking rules violated |
-| `TRADE_LICENSE_NOT_VALIDATED` | 422 | `POST /clinics` without a `trade_license_validation_status: "VALID"` from a prior validate call |
+| `BOOKING_TIME_ENDED` | 422 | Today's slot end time has already passed in the branch's timezone — "Booking is no longer available because the booking time has ended." |
+| `MAIN_BRANCH_EXISTS` | 409 | `POST /clinics/:clinicId/branches` with `is_main: true` when the clinic already has a main branch |
 | `PRESCRIPTION_REQUIRED` | 422 | Lab test requires a prescription but none was provided |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 | `PAYMENT_VERIFICATION_UNAVAILABLE` / `WEBHOOK_NOT_CONFIGURED` | 503 | Server's subscription payment/webhook secret isn't configured |

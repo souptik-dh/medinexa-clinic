@@ -6,7 +6,6 @@ import { decodeCursor } from "@api/lib/http";
 import { fetchPage } from "@api/lib/pagination";
 import { requireRoles } from "@api/lib/auth";
 import { newId } from "@api/lib/ids";
-import { unprocessable } from "@api/lib/errors";
 
 function escapeLike(s: string): string {
   return s.replace(/[\\%_]/g, (ch) => `\\${ch}`);
@@ -85,7 +84,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
 
   const { rows, nextCursor } = await fetchPage({
     db: pool,
-    select: `SELECT c.id, c.name, c.description,
+    select: `SELECT c.id, c.name, c.description, c.photo_url,
                     (SELECT COUNT(*) FROM branches b WHERE b.clinic_id = c.id AND b.deleted_at IS NULL) AS branch_count,
                     EXISTS (
                       SELECT 1 FROM doctor_branch_assignments dba
@@ -110,6 +109,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
       id: r.id,
       name: r.name,
       description: r.description,
+      photo_url: r.photo_url ?? null,
       branch_count: Number(r.branch_count),
       has_doctor: !!r.has_doctor,
       has_lab_tests: !!r.has_lab_tests,
@@ -129,9 +129,9 @@ const createSchema = z.object({
   state: z.string().trim().max(255).optional().nullable(),
   post_office: z.string().trim().max(255).optional().nullable(),
   trade_license_number: z.string().trim().min(1).max(100),
-  // Must be "VALID" — the client echoes back the `status` a prior
-  // POST /clinics/validate-trade-license call returned for this exact number. A clinic
-  // can't be created at all until that number has been validated; see the check below.
+  // Optional — validation is no longer required to create a clinic. Defaults to
+  // PENDING. Stored as sent: the mobile app checks PRDEODB from the device, since the
+  // portal drops connections from this server's (non-Indian datacenter) IP.
   trade_license_validation_status: z.enum(["PENDING", "VALID", "INVALID"]).optional(),
   drug_license_number: z.string().trim().max(100).optional().nullable(),
   clinical_establishment_reg_number: z.string().trim().max(100).optional().nullable(),
@@ -141,18 +141,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   const auth = requireRoles(ctx.auth, ["clinic_owner"]);
   const body = parseBody(createSchema, await readJson(ctx.request));
 
-  // Entering a number is never itself validation (see "Trade license validation" in
-  // API.md) — a clinic may not be created until POST /clinics/validate-trade-license
-  // has actually returned VALID for this number.
-  if (body.trade_license_validation_status !== "VALID") {
-    throw unprocessable(
-      "TRADE_LICENSE_NOT_VALIDATED",
-      "Trade License Number must be validated before creating a clinic.",
-      "trade_license_number",
-    );
-  }
-
-  const validatedAt = new Date();
+  const validationStatus = body.trade_license_validation_status ?? "PENDING";
+  const validated = validationStatus === "VALID";
+  const validatedAt = validated ? new Date() : null;
 
   const id = newId();
   await pool.query(
@@ -174,8 +165,8 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       body.post_office ?? null,
       auth.userId,
       body.trade_license_number,
-      true,
-      "VALID",
+      validated,
+      validationStatus,
       validatedAt,
       body.drug_license_number ?? null,
       body.clinical_establishment_reg_number ?? null,
@@ -187,6 +178,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       id,
       name: body.name,
       description: body.description ?? null,
+      photo_url: null,
       nearby_location: body.nearby_location ?? null,
       city: body.city ?? null,
       district: body.district ?? null,
@@ -196,9 +188,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
       owner_id: auth.userId,
       trade_license_number: body.trade_license_number,
       trade_license_url: null,
-      trade_license_validated: true,
-      trade_license_validation_status: "VALID",
-      trade_license_validated_at: validatedAt.toISOString(),
+      trade_license_validated: validated,
+      trade_license_validation_status: validationStatus,
+      trade_license_validated_at: validatedAt?.toISOString() ?? null,
       drug_license_number: body.drug_license_number ?? null,
       drug_license_url: null,
       clinical_establishment_reg_number: body.clinical_establishment_reg_number ?? null,

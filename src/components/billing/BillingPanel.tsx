@@ -31,7 +31,13 @@ import {
   subscriptionStatusColor,
   subscriptionStatusLabel,
 } from "@/lib/utils";
-import { DetailSkeleton } from "@/components/ui/skeleton/Skeleton";
+import {
+  DetailSkeleton,
+  SelectSkeleton,
+  Skeleton,
+  TableRowsSkeleton,
+} from "@/components/ui/skeleton/Skeleton";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 import { openRazorpayCheckout } from "@/lib/razorpayCheckout";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -52,6 +58,7 @@ export default function BillingPanel() {
   const isOwner = user?.role === "clinic_owner" || user?.role === "sys_admin";
 
   const [clinics, setClinics] = useState<Clinic[]>([]);
+  const [clinicsLoading, setClinicsLoading] = useState(false);
   const [clinicId, setClinicId] = useState("");
   const [detail, setDetail] = useState<SubscriptionDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -61,26 +68,35 @@ export default function BillingPanel() {
   const [payments, setPayments] = useState<SubscriptionPayment[]>([]);
   const [paymentsCursor, setPaymentsCursor] = useState<string | undefined>();
   const [paymentsStatus, setPaymentsStatus] = useState("");
+  // Initial/filter load (skeleton rows) vs. "Load more" (rows kept, a few appended).
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsLoadingMore, setPaymentsLoadingMore] = useState(false);
+  const paymentsReq = useLatestRequest();
 
   // history
   const [history, setHistory] = useState<SubscriptionHistoryEntry[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | undefined>();
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const historyReq = useLatestRequest();
+  const detailReq = useLatestRequest();
 
   // pay modal
   const [payOpen, setPayOpen] = useState(false);
   const [months, setMonths] = useState(1);
   const [method, setMethod] = useState<string>("upi");
-  const [initiating, setInitiating] = useState(false);
+  // Ref-locked so a double click can never create two orders / open two checkouts.
+  const { pending: isInitiating, run: runInitiate } = useAsyncAction();
+  const { pending: isCheckingOut, run: runCheckout } = useAsyncAction();
   const [pendingPayment, setPendingPayment] = useState<SubscriptionPayment | null>(null);
   const [checkoutStage, setCheckoutStage] = useState<"idle" | "opening" | "verifying" | "error">("idle");
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  const [reactivating, setReactivating] = useState(false);
+  const { pending: isReactivating, run: runReactivate } = useAsyncAction();
 
-  useEffect(() => {
-    if (!isOwner) return;
+  const loadClinics = useCallback(() => {
+    setClinicsLoading(true);
+    setError(null);
     clinicsApi
       .list({ limit: 100 })
       .then((res) => {
@@ -89,73 +105,108 @@ export default function BillingPanel() {
       })
       .catch((err) => {
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadClinics"));
-      });
-  }, [isOwner, t]);
+      })
+      .finally(() => setClinicsLoading(false));
+  }, [t]);
 
+  useEffect(() => {
+    if (!isOwner) return;
+    loadClinics();
+  }, [isOwner, loadClinics]);
+
+  // `silent` refreshes after a payment/reactivation without flashing skeleton rows.
   const loadPayments = useCallback(
-    async (cursor?: string, append = false) => {
+    async (cursor?: string, append = false, opts?: { silent?: boolean }) => {
       if (!clinicId) return;
-      setPaymentsLoading(true);
+      const token = paymentsReq.begin();
+      if (append) {
+        setPaymentsLoadingMore(true);
+      } else if (!opts?.silent) {
+        setPaymentsLoading(true);
+        // Old clinic/status results must not look like the new query's results.
+        setPayments([]);
+        setPaymentsCursor(undefined);
+      }
       try {
         const res = await subscriptionsApi.payments(clinicId, {
           status: (paymentsStatus || undefined) as SubscriptionPaymentStatus | undefined,
           limit: cursor ? undefined : 10,
           cursor,
         });
+        if (!paymentsReq.isLatest(token)) return;
         setPayments((prev) => (append ? [...prev, ...res.items] : res.items));
         setPaymentsCursor(res.next_cursor ?? undefined);
       } catch (err) {
-        if (!append) setPayments([]);
+        if (!paymentsReq.isLatest(token)) return;
+        if (!append && !opts?.silent) setPayments([]);
         toast.error(err instanceof ApiError ? err.message : t("billing.failedToLoadPayments"));
       } finally {
-        setPaymentsLoading(false);
+        if (paymentsReq.isLatest(token)) {
+          setPaymentsLoading(false);
+          setPaymentsLoadingMore(false);
+        }
       }
     },
-    [clinicId, paymentsStatus, t]
+    [clinicId, paymentsStatus, t, paymentsReq]
   );
 
-  const loadHistory = useCallback(async (cursor?: string, append = false) => {
+  const loadHistory = useCallback(async (cursor?: string, append = false, opts?: { silent?: boolean }) => {
     if (!clinicId) return;
-    setHistoryLoading(true);
+    const token = historyReq.begin();
+    if (append) {
+      setHistoryLoadingMore(true);
+    } else if (!opts?.silent) {
+      setHistoryLoading(true);
+      setHistory([]);
+      setHistoryCursor(undefined);
+    }
     try {
       const res = await subscriptionsApi.history(clinicId, {
         limit: cursor ? undefined : 10,
         cursor,
       });
+      if (!historyReq.isLatest(token)) return;
       setHistory((prev) => (append ? [...prev, ...res.items] : res.items));
       setHistoryCursor(res.next_cursor ?? undefined);
     } catch (err) {
-      if (!append) setHistory([]);
+      if (!historyReq.isLatest(token)) return;
+      if (!append && !opts?.silent) setHistory([]);
       toast.error(err instanceof ApiError ? err.message : t("billing.failedToLoadHistory"));
     } finally {
-      setHistoryLoading(false);
+      if (historyReq.isLatest(token)) {
+        setHistoryLoading(false);
+        setHistoryLoadingMore(false);
+      }
     }
-  }, [clinicId, t]);
+  }, [clinicId, t, historyReq]);
 
-  useEffect(() => {
+  const loadDetail = useCallback(() => {
     if (!clinicId) return;
-    let cancelled = false;
+    const token = detailReq.begin();
     setLoading(true);
     setError(null);
     subscriptionsApi
       .get(clinicId)
       .then((res) => {
-        if (cancelled) return;
+        if (!detailReq.isLatest(token)) return;
         setDetail(res);
         setPendingPayment(null);
         setCheckoutStage("idle");
         setCheckoutError(null);
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (!detailReq.isLatest(token)) return;
         setDetail(null);
         setError(err instanceof ApiError ? err.message : t("billing.failedToLoadSubscription"));
       })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [clinicId]);
+      .finally(() => {
+        if (detailReq.isLatest(token)) setLoading(false);
+      });
+  }, [clinicId, t, detailReq]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
 
   useEffect(() => {
     loadPayments();
@@ -192,6 +243,7 @@ export default function BillingPanel() {
   const launchCheckout = useCallback(
     async (payment: SubscriptionPayment) => {
       if (PAYMENTS_DISABLED) return;
+      await runCheckout(async () => {
       setCheckoutError(null);
       setCheckoutStage("opening");
       try {
@@ -219,8 +271,8 @@ export default function BillingPanel() {
         // Refresh everything - verification can extend/activate the subscription.
         const fresh = await subscriptionsApi.get(clinicId);
         setDetail(fresh);
-        loadPayments();
-        loadHistory();
+        loadPayments(undefined, false, { silent: true });
+        loadHistory(undefined, false, { silent: true });
       } catch (err) {
         if (err instanceof Error && err.message === "cancelled") {
           setCheckoutStage("idle");
@@ -237,44 +289,43 @@ export default function BillingPanel() {
         setCheckoutError(message);
         toast.error(message);
       }
+      });
     },
-    [clinicId, loadPayments, loadHistory, user]
+    [clinicId, loadPayments, loadHistory, user, runCheckout]
   );
 
   const handleInitiate = async () => {
     if (!clinicId || PAYMENTS_DISABLED) return;
-    setInitiating(true);
-    try {
-      const res = await subscriptionsApi.initiatePayment(clinicId, {
-        months,
-        method: method as never,
-      });
-      setPendingPayment(res.payment);
-      setMonths(1);
-      loadPayments();
-      await launchCheckout(res.payment);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("billing.failedToInitiatePayment"));
-    } finally {
-      setInitiating(false);
-    }
+    await runInitiate(async () => {
+      try {
+        const res = await subscriptionsApi.initiatePayment(clinicId, {
+          months,
+          method: method as never,
+        });
+        setPendingPayment(res.payment);
+        setMonths(1);
+        loadPayments(undefined, false, { silent: true });
+        await launchCheckout(res.payment);
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("billing.failedToInitiatePayment"));
+      }
+    });
   };
 
   const handleReactivate = async () => {
     if (!clinicId || PAYMENTS_DISABLED) return;
-    setReactivating(true);
-    try {
-      const res = await subscriptionsApi.reactivate(clinicId);
-      toast.success(res.message || t("billing.clinicReactivated"));
-      const fresh = await subscriptionsApi.get(clinicId);
-      setDetail(fresh);
-      loadPayments();
-      loadHistory();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("billing.failedToReactivate"));
-    } finally {
-      setReactivating(false);
-    }
+    await runReactivate(async () => {
+      try {
+        const res = await subscriptionsApi.reactivate(clinicId);
+        toast.success(res.message || t("billing.clinicReactivated"));
+        const fresh = await subscriptionsApi.get(clinicId);
+        setDetail(fresh);
+        loadPayments(undefined, false, { silent: true });
+        loadHistory(undefined, false, { silent: true });
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : t("billing.failedToReactivate"));
+      }
+    });
   };
 
   if (!isOwner) {
@@ -299,6 +350,9 @@ export default function BillingPanel() {
           <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
             {t("billing.clinic")}
           </label>
+          {clinicsLoading ? (
+            <SelectSkeleton />
+          ) : (
           <select
             value={clinicId}
             onChange={(e) => setClinicId(e.target.value)}
@@ -311,10 +365,12 @@ export default function BillingPanel() {
               </option>
             ))}
           </select>
+          )}
         </div>
         <div className="flex items-center gap-2 sm:pb-0">
           {canRenew && (
             <button
+              type="button"
               onClick={() => {
                 setPendingPayment(null);
                 setPayOpen(true);
@@ -327,11 +383,12 @@ export default function BillingPanel() {
           )}
           {isInactive && (
             <button
+              type="button"
               onClick={handleReactivate}
-              disabled={reactivating || PAYMENTS_DISABLED}
-              className="inline-flex h-10 items-center rounded-lg bg-success-500 px-4 text-sm font-medium text-white transition-colors hover:bg-success-600 disabled:opacity-60"
+              disabled={isReactivating || PAYMENTS_DISABLED}
+              className="inline-flex h-10 items-center rounded-lg bg-success-500 px-4 text-sm font-medium text-white transition-colors hover:bg-success-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {reactivating ? t("billing.reactivating") : t("billing.reactivate")}
+              {isReactivating ? t("billing.reactivating") : t("billing.reactivate")}
             </button>
           )}
         </div>
@@ -362,6 +419,7 @@ export default function BillingPanel() {
           </div>
           {canRenew && (
             <button
+              type="button"
               onClick={() => {
                 setPendingPayment(null);
                 setPayOpen(true);
@@ -383,6 +441,13 @@ export default function BillingPanel() {
       {!loading && error && (
         <div className="rounded-2xl border border-error-200 bg-error-50 p-6 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          <button
+            type="button"
+            onClick={() => (clinicId ? loadDetail() : loadClinics())}
+            className="ml-3 font-medium underline hover:no-underline"
+          >
+            {t("common.retry")}
+          </button>
         </div>
       )}
       {!loading && !error && subscription && (
@@ -540,7 +605,9 @@ export default function BillingPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {payments.map((p) => (
+                  {paymentsLoading ? (
+                    <TableRowsSkeleton rows={5} cols={6} cellClassName="px-4 py-3" />
+                  ) : payments.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="px-4 py-3 text-sm text-gray-800 dark:text-white/90">
                         {p.invoice_no}
@@ -571,18 +638,22 @@ export default function BillingPanel() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  {paymentsLoadingMore && (
+                    <TableRowsSkeleton rows={2} cols={6} cellClassName="px-4 py-3" />
+                  )}
                 </TableBody>
               </Table>
             </div>
           )}
-          {paymentsCursor && (
+          {paymentsCursor && !paymentsLoading && (
             <div className="mt-3 text-center">
               <button
+                type="button"
                 onClick={() => loadPayments(paymentsCursor, true)}
-                disabled={paymentsLoading}
-                className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
+                disabled={paymentsLoadingMore}
+                className="text-sm font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {paymentsLoading ? t("billing.loadingEllipsis") : t("billing.loadMore")}
+                {paymentsLoadingMore ? t("billing.loadingEllipsis") : t("billing.loadMore")}
               </button>
             </div>
           )}
@@ -598,6 +669,8 @@ export default function BillingPanel() {
           <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
             {t("billing.noActivityYet")}
           </p>
+        ) : historyLoading ? (
+          <HistorySkeleton rows={4} />
         ) : (
           <ol className="mt-4 space-y-3 border-l border-gray-200 pl-4 dark:border-gray-800">
             {history.map((h) => (
@@ -615,21 +688,28 @@ export default function BillingPanel() {
             ))}
           </ol>
         )}
-        {historyCursor && (
+        {historyLoadingMore && <HistorySkeleton rows={2} className="mt-3" />}
+        {historyCursor && !historyLoading && (
           <div className="mt-3 text-center">
             <button
+              type="button"
               onClick={() => loadHistory(historyCursor, true)}
-              disabled={historyLoading}
-              className="text-sm font-medium text-brand-500 hover:underline disabled:opacity-60"
+              disabled={historyLoadingMore}
+              className="text-sm font-medium text-brand-500 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {historyLoading ? t("billing.loadingEllipsis") : t("billing.loadMore")}
+              {historyLoadingMore ? t("billing.loadingEllipsis") : t("billing.loadMore")}
             </button>
           </div>
         )}
       </div>
 
       {/* Pay modal */}
-      <Modal isOpen={payOpen} onClose={() => setPayOpen(false)} className="max-w-lg p-6">
+      <Modal
+        isOpen={payOpen}
+        onClose={() => setPayOpen(false)}
+        closeDisabled={isInitiating || isCheckingOut}
+        className="max-w-lg p-6"
+      >
         <h3 className="mb-1 text-lg font-semibold text-gray-800 dark:text-white/90">
           {pendingPayment ? t("billing.completePayment") : t("billing.initiatePayment")}
         </h3>
@@ -677,11 +757,12 @@ export default function BillingPanel() {
               </select>
             </div>
             <button
+              type="button"
               onClick={handleInitiate}
-              disabled={initiating || PAYMENTS_DISABLED}
-              className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+              disabled={isInitiating || PAYMENTS_DISABLED}
+              className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {initiating ? t("billing.initiating") : t("billing.createOrder")}
+              {isInitiating ? t("billing.initiating") : t("billing.createOrder")}
             </button>
           </div>
         ) : (
@@ -707,15 +788,34 @@ export default function BillingPanel() {
             )}
 
             <button
+              type="button"
               onClick={() => launchCheckout(pendingPayment)}
-              disabled={checkoutStage === "opening" || checkoutStage === "verifying" || PAYMENTS_DISABLED}
-              className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-60"
+              disabled={isCheckingOut || checkoutStage === "opening" || checkoutStage === "verifying" || PAYMENTS_DISABLED}
+              className="h-11 w-full rounded-lg bg-brand-500 text-sm font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {checkoutStage === "error" ? t("billing.retryPayment") : t("billing.reopenPaymentWindow")}
+              {isCheckingOut
+                ? t("common.processingEllipsis")
+                : checkoutStage === "error"
+                  ? t("billing.retryPayment")
+                  : t("billing.reopenPaymentWindow")}
             </button>
           </div>
         )}
       </Modal>
     </div>
+  );
+}
+
+/** Placeholder entries matching the activity timeline (two text lines each). */
+function HistorySkeleton({ rows, className = "mt-4" }: { rows: number; className?: string }) {
+  return (
+    <ol aria-hidden="true" className={`${className} space-y-3 border-l border-gray-200 pl-4 dark:border-gray-800`}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i} className="space-y-1.5">
+          <Skeleton className="h-3.5 w-2/3 max-w-xs" />
+          <Skeleton className="h-2.5 w-1/3 max-w-[10rem]" />
+        </li>
+      ))}
+    </ol>
   );
 }

@@ -1,28 +1,34 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Badge from "@/components/ui/badge/Badge";
 import { Modal } from "@/components/ui/modal";
-import { ListSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
+import { SelectSkeleton, Skeleton } from "@/components/ui/skeleton/Skeleton";
 import BranchSelect, { BranchSelectValue } from "@/components/branches/BranchSelect";
 import DatePicker from "@/components/form/date-picker";
+import BookingPatientPicker, {
+  BookingPatientPickerHandle,
+} from "@/components/appointments/BookingPatientPicker";
+import LabTestPrecautionsList from "@/components/lab-tests/LabTestPrecautionsList";
 import {
   ApiError,
   BranchClosure,
   BranchLabTest,
   BranchOperatingDay,
   LabTestAppointment,
+  LabTestAppointmentServiceMode,
   LabTestAvailabilityResponse,
   LabTestSchedule,
-  PatientRelationship,
   branchLabTestsApi,
   branchScheduleApi,
   labTestAppointmentsApi,
   labTestSchedulesApi,
+  patientDocumentsApi,
 } from "@/lib/api";
 import { addDays, formatCurrency, formatDateISO, today } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 // How far ahead to compute day-level availability from the clinic/lab
 // schedule for greying out non-bookable dates in the calendar.
@@ -53,17 +59,47 @@ function isDateBookable(
   return !closed;
 }
 
-const RELATIONSHIPS: PatientRelationship[] = [
-  "self",
-  "spouse",
-  "child",
-  "parent",
-  "sibling",
-  "friend",
-  "other",
-];
+// Bookability of the picked date, derived from the per-date availability
+// grid. The booker never picks a time (the clinic assigns it when
+// confirming), so slots only tell us whether the date can take a booking.
+type DateStatus = "bookable" | "closed" | "ended" | "full";
 
-const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
+function getDateStatus(availability: LabTestAvailabilityResponse): DateStatus {
+  const { slots } = availability;
+  if (slots.length === 0) return "closed";
+  if (slots.every((s) => s.ended)) return "ended";
+  if (!slots.some((s) => s.available)) return "full";
+  return "bookable";
+}
+
+// Server error codes for POST /lab-test-appointments date problems, mapped
+// to the same wording the booker sees from the date-status hint.
+const BOOKING_ERROR_KEYS: Record<string, string> = {
+  DATE_IN_PAST: "bookLabTestModal.dateInPast",
+  OUTSIDE_SCHEDULE: "bookLabTestModal.dateClosed",
+  BOOKING_TIME_ENDED: "bookLabTestModal.dateEnded",
+  DATE_FULLY_BOOKED: "bookLabTestModal.dateFull",
+  DUPLICATE_BOOKING: "bookLabTestModal.duplicateBooking",
+};
+
+const DATE_STATUS_KEYS: Record<Exclude<DateStatus, "bookable">, string> = {
+  closed: "bookLabTestModal.dateClosed",
+  ended: "bookLabTestModal.dateEnded",
+  full: "bookLabTestModal.dateFull",
+};
+
+// Prescription upload limits - same as the patient-documents upload endpoint.
+const PRESCRIPTION_ACCEPT = ".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png";
+const PRESCRIPTION_EXTENSIONS = ["pdf", "jpg", "jpeg", "png"];
+const PRESCRIPTION_MAX_BYTES = 20 * 1024 * 1024;
+
+// Returns a locale key for an invalid prescription file, or null when it's fine.
+function prescriptionFileErrorKey(file: File): string | null {
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!PRESCRIPTION_EXTENSIONS.includes(ext)) return "bookLabTestModal.prescriptionInvalidType";
+  if (file.size > PRESCRIPTION_MAX_BYTES) return "bookLabTestModal.prescriptionTooLarge";
+  return null;
+}
 
 const inputClass =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -89,13 +125,16 @@ export default function BookLabTestModal({
   const [tests, setTests] = useState<BranchLabTest[]>([]);
   const [testsLoading, setTestsLoading] = useState(false);
   const [testsError, setTestsError] = useState<string | null>(null);
+  // Set only when the list request itself failed (not for "no tests");
+  // Retry bumps the reload key to re-run the branch's lab-test load.
+  const [testsLoadFailed, setTestsLoadFailed] = useState(false);
+  const [testsReloadKey, setTestsReloadKey] = useState(0);
   const [testId, setTestId] = useState("");
 
   const [date, setDate] = useState(today());
   const [availability, setAvailability] = useState<LabTestAvailabilityResponse | null>(null);
   const [availLoading, setAvailLoading] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
-  const [selectedTime, setSelectedTime] = useState("");
   // Clinic-schedule-derived day availability, for greying out non-bookable
   // dates directly in the calendar - branch-wide, so it only depends on the
   // chosen branch, not on which specific lab test is selected.
@@ -104,15 +143,27 @@ export default function BookLabTestModal({
   const [closures, setClosures] = useState<BranchClosure[]>([]);
   const [scheduleLoaded, setScheduleLoaded] = useState(false);
 
-  const [relationship, setRelationship] = useState<PatientRelationship>("self");
-  const [patientName, setPatientName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [age, setAge] = useState("");
-  const [gender, setGender] = useState("");
+  const patientPickerRef = useRef<BookingPatientPickerHandle>(null);
+  const [referringDoctor, setReferringDoctor] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Only the modes the chosen branch test offers can be picked.
+  const [serviceMode, setServiceMode] = useState<LabTestAppointmentServiceMode>("CLINIC");
+  const [homeAddress, setHomeAddress] = useState("");
+  const [homeContactPhone, setHomeContactPhone] = useState("");
+  const [homeNotes, setHomeNotes] = useState("");
+
+  // Uploaded as a PRESCRIPTION patient document linked to the booking right
+  // after it's created (reception has the paper prescription in hand).
+  const prescriptionInputRef = useRef<HTMLInputElement>(null);
+  const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [uploadingPrescription, setUploadingPrescription] = useState(false);
+
   const [formError, setFormError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSubmitting, run: runSubmit } = useAsyncAction();
+  // Rapid date/test changes: only the newest availability response may land.
+  const { begin: beginAvail, isLatest: isLatestAvail } = useLatestRequest();
 
   const test = tests.find((t) => t.id === testId) ?? null;
 
@@ -122,21 +173,43 @@ export default function BookLabTestModal({
     setTestId("");
     setDate(today());
     setAvailability(null);
-    setSelectedTime("");
     setOperatingDays([]);
     setLabSchedules([]);
     setClosures([]);
     setScheduleLoaded(false);
-    setRelationship("self");
-    setPatientName("");
-    setPhone("");
-    setAge("");
-    setGender("");
+    patientPickerRef.current?.reset();
+    setReferringDoctor("");
     setNotes("");
+    setServiceMode("CLINIC");
+    setHomeAddress("");
+    setHomeContactPhone("");
+    setHomeNotes("");
+    setPrescriptionFile(null);
+    setPrescriptionError(null);
+    if (prescriptionInputRef.current) prescriptionInputRef.current.value = "";
     setFormError(null);
     setTestsError(null);
     setAvailError(null);
   }, []);
+
+  // Picking a test snaps the service mode to one that test allows.
+  const selectTest = (id: string) => {
+    setTestId(id);
+    const next = tests.find((x) => x.id === id);
+    setServiceMode(next && !next.clinic_available && next.home_collection_available ? "HOME" : "CLINIC");
+  };
+
+  const clearPrescription = () => {
+    setPrescriptionFile(null);
+    setPrescriptionError(null);
+    if (prescriptionInputRef.current) prescriptionInputRef.current.value = "";
+  };
+
+  const onPrescriptionSelected = (file: File | null) => {
+    setPrescriptionFile(file);
+    const errorKey = file ? prescriptionFileErrorKey(file) : null;
+    setPrescriptionError(errorKey ? t(errorKey) : null);
+  };
 
   useEffect(() => {
     if (isOpen) reset();
@@ -147,12 +220,12 @@ export default function BookLabTestModal({
     setTests([]);
     setTestId("");
     setAvailability(null);
-    setSelectedTime("");
     setAvailError(null);
     if (!branch) return;
     let active = true;
     setTestsLoading(true);
     setTestsError(null);
+    setTestsLoadFailed(false);
     branchLabTestsApi
       .list(branch.id, "active")
       .then((res) => {
@@ -161,7 +234,9 @@ export default function BookLabTestModal({
         if (res.items.length === 0) setTestsError(t("bookLabTestModal.noLabTestsConfigured"));
       })
       .catch((err) => {
-        if (active) setTestsError(getErrorMessage(err, t("labTests.failedToLoad")));
+        if (!active) return;
+        setTestsError(getErrorMessage(err, t("labTests.failedToLoad")));
+        setTestsLoadFailed(true);
       })
       .finally(() => {
         if (active) setTestsLoading(false);
@@ -169,7 +244,7 @@ export default function BookLabTestModal({
     return () => {
       active = false;
     };
-  }, [branch]);
+  }, [branch, testsReloadKey]);
 
   // Clinic schedule for the chosen branch (operating days + closures) and
   // its lab-test weekly schedule - drives the calendar's day highlighting.
@@ -244,27 +319,37 @@ export default function BookLabTestModal({
   );
 
   const loadAvailability = useCallback(async () => {
+    const token = beginAvail();
     if (!branch || !testId || !date) {
       setAvailability(null);
+      setAvailLoading(false);
       return;
     }
     setAvailLoading(true);
     setAvailError(null);
-    setSelectedTime("");
+    setAvailability(null);
     try {
       const res = await branchLabTestsApi.availability(branch.id, testId, date);
+      if (!isLatestAvail(token)) return;
       setAvailability(res);
     } catch (err) {
+      if (!isLatestAvail(token)) return;
       setAvailability(null);
       setAvailError(getErrorMessage(err, t("doctorProfile.failedToLoadAvailability")));
     } finally {
-      setAvailLoading(false);
+      if (isLatestAvail(token)) setAvailLoading(false);
     }
-  }, [branch, testId, date]);
+  }, [branch, testId, date, beginAvail, isLatestAvail]);
 
   useEffect(() => {
     loadAvailability();
   }, [loadAvailability]);
+
+  // null while unknown (loading / failed / nothing picked) - the server
+  // re-validates the date on submit either way.
+  const dateStatus: DateStatus | null =
+    !availLoading && availability ? getDateStatus(availability) : null;
+  const dateBlocked = dateStatus !== null && dateStatus !== "bookable";
 
   const submit = async () => {
     if (!branch) {
@@ -279,72 +364,121 @@ export default function BookLabTestModal({
       setFormError(t("bookAppointmentModal.pleaseSelectDate"));
       return;
     }
-    if (!selectedTime) {
-      setFormError(t("bookAppointmentModal.pleaseSelectTimeSlot"));
+    if (dateStatus && dateStatus !== "bookable") {
+      setFormError(t(DATE_STATUS_KEYS[dateStatus]));
       return;
     }
-    if (test?.prescription_required) {
-      setFormError(t("bookLabTestModal.prescriptionRequiredNotSupported"));
+    const isHome = serviceMode === "HOME";
+    if (isHome && !homeAddress.trim()) {
+      setFormError(t("bookLabTestModal.pleaseEnterHomeAddress"));
       return;
     }
-    if (!patientName.trim()) {
-      setFormError(t("bookAppointmentModal.pleaseEnterPatientName"));
+    if (test?.prescription_required && !prescriptionFile) {
+      setPrescriptionError(t("bookLabTestModal.pleaseAttachPrescription"));
+      setFormError(t("bookLabTestModal.pleaseAttachPrescription"));
       return;
     }
-    if (!phone.trim()) {
-      setFormError(t("bookLabTestModal.pleaseEnterPatientPhone"));
+    if (prescriptionFile) {
+      const fileErrorKey = prescriptionFileErrorKey(prescriptionFile);
+      if (fileErrorKey) {
+        setPrescriptionError(t(fileErrorKey));
+        setFormError(t(fileErrorKey));
+        return;
+      }
+    }
+    const patientError = patientPickerRef.current?.validate();
+    if (patientError) {
+      setFormError(patientError);
       return;
     }
-    if (age.trim() === "" || Number.isNaN(Number(age))) {
-      setFormError(t("bookLabTestModal.pleaseEnterPatientAge"));
-      return;
-    }
-    if (!gender) {
-      setFormError(t("bookLabTestModal.pleaseSelectPatientGender"));
-      return;
-    }
-    if (busy) return;
-    setBusy(true);
-    setFormError(null);
-    try {
-      const created = await labTestAppointmentsApi.create(
-        {
-          branch_id: branch.id,
-          branch_lab_test_id: testId,
-          service_mode: "CLINIC",
-          appointment_date: date,
-          start_time: selectedTime,
-          payment_method: "PAY_AT_CLINIC",
-          patient_notes: notes.trim() || undefined,
-          patient_details: {
-            relationship,
-            name: patientName.trim(),
-            phone: phone.trim(),
-            age: Number(age),
-            gender,
+    // Locked: a repeated click while the booking is in flight is a no-op.
+    await runSubmit(async () => {
+      setFormError(null);
+      try {
+        const base = patientPickerRef.current!.buildDetails();
+        const patientDetails = {
+          ...base,
+          phone: base.phone ?? "",
+          age: base.age ?? 0,
+          gender: base.gender ?? "",
+        };
+        // Booking first, then the prescription: the booking route lets clinic
+        // staff book a prescription-required test without one, and the upload
+        // needs the new booking's id to attach the file to it.
+        const created = await labTestAppointmentsApi.create(
+          {
+            branch_id: branch.id,
+            branch_lab_test_id: testId,
+            service_mode: serviceMode,
+            appointment_date: date,
+            payment_method: "PAY_AT_CLINIC",
+            referring_doctor_name: referringDoctor.trim() || undefined,
+            patient_notes: notes.trim() || undefined,
+            ...(isHome
+              ? {
+                  home_address: homeAddress.trim(),
+                  home_contact_phone: homeContactPhone.trim() || undefined,
+                  home_notes: homeNotes.trim() || undefined,
+                }
+              : {}),
+            patient_details: patientDetails,
           },
-        },
-        crypto.randomUUID()
-      );
-      toast.success(t("bookLabTestModal.labTestBookedFor", { name: patientName.trim(), time: selectedTime }));
-      onBooked?.(created);
-      onClose();
-    } catch (err) {
-      const message =
-        err instanceof ApiError && err.code === "SLOT_ALREADY_BOOKED"
-          ? t("bookAppointmentModal.slotJustTaken")
+          crypto.randomUUID()
+        );
+        onBooked?.(created);
+        if (!prescriptionFile) {
+          toast.success(t("bookLabTestModal.labTestRequestedFor", { name: patientDetails.name, date }));
+          onClose();
+          return;
+        }
+        // The booking stands either way - an upload failure is reported, not rolled back.
+        setUploadingPrescription(true);
+        try {
+          await patientDocumentsApi.upload({
+            patient_id:
+              created.patient_details?.patient_id ?? created.patient?.id ?? created.patient_id,
+            document_type: "PRESCRIPTION",
+            title: test?.test_name
+              ? t("bookLabTestModal.prescriptionTitle", { test: test.test_name })
+              : t("bookLabTestModal.prescription"),
+            branch_id: branch.id,
+            lab_test_appointment_id: created.id,
+            file: prescriptionFile,
+          });
+          toast.success(
+            t("bookLabTestModal.bookedWithPrescription", { name: patientDetails.name, date })
+          );
+        } catch (uploadErr) {
+          toast.error(
+            t("bookLabTestModal.prescriptionUploadFailed", {
+              name: patientDetails.name,
+              date,
+              reason: getErrorMessage(uploadErr, t("patientDocuments.uploadFailed")),
+            }),
+            { duration: 10000 }
+          );
+        } finally {
+          setUploadingPrescription(false);
+        }
+        onClose();
+      } catch (err) {
+        // Patient details are kept so the user can pick another date and retry.
+        const errorKey = err instanceof ApiError ? BOOKING_ERROR_KEYS[err.code] : undefined;
+        const message = errorKey
+          ? t(errorKey)
           : getErrorMessage(err, t("bookLabTestModal.unableToBook"));
-      setFormError(message);
-      toast.error(message);
-      // Refresh slots so a just-taken slot no longer looks available.
-      loadAvailability();
-    } finally {
-      setBusy(false);
-    }
+        if (!patientPickerRef.current?.applyServerError(err, message)) {
+          setFormError(message);
+        }
+        toast.error(message);
+        // Refresh the date status so a just-filled/closed date shows as such.
+        loadAvailability();
+      }
+    });
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-[900px] p-6 lg:p-8">
+    <Modal isOpen={isOpen} onClose={onClose} closeDisabled={isSubmitting} className="max-w-[900px] p-6 lg:p-8">
       <div>
         <h5 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           {t("bookLabTestModal.title")}
@@ -378,13 +512,24 @@ export default function BookLabTestModal({
                 {t("bookLabTestModal.labTest")}
               </label>
               {testsLoading ? (
-                <ListSkeleton rows={3} />
+                <SelectSkeleton />
               ) : testsError ? (
-                <p className="text-sm text-error-600 dark:text-error-400">{testsError}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm text-error-600 dark:text-error-400">{testsError}</p>
+                  {testsLoadFailed && (
+                    <button
+                      type="button"
+                      onClick={() => setTestsReloadKey((k) => k + 1)}
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                    >
+                      {t("common.retry")}
+                    </button>
+                  )}
+                </div>
               ) : (
                 <select
                   value={testId}
-                  onChange={(e) => setTestId(e.target.value)}
+                  onChange={(e) => selectTest(e.target.value)}
                   disabled={!branch}
                   className={inputClass}
                 >
@@ -413,12 +558,97 @@ export default function BookLabTestModal({
                   )}
                 </div>
               )}
+              {test && test.precautions && test.precautions.length > 0 && (
+                <div className="mt-3">
+                  <LabTestPrecautionsList
+                    precautions={test.precautions}
+                    hint={t("labTestPrecautions.bookingHint")}
+                  />
+                </div>
+              )}
             </div>
+
+            {/* Service mode - only the modes this branch test offers */}
+            {test && test.clinic_available && test.home_collection_available && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                  {t("bookLabTestModal.serviceMode")}
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {(["CLINIC", "HOME"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setServiceMode(mode)}
+                      disabled={isSubmitting}
+                      aria-pressed={serviceMode === mode}
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${
+                        serviceMode === mode
+                          ? "border-brand-500 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      {mode === "CLINIC" ? t("bookLabTestModal.modeClinic") : t("bookLabTestModal.modeHome")}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {test && !(test.clinic_available && test.home_collection_available) && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t("bookLabTestModal.serviceMode")}:{" "}
+                {serviceMode === "HOME" ? t("bookLabTestModal.modeHome") : t("bookLabTestModal.modeClinic")}
+              </p>
+            )}
+
+            {test && serviceMode === "HOME" && (
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                    {t("bookLabTestModal.homeAddress")} <span className="text-error-500">*</span>
+                  </label>
+                  <textarea
+                    value={homeAddress}
+                    onChange={(e) => setHomeAddress(e.target.value)}
+                    maxLength={1000}
+                    rows={2}
+                    placeholder={t("bookLabTestModal.homeAddressPlaceholder")}
+                    className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                    {t("bookLabTestModal.homeContactPhone")}
+                  </label>
+                  <input
+                    type="tel"
+                    value={homeContactPhone}
+                    onChange={(e) => setHomeContactPhone(e.target.value)}
+                    maxLength={32}
+                    placeholder={t("common.optional")}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                    {t("bookLabTestModal.homeNotes")}
+                  </label>
+                  <input
+                    type="text"
+                    value={homeNotes}
+                    onChange={(e) => setHomeNotes(e.target.value)}
+                    maxLength={500}
+                    placeholder={t("bookLabTestModal.homeNotesPlaceholder")}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Date */}
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("schedule.date")}
+                {t("bookLabTestModal.bookingDate")}
               </label>
               {!testId ? (
                 <div className="flex h-24 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-400 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-500">
@@ -460,45 +690,34 @@ export default function BookLabTestModal({
               )}
             </div>
 
-            {/* Time slot */}
+            {/* Date status - the clinic assigns the test time on confirmation */}
             {testId && (
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                  {t("bookAppointmentModal.timeSlot")}
-                </label>
                 {availLoading ? (
-                  <div className="flex flex-wrap gap-2">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <Skeleton key={i} className="h-8 w-16 rounded-lg" />
-                    ))}
-                  </div>
+                  <Skeleton className="h-10 w-full rounded-lg" />
                 ) : availError ? (
-                  <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
-                ) : !availability || availability.slots.length === 0 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {t("bookAppointmentModal.noBookableSlots")}
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {availability.slots.map((slot) => (
-                      <button
-                        key={slot.start}
-                        type="button"
-                        disabled={!slot.available}
-                        onClick={() => setSelectedTime(slot.start)}
-                        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                          selectedTime === slot.start
-                            ? "border-brand-500 bg-brand-500 text-white"
-                            : slot.available
-                              ? "border-success-500/30 bg-success-50 text-success-700 hover:border-brand-400 dark:bg-success-500/10 dark:text-success-500"
-                              : "border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-500"
-                        }`}
-                      >
-                        {slot.start}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm text-error-600 dark:text-error-400">{availError}</p>
+                    <button
+                      type="button"
+                      onClick={() => loadAvailability()}
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
+                    >
+                      {t("common.retry")}
+                    </button>
                   </div>
-                )}
+                ) : dateStatus && dateStatus !== "bookable" ? (
+                  <p className="rounded-lg border border-error-500/30 bg-error-50 px-3 py-2 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
+                    {t(DATE_STATUS_KEYS[dateStatus])}
+                  </p>
+                ) : dateStatus === "bookable" ? (
+                  <p className="rounded-lg border border-success-500/30 bg-success-50 px-3 py-2 text-sm text-success-700 dark:bg-success-500/10 dark:text-success-500">
+                    {t("bookLabTestModal.dateBookable")}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {t("bookLabTestModal.timeAssignedByClinic")}
+                </p>
               </div>
             )}
           </div>
@@ -508,76 +727,18 @@ export default function BookLabTestModal({
             <h6 className="text-sm font-semibold text-gray-800 dark:text-white/90">
               {t("bookAppointmentModal.patientDetails")}
             </h6>
+            <BookingPatientPicker ref={patientPickerRef} disabled={isSubmitting} requirePhone />
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.relationship")}
-              </label>
-              <select
-                value={relationship}
-                onChange={(e) => setRelationship(e.target.value as PatientRelationship)}
-                className={inputClass}
-              >
-                {RELATIONSHIPS.map((r) => (
-                  <option key={r} value={r}>
-                    {r === "self" ? t("appointments.self") : r.charAt(0).toUpperCase() + r.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.name")} <span className="text-error-500">*</span>
+                {t("bookLabTestModal.referringDoctor")}
               </label>
               <input
                 type="text"
-                value={patientName}
-                onChange={(e) => setPatientName(e.target.value)}
-                placeholder={t("bookAppointmentModal.visitorFullName")}
+                value={referringDoctor}
+                onChange={(e) => setReferringDoctor(e.target.value)}
+                placeholder={t("common.optional")}
                 className={inputClass}
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.phone")} <span className="text-error-500">*</span>
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.age")} <span className="text-error-500">*</span>
-              </label>
-              <input
-                type="number"
-                min={0}
-                max={150}
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-                {t("appointments.genderLabel")} <span className="text-error-500">*</span>
-              </label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">{t("bookLabTestModal.selectGender")}</option>
-                {GENDERS.map((g) => (
-                  <option key={g} value={g}>
-                    {g === "prefer_not_to_say"
-                      ? t("bookAppointmentModal.preferNotToSay")
-                      : g.charAt(0).toUpperCase() + g.slice(1)}
-                  </option>
-                ))}
-              </select>
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
@@ -591,6 +752,49 @@ export default function BookLabTestModal({
                 className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
             </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+                {test?.prescription_required ? (
+                  <>
+                    {t("bookLabTestModal.prescription")} <span className="text-error-500">*</span>
+                  </>
+                ) : (
+                  t("bookLabTestModal.prescriptionOptional")
+                )}
+              </label>
+              {test?.prescription_required && (
+                <p className="mb-2 rounded-lg border border-warning-500/30 bg-warning-50 px-3 py-2 text-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                  {t("bookLabTestModal.prescriptionRequiredNote")}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={prescriptionInputRef}
+                  type="file"
+                  accept={PRESCRIPTION_ACCEPT}
+                  disabled={isSubmitting}
+                  onChange={(e) => onPrescriptionSelected(e.target.files?.[0] ?? null)}
+                  className="block min-w-0 flex-1 text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-600 hover:file:bg-brand-100 dark:text-gray-300 dark:file:bg-brand-500/10 dark:file:text-brand-400"
+                />
+                {prescriptionFile && (
+                  <button
+                    type="button"
+                    onClick={clearPrescription}
+                    disabled={isSubmitting}
+                    className="rounded-lg px-2 py-1 text-xs font-medium text-error-600 hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-error-500/10"
+                  >
+                    {t("bookLabTestModal.removeFile")}
+                  </button>
+                )}
+              </div>
+              {prescriptionError ? (
+                <p className="mt-1 text-xs text-error-600 dark:text-error-400">{prescriptionError}</p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  {t("bookLabTestModal.prescriptionFileHint")}
+                </p>
+              )}
+            </div>
           </div>
 
           {formError && (
@@ -602,17 +806,24 @@ export default function BookLabTestModal({
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+            disabled={isSubmitting}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
           >
             {t("common.cancel")}
           </button>
           <button
+            type="button"
             onClick={submit}
-            disabled={busy || !branch || !testId}
-            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+            disabled={isSubmitting || !branch || !testId || availLoading || dateBlocked}
+            className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
           >
-            {busy ? t("bookLabTestModal.booking") : t("bookLabTestModal.bookLabTest")}
+            {uploadingPrescription
+              ? t("bookLabTestModal.uploadingPrescription")
+              : isSubmitting
+                ? t("bookLabTestModal.booking")
+                : t("bookLabTestModal.bookLabTest")}
           </button>
         </div>
       </div>

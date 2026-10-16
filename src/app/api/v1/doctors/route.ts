@@ -54,7 +54,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
         SELECT dba.id AS id, dba.created_at AS created_at, dba.fee_amount, dba.currency, dba.slot_type,
                d.id AS doctor_id, d.name AS doctor_name, d.smc_name, d.doctor_degree,
                d.phone, d.photo_url,
-               b.id AS branch_id, b.name AS branch_name, b.city AS branch_city, b.timezone AS branch_timezone,
+               b.id AS branch_id, b.name AS branch_name, b.photo_url AS branch_photo_url, b.city AS branch_city, b.timezone AS branch_timezone,
                c.id AS clinic_id, c.name AS clinic_name
           FROM doctor_branch_assignments dba
           JOIN doctors d ON d.id = dba.doctor_id AND d.deleted_at IS NULL
@@ -92,6 +92,7 @@ export const GET = api({ rateLimit: 120 }, async (ctx) => {
       currency: r.currency,
       branch_id: r.branch_id,
       branch_name: r.branch_name,
+      branch_photo_url: r.branch_photo_url ?? null,
       clinic_id: r.clinic_id,
       clinic_name: r.clinic_name,
       city: r.branch_city,

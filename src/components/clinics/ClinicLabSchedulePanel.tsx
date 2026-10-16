@@ -19,21 +19,32 @@ export default function ClinicLabSchedulePanel() {
   // Viewing a branch's schedule opens in a popup rather than navigating away,
   // so the "Lab Schedules" tab stays the active one.
   const [viewingBranch, setViewingBranch] = useState<Branch | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!clinicId) return;
+    let active = true;
     branchesApi
       .list(clinicId)
       .then((res) => {
+        if (!active) return;
         setBranches(res.items);
         if (res.items.length > 0) {
           setSelectedBranch(res.items[0].id);
         }
       })
-      .catch((err) =>
-        setError(getErrorMessage(err, t("branches.failedToLoad")))
-      );
-  }, [clinicId, t]);
+      .catch((err) => {
+        if (active) setError(getErrorMessage(err, t("branches.failedToLoad")));
+      });
+    return () => {
+      active = false;
+    };
+  }, [clinicId, t, reloadKey]);
+
+  const retryLoad = () => {
+    setError(null);
+    setReloadKey((k) => k + 1);
+  };
 
   const loading = branches === null && !error;
   const singleBranch = branches !== null && branches.length === 1 ? branches[0] : null;
@@ -62,6 +73,13 @@ export default function ClinicLabSchedulePanel() {
         {error ? (
           <div className="rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
             {error}
+            <button
+              type="button"
+              onClick={retryLoad}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
           </div>
         ) : loading ? (
           <ListSkeleton rows={3} />

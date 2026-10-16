@@ -70,7 +70,9 @@ export function currentTimeKeyInTz(tz: string): string {
     timeZone: tz,
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    // h23, not hour12:false — some ICU builds render midnight as "24" with the latter,
+    // which would make every slot of the day look already ended just after midnight.
+    hourCycle: "h23",
   }).formatToParts(new Date());
   const h = Number(parts.find((p) => p.type === "hour")?.value);
   const m = Number(parts.find((p) => p.type === "minute")?.value);
@@ -82,6 +84,22 @@ export function hasSlotPassedInTz(date: string, time: string, tz: string): boole
   if (date < today) return true;
   if (date > today) return false;
   return time <= currentTimeKeyInTz(tz);
+}
+
+export const BOOKING_TIME_ENDED_MESSAGE =
+  "Booking is no longer available because the booking time has ended.";
+
+// True once "now" in the branch's tz has reached the slot's END (start + duration) on
+// that date — the cutoff for every new booking (doctor fixed/sequential and lab).
+// Past dates are always ended, future dates never are. Compared at minute precision:
+// the slot is still bookable through hh:mm:59 of the minute before its end and closed
+// from the exact end minute on. An end past midnight (start + duration > 24:00) simply
+// never ends "today", which matches a slot that runs into the next day.
+export function hasSlotEndedInTz(date: string, startTime: string, durationMinutes: number, tz: string): boolean {
+  const today = todayInTz(tz);
+  if (date < today) return true;
+  if (date > today) return false;
+  return toMinutes(currentTimeKeyInTz(tz)) >= toMinutes(startTime) + durationMinutes;
 }
 
 export function generateSlotTimes(startTime: string, endTime: string, durationMinutes: number): string[] {
@@ -142,6 +160,10 @@ export type SlotType = "fixed" | "sequential";
 
 export interface DaySlot {
   time: string;
+  /** Slot end (time + duration), HH:MM in the branch's tz. */
+  end: string;
+  /** True once the slot's end has passed today in the branch's tz — never bookable. */
+  ended: boolean;
   available: boolean;
   slot_type: SlotType;
   capacity: number;
@@ -233,11 +255,14 @@ export async function computeDaySlots(
     applyBookingCutoff && isPastBookingCutoff(date, scheduleFinalEndTime(templates), tz);
 
   const slots: DaySlot[] = [...capacityMap.entries()]
-    .map(([time, { slotType, maxPatients }]) => {
+    .map(([time, { slotType, maxPatients, durationMinutes }]) => {
       const bookedCount = booked.get(time) ?? 0;
-      const remaining = pastBookingCutoff ? 0 : Math.max(0, maxPatients - bookedCount);
+      const ended = hasSlotEndedInTz(date, time, durationMinutes, tz);
+      const remaining = pastBookingCutoff || ended ? 0 : Math.max(0, maxPatients - bookedCount);
       return {
         time,
+        end: fmtMinutes(toMinutes(time) + durationMinutes),
+        ended,
         available: remaining > 0,
         slot_type: slotType,
         capacity: maxPatients,
@@ -293,9 +318,10 @@ export async function findNextSequentialSlot(
   const candidates = [...capacityMap.keys()].sort((a, b) => a.localeCompare(b));
 
   for (const key of candidates) {
-    const { maxPatients } = capacityMap.get(key)!;
+    const { maxPatients, durationMinutes } = capacityMap.get(key)!;
     if ((booked.get(key) ?? 0) >= maxPatients) continue;
-    if (nowKey !== null && key <= nowKey) continue;
+    // A slot stays assignable until its end (same rule as fixed slots / lab bookings).
+    if (nowKey !== null && toMinutes(key) + durationMinutes <= toMinutes(nowKey)) continue;
     return key;
   }
   return null;
@@ -346,9 +372,10 @@ export async function nextAvailableSlot(
     const booked = await bookedCountsByTime(db, doctorId, date);
     for (const t of dayTemplates) {
       const maxPatients = Number(t.max_patients ?? 1);
-      for (const key of generateSlotTimes(t.start_time, t.end_time, Number(t.slot_duration_minutes))) {
+      const dur = Number(t.slot_duration_minutes);
+      for (const key of generateSlotTimes(t.start_time, t.end_time, dur)) {
         if ((booked.get(key) ?? 0) >= maxPatients) continue;
-        if (nowKey !== null && key <= nowKey) continue;
+        if (nowKey !== null && toMinutes(key) + dur <= toMinutes(nowKey)) continue;
         return `${date}T${key}:00`;
       }
     }
@@ -511,6 +538,8 @@ export type DateStatus =
   | "unavailable"
   | "fully_booked"
   | "booking_closed"
+  // Today, and every slot's end time has already passed in the branch's tz.
+  | "booking_time_ended"
   | "outside_schedule"
   | "past";
 
@@ -578,9 +607,16 @@ export async function computeDateAvailability(
     return { date, status: "unavailable", is_bookable: false, leave: null, closure: null, slots: [] };
   }
   const hasOpen = slots.some((s) => s.available);
+  const allEnded = slots.every((s) => s.ended);
   return {
     date,
-    status: hasOpen ? "available" : pastBookingCutoff ? "booking_closed" : "fully_booked",
+    status: hasOpen
+      ? "available"
+      : allEnded
+        ? "booking_time_ended"
+        : pastBookingCutoff
+          ? "booking_closed"
+          : "fully_booked",
     is_bookable: hasOpen,
     leave: null,
     closure: null,

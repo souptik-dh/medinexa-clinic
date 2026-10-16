@@ -32,7 +32,8 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
 
   const [rows] = await pool.query<Row[]>(
     `SELECT r.id, r.rating, r.comment, r.created_at, r.doctor_id,
-            u.name AS patient_name, d.name AS doctor_name
+            u.name AS patient_name, u.photo_url AS patient_photo_url,
+            d.name AS doctor_name, d.photo_url AS doctor_photo_url
        FROM reviews r
        JOIN users u ON u.id = r.patient_id
        JOIN doctors d ON d.id = r.doctor_id
@@ -50,7 +51,9 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       id: r.id,
       doctor_id: r.doctor_id,
       doctor_name: r.doctor_name,
+      doctor_photo_url: r.doctor_photo_url ?? null,
       patient_name: r.patient_name,
+      patient_photo_url: r.patient_photo_url ?? null,
       rating: Number(r.rating),
       comment: r.comment ?? null,
       created_at: r.created_at,

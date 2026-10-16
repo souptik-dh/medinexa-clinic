@@ -907,12 +907,26 @@ const toolHandlers: Record<string, ToolHandler> = {
     return apiRequest(`/appointments/${params.appointmentId}/cancel`, { method: "PATCH" }, token);
   },
 
+  // The clinic assigns the test time on confirmation: start_time ("HH:MM")
+  // is required by the server when the booking has no time yet. Without one
+  // the server's VALIDATION_ERROR message ("Assign a test time before
+  // confirming the booking.") is surfaced as the tool error.
   approve_lab_appointment: async (_user, params, token) => {
-    return apiRequest(`/clinic/lab-test-appointments/${params.appointmentId}/approve`, { method: "PATCH" }, token);
+    const body: Record<string, unknown> = {};
+    if (params.startTime) body.start_time = params.startTime;
+    return apiRequest(
+      `/clinic/lab-test-appointments/${params.appointmentId}/approve`,
+      { method: "POST", body: JSON.stringify(body) },
+      token
+    );
   },
 
   reject_lab_appointment: async (_user, params, token) => {
-    return apiRequest(`/clinic/lab-test-appointments/${params.appointmentId}/reject`, { method: "PATCH" }, token);
+    return apiRequest(
+      `/clinic/lab-test-appointments/${params.appointmentId}/reject`,
+      { method: "POST", body: JSON.stringify({ reason: params.reason }) },
+      token
+    );
   },
 
   mark_notification_read: async (_user, params, token) => {

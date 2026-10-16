@@ -5,6 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      // API libs (api/src/lib/*), so their unit tests resolve the same imports as the app.
+      "@api": path.resolve(__dirname, "api/src"),
     },
   },
   test: {

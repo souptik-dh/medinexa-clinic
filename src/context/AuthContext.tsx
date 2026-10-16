@@ -14,6 +14,7 @@ import {
   ApiError,
   BranchStaffMe,
   Clinic,
+  ClinicOwnerAuthResponse,
   authApi,
   branchStaffApi,
   clearTokens,
@@ -51,6 +52,8 @@ interface AuthContextValue {
   staffClinic: BranchStaffMe["clinic"] | null;
   staffBranch: BranchStaffMe["branch"] | null;
   can: (permission: BranchStaffPermission) => boolean;
+  /** Merge a profile patch into the cached user (after PATCH /auth/me or a photo upload). */
+  updateUser: (patch: Partial<User>) => Promise<void>;
   /** Clinic owner login step 1: sends OTP to phone. */
   sendOwnerLoginOtp: (phone: string) => Promise<string>;
   /** Clinic owner login step 2: verifies OTP, stores session. */
@@ -82,6 +85,8 @@ interface AuthContextValue {
   staffLogin: (phone: string) => Promise<void>;
   /** Branch staff login step 2: verifies OTP, stores session. */
   verifyStaffOtp: (phone: string, otp: string) => Promise<void>;
+  /** Branch staff login with phone + password (instead of OTP), stores session. */
+  loginStaffWithPassword: (phone: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -177,6 +182,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
+  // The stored user is a snapshot from login, so a photo/name changed since (from the
+  // mobile app, or a manager setting a staff member's photo) would never show. Refresh
+  // it from GET /auth/me once per signed-in user.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    authApi
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setUser((prev) => {
+          if (!prev || prev.id !== me.id) return prev;
+          const photoUrl = me.photo_url ?? null;
+          if (prev.photo_url === photoUrl && prev.name === me.name && prev.email === (me.email ?? prev.email)) {
+            return prev;
+          }
+          const updated = { ...prev, name: me.name, email: me.email ?? prev.email, photo_url: photoUrl };
+          void setStoredUser(updated);
+          return updated;
+        });
+      })
+      .catch(() => {
+        // Non-fatal: keep showing the stored profile.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   // Backfills clinic/branch for a branch_staff session that doesn't have it
   // yet - either a page refresh of a session from before this existed, or
   // one where the login-time GET /branch-staff/me call failed transiently.
@@ -220,6 +255,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
+
+  // Merges a profile patch into the cached signed-in user and re-persists it —
+  // used after PATCH /auth/me or a profile-photo upload so the UI updates at
+  // once without a fresh login.
+  const updateUser = useCallback(async (patch: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      void setStoredUser(next);
+      return next;
+    });
+  }, []);
 
   const sendOwnerLoginOtp = useCallback(async (phone: string) => {
     try {
@@ -350,8 +397,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persist]
   );
 
-  const verifyStaffOtp = useCallback(async (phone: string, otp: string) => {
-    const res = await authApi.verifyStaffOtp({ phone, otp });
+  // Stores a branch staff session from either login route (OTP verify or password);
+  // both return the same response shape.
+  const completeStaffLogin = useCallback(async (res: ClinicOwnerAuthResponse) => {
     setTokens({ access_token: res.access_token, refresh_token: res.refresh_token });
 
     let userToStore = res.user;
@@ -392,6 +440,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     toast.success("Signed in successfully.");
   }, []);
+
+  const verifyStaffOtp = useCallback(async (phone: string, otp: string) => {
+    await completeStaffLogin(await authApi.verifyStaffOtp({ phone, otp }));
+  }, [completeStaffLogin]);
+
+  const loginStaffWithPassword = useCallback(async (phone: string, password: string) => {
+    try {
+      await completeStaffLogin(await authApi.loginBranchStaffWithPassword({ phone, password }));
+    } catch (err) {
+      if (err instanceof ApiError) throw new Error(err.message);
+      throw err;
+    }
+  }, [completeStaffLogin]);
 
   const can = useCallback(
     (permission: BranchStaffPermission): boolean => {
@@ -437,6 +498,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         staffClinic,
         staffBranch,
         can,
+        updateUser,
         sendOwnerLoginOtp,
         verifyOwnerOtp,
         loginOwnerWithPassword,
@@ -447,6 +509,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         verifyOwnerRegisterOtp,
         staffLogin,
         verifyStaffOtp,
+        loginStaffWithPassword,
         logout,
       }}
     >

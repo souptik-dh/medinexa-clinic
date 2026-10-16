@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ApiError, DoctorSpecialization, doctorSpecializationsApi } from "@/lib/api";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import { Skeleton } from "@/components/ui/skeleton/Skeleton";
 
 export interface SpecializationValue {
   id: string;
@@ -34,7 +36,8 @@ export default function SpecializationPicker({
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<DoctorSpecialization[]>([]);
   const [loading, setLoading] = useState(false);
-  const [creating, setCreating] = useState(false);
+  // Ref-locked so a repeated Enter / double click can't create the same name twice.
+  const { pending: creating, run: runCreate } = useAsyncAction();
   const [apiError, setApiError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -95,17 +98,16 @@ export default function SpecializationPicker({
   };
 
   const createAndAdd = async () => {
-    if (!trimmedQuery || creating) return;
-    setCreating(true);
-    setApiError(null);
-    try {
-      const spec = await doctorSpecializationsApi.create(trimmedQuery);
-      addExisting(spec);
-    } catch (err) {
-      setApiError(err instanceof ApiError ? err.message : t("specializationPicker.couldNotAddSpecialization"));
-    } finally {
-      setCreating(false);
-    }
+    if (!trimmedQuery) return;
+    await runCreate(async () => {
+      setApiError(null);
+      try {
+        const spec = await doctorSpecializationsApi.create(trimmedQuery);
+        addExisting(spec);
+      } catch (err) {
+        setApiError(err instanceof ApiError ? err.message : t("specializationPicker.couldNotAddSpecialization"));
+      }
+    });
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -185,7 +187,13 @@ export default function SpecializationPicker({
       {open && !atMax && !disabled && (
         <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {loading && (
-            <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{t("nmcDoctorSearch.searching")}</div>
+            <div role="status" aria-busy="true" aria-label={t("nmcDoctorSearch.searching")}>
+              {["w-2/3", "w-1/2", "w-3/5"].map((w) => (
+                <div key={w} className="px-3 py-2.5">
+                  <Skeleton className={`h-3.5 ${w}`} />
+                </div>
+              ))}
+            </div>
           )}
           {!loading &&
             matches.map((m) => (
@@ -208,7 +216,7 @@ export default function SpecializationPicker({
               type="button"
               onClick={createAndAdd}
               disabled={creating}
-              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+              className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path

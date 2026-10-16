@@ -8,7 +8,8 @@ import {
   auditLabAction,
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
+import { createPatientNotification, sendEmail, detailsEmailHtml } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest } from "@api/lib/errors";
@@ -51,15 +52,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     reason: body.reason,
   });
 
-  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-  if (patientPhone) {
-    const rejectText = personalizeForPatient(
-      `Your lab test booking ${appointment.appointment_number} (${appointment.test_name}) has been rejected. Reason: ${body.reason}`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
-    await sendWhatsapp(patientPhone, rejectText);
-  }
   if (appointment.patient_email) {
     await sendEmail(
       appointment.patient_email,
@@ -73,7 +65,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           { label: "Appointment Number", value: appointment.appointment_number },
           { label: "Test", value: appointment.test_name },
           { label: "Branch", value: appointment.branch_name },
-          { label: "Date & Time", value: `${appointment.appointment_date} at ${appointment.start_time}` },
+          { label: "Date & Time", value: `${appointment.appointment_date}${appointment.start_time ? ` at ${appointment.start_time}` : ""}` },
           { label: "Reason", value: body.reason },
         ],
       }),
@@ -81,5 +73,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
   }
 
   const updated = await getLabTestAppointmentInScope(pool, id, auth);
-  return json(serializeLabTestAppointment(updated));
+  const [result] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(updated)]);
+  return json(result);
 });

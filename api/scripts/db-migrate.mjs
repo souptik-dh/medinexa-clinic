@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { createConnection } from 'mysql2/promise';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadLibraryData, seedLabTestLibrary } from './lab-test-library-seed.mjs';
 
 function slugify(name) {
   return name
@@ -22,7 +23,46 @@ if (!url) {
 const schema = await readFile(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8');
 const conn = await createConnection({ uri: url, multipleStatements: true });
 try {
+  // Checked before schema.sql runs: on the run that first creates clinic_announcements,
+  // every clinic that already exists is marked as announced (see the seed further down)
+  // so shipping the feature doesn't notify patients about long-established clinics.
+  const [annTables] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinic_announcements'`,
+  );
+  const clinicAnnouncementsIsNew = Number(annTables[0].cnt) === 0;
+
   await conn.query(schema);
+
+  if (clinicAnnouncementsIsNew) {
+    const [seeded] = await conn.query(
+      `INSERT IGNORE INTO clinic_announcements (clinic_id, status, completed_at)
+       SELECT id, 'skipped_existing', UTC_TIMESTAMP(3) FROM clinics`,
+    );
+    console.log(`Applied migration: clinic_announcements (marked ${seeded.affectedRows} existing clinic(s) as already announced)`);
+  }
+
+  // advertisements first shipped with a single dashboard carousel (no placement).
+  const [adPlacementCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'advertisements' AND COLUMN_NAME = 'placement'`,
+  );
+  if (Number(adPlacementCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE advertisements
+         ADD COLUMN placement ENUM('top','middle','bottom') NOT NULL DEFAULT 'top' AFTER category`,
+    );
+    console.log('Applied migration: advertisements.placement');
+  }
+
+  const [deviceLangCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'device_tokens' AND COLUMN_NAME = 'language'`,
+  );
+  if (Number(deviceLangCols[0].cnt) === 0) {
+    await conn.query(`ALTER TABLE device_tokens ADD COLUMN language ENUM('en','bn') NULL`);
+    console.log('Applied migration: device_tokens.language');
+  }
 
   const [cols] = await conn.query(
     `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
@@ -973,8 +1013,8 @@ try {
         test_id CHAR(36) NOT NULL,
         service_mode ENUM('CLINIC','HOME') NOT NULL DEFAULT 'CLINIC',
         appointment_date DATE NOT NULL,
-        start_time VARCHAR(5) NOT NULL,
-        end_time VARCHAR(5) NOT NULL,
+        start_time VARCHAR(5) NULL,
+        end_time VARCHAR(5) NULL,
         duration_minutes SMALLINT NOT NULL,
         price DECIMAL(10,2) NOT NULL,
         currency CHAR(3) NOT NULL DEFAULT 'INR',
@@ -1192,6 +1232,22 @@ try {
   if (labStatusLogChangedByCols[0] && labStatusLogChangedByCols[0].IS_NULLABLE === 'NO') {
     await conn.query(`ALTER TABLE lab_test_appointment_status_log MODIFY COLUMN changed_by CHAR(36) NULL`);
     console.log('Applied migration: lab_test_appointment_status_log.changed_by nullable (system/cron entries)');
+  }
+
+  // Lab bookings: the patient picks the date only; the clinic assigns the time when it
+  // confirms, so start/end stay NULL while PENDING. Existing rows keep their times.
+  const [labApptTimeCols] = await conn.query(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_test_appointments'
+        AND COLUMN_NAME IN ('start_time', 'end_time')`,
+  );
+  if (labApptTimeCols.some((c) => c.IS_NULLABLE === 'NO')) {
+    await conn.query(
+      `ALTER TABLE lab_test_appointments
+         MODIFY COLUMN start_time VARCHAR(5) NULL,
+         MODIFY COLUMN end_time VARCHAR(5) NULL`,
+    );
+    console.log('Applied migration: lab_test_appointments.start_time/end_time nullable (clinic assigns time on confirm)');
   }
 
   // ── Phone-based authentication migrations ──────────────────────────────
@@ -1498,6 +1554,178 @@ try {
       `ALTER TABLE branch_staff ADD COLUMN joined_at DATETIME(3) NULL AFTER permissions_json`,
     );
     console.log('Applied migration: branch_staff.joined_at');
+  }
+
+  const [branchIsMainCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'is_main'`,
+  );
+  if (Number(branchIsMainCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE branches ADD COLUMN is_main TINYINT(1) NOT NULL DEFAULT 0 AFTER clinical_establishment_reg_url`,
+    );
+    // Existing clinics: their oldest live branch becomes the main branch.
+    const [liveBranches] = await conn.query(
+      `SELECT id, clinic_id FROM branches WHERE deleted_at IS NULL ORDER BY created_at ASC, id ASC`,
+    );
+    const mainByClinic = new Map();
+    for (const b of liveBranches) {
+      if (!mainByClinic.has(b.clinic_id)) mainByClinic.set(b.clinic_id, b.id);
+    }
+    if (mainByClinic.size > 0) {
+      await conn.query(`UPDATE branches SET is_main = 1 WHERE id IN (?)`, [[...mainByClinic.values()]]);
+    }
+    await conn.query(
+      `ALTER TABLE branches
+         ADD COLUMN main_branch_key CHAR(36)
+           GENERATED ALWAYS AS (IF(is_main = 1 AND deleted_at IS NULL, clinic_id, NULL)) STORED,
+         ADD UNIQUE KEY uniq_branches_main (main_branch_key)`,
+    );
+    console.log('Applied migration: branches.is_main + uniq_branches_main');
+  }
+
+  const [clinicPhotoCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clinics' AND COLUMN_NAME = 'photo_url'`,
+  );
+  if (Number(clinicPhotoCols[0].cnt) === 0) {
+    await conn.query(`ALTER TABLE clinics ADD COLUMN photo_url VARCHAR(500) NULL AFTER description`);
+    console.log('Applied migration: clinics.photo_url');
+  }
+
+  // Booking profile vs actual patient: the Patient App account a booking belongs to
+  // (profile_user_id/profile_name) is stored apart from the person receiving the
+  // service (patient_id). patient_family_links itself comes from schema.sql above.
+  for (const [table, prefix] of [['appointment_patients', 'appt_patients'], ['lab_test_appointment_patients', 'lta_patients']]) {
+    const parent = table === 'appointment_patients' ? 'appointments' : 'lab_test_appointments';
+    const fkPrefix = table === 'appointment_patients' ? 'appt_patient_details' : 'lta_patient_details';
+    const [profileCols] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'profile_user_id'`,
+      [table],
+    );
+    if (Number(profileCols[0].cnt) === 0) {
+      await conn.query(`
+        ALTER TABLE ${table}
+          ADD COLUMN profile_user_id CHAR(36) NULL AFTER booked_by,
+          ADD COLUMN profile_name VARCHAR(255) NULL AFTER profile_user_id,
+          ADD KEY idx_${prefix}_profile (profile_user_id)
+      `);
+      // App bookings: the booking account is the profile. Reception bookings: the
+      // resolved patient is treated as their own profile (the best fact on record).
+      await conn.query(`
+        UPDATE ${table} x
+        JOIN ${parent} a ON a.id = x.appointment_id
+        SET x.profile_user_id = IF(x.booking_source = 'PATIENT_APP', a.patient_id, x.patient_id)
+      `);
+      await conn.query(`
+        UPDATE ${table} x
+        JOIN users u ON u.id = x.profile_user_id
+        SET x.profile_name = u.name
+      `);
+      await conn.query(`
+        ALTER TABLE ${table}
+          ADD CONSTRAINT fk_${fkPrefix}_profile FOREIGN KEY (profile_user_id) REFERENCES users(id) ON DELETE SET NULL
+      `);
+      // Family links implied by past app bookings for someone else.
+      await conn.query(`
+        INSERT IGNORE INTO patient_family_links (id, profile_user_id, patient_id, relationship)
+        SELECT UUID(), x.profile_user_id, x.patient_id, x.relationship
+          FROM ${table} x
+          JOIN users p ON p.id = x.patient_id AND p.role = 'patient'
+         WHERE x.booking_source = 'PATIENT_APP' AND x.relationship <> 'self'
+           AND x.patient_id IS NOT NULL AND x.profile_user_id IS NOT NULL
+           AND x.patient_id <> x.profile_user_id
+      `);
+      console.log(`Applied migration: ${table}.profile_user_id/profile_name + family links`);
+    }
+  }
+
+  // Lab test precautions master list (table from schema.sql). INSERT IGNORE on the
+  // unique name: re-runs add new entries but never overwrite edited ones.
+  const labTestPrecautions = [
+    ['Fasting Required', 'Follow the prescribed fasting duration before the test, if instructed.', 'Fasting'],
+    ['Fasting Not Required', 'No fasting is required for this test unless otherwise instructed.', 'Fasting'],
+    ['Morning Sample Preferred', 'Provide the sample in the morning if recommended for this test.', 'Sample Timing'],
+    ['First-Morning Urine', 'Collect the first urine passed after waking up, if instructed.', 'Urine Sample'],
+    ['Midstream Urine Sample', 'Collect the middle portion of the urine stream in a sterile container.', 'Urine Sample'],
+    ['Sterile Container Required', 'Use the appropriate sterile sample container.', 'Sample Collection'],
+    ['Avoid Heavy Exercise', 'Avoid strenuous exercise for the period specified by the laboratory or clinician.', 'Lifestyle'],
+    ['Avoid Alcohol', 'Avoid alcohol for the instructed period before the test, if applicable.', 'Lifestyle'],
+    ['Inform About Medications', 'Inform the doctor or laboratory staff about current medicines and supplements. Do not stop prescribed medicines without medical advice.', 'Medication'],
+    ['Inform About Supplements', 'Disclose vitamins, supplements, and other products that may affect test results.', 'Medication'],
+    ['Inform About Pregnancy', 'Inform the healthcare professional if pregnant or if pregnancy is possible, when relevant.', 'Medical Information'],
+    ['Menstrual Period Information', 'Inform the laboratory if menstruation may affect the test or sample collection.', 'Medical Information'],
+    ['Avoid Certain Foods', 'Follow the specific dietary restrictions provided by the laboratory or doctor.', 'Diet'],
+    ['Adequate Hydration', 'Maintain the recommended hydration level unless fluid restriction has been advised.', 'Hydration'],
+    ['Stool Sample Instructions', 'Collect the stool sample in the designated container without contamination.', 'Stool Sample'],
+    ['Sputum Sample Instructions', "Follow the laboratory's instructions for collecting a sputum sample.", 'Respiratory Sample'],
+    ['Bring Previous Reports', 'Bring relevant previous laboratory reports if requested.', 'Documents'],
+    ["Doctor's Prescription Required", 'Carry a valid prescription when required for the test.', 'Documents'],
+    ['Avoid Contamination', 'Ensure the sample is not contaminated by water, other substances, or unsuitable containers.', 'Sample Collection'],
+    ['Follow Laboratory Instructions', 'Follow any additional test-specific instructions provided by the laboratory.', 'General'],
+  ];
+  const [precautionInsert] = await conn.query(
+    `INSERT IGNORE INTO lab_test_precautions (id, name, description, category, sort_order) VALUES ?`,
+    [labTestPrecautions.map(([name, description, category], i) => [randomUUID(), name, description, category, (i + 1) * 10])],
+  );
+  if (precautionInsert.affectedRows > 0) {
+    console.log(`Seeded ${precautionInsert.affectedRows} lab test precautions`);
+  }
+
+  // lab_tests first shipped without a link to the predefined library (table from
+  // schema.sql) and without any uniqueness on code.
+  const [libraryCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND COLUMN_NAME = 'library_test_id'`,
+  );
+  if (Number(libraryCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE lab_tests
+         ADD COLUMN library_test_id CHAR(36) NULL AFTER clinic_id,
+         ADD UNIQUE KEY uniq_lab_test_clinic_library (clinic_id, library_test_id),
+         ADD KEY idx_lab_test_library (library_test_id),
+         ADD CONSTRAINT fk_lab_test_library FOREIGN KEY (library_test_id) REFERENCES lab_test_library(id) ON DELETE SET NULL`,
+    );
+    console.log('Applied migration: lab_tests.library_test_id');
+  }
+  const [codeIndex] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lab_tests' AND INDEX_NAME = 'uniq_lab_test_clinic_code'`,
+  );
+  if (Number(codeIndex[0].cnt) === 0) {
+    // Existing data is never rewritten: if a clinic already has two tests with the same
+    // code the index is skipped (the API still rejects new duplicates) and the clashes
+    // are listed so they can be fixed by hand, after which a re-run adds it.
+    const [dupCodes] = await conn.query(
+      `SELECT clinic_id, code, COUNT(*) AS cnt FROM lab_tests GROUP BY clinic_id, code HAVING COUNT(*) > 1`,
+    );
+    if (dupCodes.length === 0) {
+      await conn.query(`ALTER TABLE lab_tests ADD UNIQUE KEY uniq_lab_test_clinic_code (clinic_id, code)`);
+      console.log('Applied migration: lab_tests unique (clinic_id, code)');
+    } else {
+      console.warn(`Skipped lab_tests unique (clinic_id, code): ${dupCodes.length} duplicate code(s) to resolve first:`);
+      for (const d of dupCodes) console.warn(`  clinic ${d.clinic_id} code "${d.code}" x${d.cnt}`);
+    }
+  }
+
+  // Predefined lab test library: inserts missing entries only, never updates or deletes.
+  const { summary: librarySummary } = await seedLabTestLibrary(conn, await loadLibraryData());
+  console.log(librarySummary);
+
+  // appointment_reminders first shipped without status (every row was a sent reminder).
+  const [reminderStatusCols] = await conn.query(
+    `SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'appointment_reminders' AND COLUMN_NAME = 'status'`,
+  );
+  if (Number(reminderStatusCols[0].cnt) === 0) {
+    await conn.query(
+      `ALTER TABLE appointment_reminders
+         ADD COLUMN status ENUM('scheduled','sent') NOT NULL DEFAULT 'sent' AFTER days_before,
+         MODIFY COLUMN sent_at DATETIME(3) NULL DEFAULT CURRENT_TIMESTAMP(3),
+         ADD KEY idx_appointment_reminders_status (status, reminder_date)`,
+    );
+    console.log('Applied migration: appointment_reminders.status');
   }
 
   console.log('Schema applied successfully.');

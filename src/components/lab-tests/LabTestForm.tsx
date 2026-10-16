@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { LabTestCategory, labTestsApi } from "@/lib/api";
 import { labTestCategoryLabel } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
+import LabTestPrecautionsPicker from "@/components/lab-tests/LabTestPrecautionsPicker";
 
 // Fixed-category legacy values, kept as starting suggestions for a clinic
 // with no lab tests yet. Category itself is free text (see labTestsApi.categories()).
@@ -38,7 +40,8 @@ export interface LabTestFormValues {
   description: string;
   category: LabTestCategory;
   instructions: string;
-  default_precautions: string;
+  /** Selected master precaution ids (GET /lab-test-precautions). */
+  precaution_ids: string[];
 }
 
 export const EMPTY_LAB_TEST_FORM: LabTestFormValues = {
@@ -47,7 +50,7 @@ export const EMPTY_LAB_TEST_FORM: LabTestFormValues = {
   description: "",
   category: "",
   instructions: "",
-  default_precautions: "",
+  precaution_ids: [],
 };
 
 interface LabTestFormProps {
@@ -67,16 +70,33 @@ interface LabTestFormProps {
     description: string | null;
     category: LabTestCategory;
     instructions: string | null;
-    default_precautions: string[];
+    precaution_ids: string[];
   }) => Promise<void>;
+  /** Lets an embedding drawer block closing while a save is in flight. */
+  onPendingChange?: (pending: boolean) => void;
 }
 
-export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit }: LabTestFormProps) {
+export default function LabTestForm({ mode, initial, submitLabel, cancelHref, onCancel, onSubmit, onPendingChange }: LabTestFormProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [form, setForm] = useState<LabTestFormValues>(initial);
-  const [busy, setBusy] = useState(false);
+  const { pending: isSaving, run: runSave } = useAsyncAction();
+  // Stays set after a successful save (as before) so the host can close or
+  // navigate away without the submit button re-enabling in between.
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onPendingChange?.(isSaving);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSaving]);
+  // The host may unmount the form from onSubmit while the save is still
+  // settling - make sure it never keeps a stale "pending" flag.
+  useEffect(
+    () => () => onPendingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
   const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORY_SUGGESTIONS);
 
   useEffect(() => {
@@ -91,8 +111,12 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       .catch(() => {});
   }, []);
 
-  const updateField = (field: keyof LabTestFormValues, value: string) => {
+  const updateField = (field: keyof Omit<LabTestFormValues, "precaution_ids">, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const setPrecautions = (ids: string[]) => {
+    setForm((prev) => ({ ...prev, precaution_ids: ids }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,31 +135,23 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
       setError(t("labTestForm.categoryRequired"));
       return;
     }
-    const precautions = form.default_precautions
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (precautions.length > 50) {
-      setError(t("labTestForm.maxPrecautions"));
-      return;
-    }
-    if (precautions.some((p) => p.length > 255)) {
-      setError(t("labTestForm.precautionTooLong"));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await onSubmit({
-        ...(mode === "edit" ? { name: form.name.trim(), code: form.code.trim() } : {}),
-        description: form.description.trim() || null,
-        category: form.category.trim(),
-        instructions: form.instructions.trim() || null,
-        default_precautions: precautions,
-      });
-    } catch {
-      setBusy(false);
-    }
+    if (saved) return;
+    // Locked: a repeated Enter/click while saving is a no-op.
+    await runSave(async () => {
+      setError(null);
+      try {
+        await onSubmit({
+          ...(mode === "edit" ? { name: form.name.trim(), code: form.code.trim() } : {}),
+          description: form.description.trim() || null,
+          category: form.category.trim(),
+          instructions: form.instructions.trim() || null,
+          precaution_ids: form.precaution_ids,
+        });
+        setSaved(true);
+      } catch {
+        // The host already showed the error; fields are kept for a retry.
+      }
+    });
   };
 
   return (
@@ -247,33 +263,27 @@ export default function LabTestForm({ mode, initial, submitLabel, cancelHref, on
             className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           />
         </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            {t("labTestForm.precautions")}
-          </label>
-          <input
-            type="text"
-            value={form.default_precautions}
-            onChange={(e) => updateField("default_precautions", e.target.value)}
-            placeholder={t("labTestForm.precautionsPlaceholder")}
-            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-          />
-        </div>
+        <LabTestPrecautionsPicker
+          selected={form.precaution_ids}
+          onChange={setPrecautions}
+          disabled={isSaving || saved}
+        />
       </div>
       <div className="mt-6 flex items-center justify-end gap-3">
         <button
           type="button"
           onClick={() => (onCancel ? onCancel() : cancelHref && router.push(cancelHref))}
-          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          disabled={isSaving}
+          className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-white/[0.03]"
         >
           {t("common.cancel")}
         </button>
         <button
           type="submit"
-          disabled={busy}
-          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:bg-brand-300"
+          disabled={isSaving || saved}
+          className="rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:bg-brand-300"
         >
-          {busy ? t("auth.saving") : submitLabel}
+          {isSaving || saved ? t("auth.saving") : submitLabel}
         </button>
       </div>
     </form>

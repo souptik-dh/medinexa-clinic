@@ -7,8 +7,9 @@ import {
   auditLabAction,
   serializeLabTestAppointment,
 } from "@api/lib/lab-tests";
+import { withAppointmentPrecautions } from "@api/lib/lab-test-precautions";
 import { hasSlotPassedInTz } from "@api/lib/availability";
-import { createPatientNotification, sendEmail, detailsEmailHtml, sendWhatsapp, personalizeForPatient } from "@api/lib/notifications";
+import { createPatientNotification, sendEmail, detailsEmailHtml } from "@api/lib/notifications";
 import { assertBranchStaffPermission } from "@api/lib/permissions";
 import { assertClinicOperational } from "@api/lib/subscriptions";
 import { badRequest, conflict } from "@api/lib/errors";
@@ -28,7 +29,9 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     await assertBranchStaffPermission(pool, auth, appointment.branch_id, "lab_appointments:complete");
   }
 
-  if (!hasSlotPassedInTz(appointment.appointment_date, appointment.start_time, appointment.branch_timezone)) {
+  // Only APPROVED bookings complete, and confirming always sets the time; the fallback is
+  // just a guard for a row without one (completable once its day is over).
+  if (!hasSlotPassedInTz(appointment.appointment_date, appointment.start_time ?? "23:59", appointment.branch_timezone)) {
     throw conflict(
       "APPOINTMENT_NOT_YET_DUE",
       "Cannot mark as completed before the scheduled date and time have passed.",
@@ -52,15 +55,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     time: appointment.start_time,
   });
 
-  const patientPhone = appointment.visitor_phone || appointment.patient_phone;
-  if (patientPhone) {
-    const completeText = personalizeForPatient(
-      `Your lab test (${appointment.test_name}) for ${appointment.appointment_number} has been completed. Your report is now available.`,
-      appointment.visitor_name,
-      appointment.visitor_relationship,
-    );
-    await sendWhatsapp(patientPhone, completeText);
-  }
   if (appointment.patient_email) {
     await sendEmail(
       appointment.patient_email,
@@ -74,7 +68,7 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
           { label: "Appointment Number", value: appointment.appointment_number },
           { label: "Test", value: appointment.test_name },
           { label: "Branch", value: appointment.branch_name },
-          { label: "Date & Time", value: `${appointment.appointment_date} at ${appointment.start_time}` },
+          { label: "Date & Time", value: `${appointment.appointment_date}${appointment.start_time ? ` at ${appointment.start_time}` : ""}` },
         ],
       }),
     );
@@ -110,5 +104,6 @@ export const POST = api({ rateLimit: 200 }, async (ctx) => {
     },
   });
 
-  return json(serializeLabTestAppointment(updated));
+  const [result] = await withAppointmentPrecautions(pool, [serializeLabTestAppointment(updated)]);
+  return json(result);
 });

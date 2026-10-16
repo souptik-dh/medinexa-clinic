@@ -10,7 +10,7 @@ import type { Row } from "@api/lib/db";
 export const GET = api({ rateLimit: 200 }, async (ctx) => {
   await requireSuperAdmin(ctx.auth);
   const [rows] = await pool.query<Row[]>(
-    `SELECT u.id, u.email, u.name, u.status, sa.created_at AS granted_at, sa.revoked_at,
+    `SELECT u.id, u.email, u.name, u.photo_url, u.status, sa.created_at AS granted_at, sa.revoked_at,
             gu.email AS granted_by_email
        FROM super_admins sa
        JOIN users u ON u.id = sa.user_id
@@ -22,6 +22,7 @@ export const GET = api({ rateLimit: 200 }, async (ctx) => {
       user_id: r.id,
       email: r.email,
       name: r.name,
+      photo_url: r.photo_url ?? null,
       account_status: r.status,
       revoked: Boolean(r.revoked_at),
       granted_by_email: r.granted_by_email ?? null,

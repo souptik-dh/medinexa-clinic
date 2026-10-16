@@ -271,6 +271,22 @@ export const BRANCH_STAFF_PERMISSION_META: {
   },
 ];
 
+/**
+ * Keys this app uses to gate its own UI that the API does not store on a staff
+ * member (PATCH …/staff rejects them as unknown), so permission editors never
+ * offer them — ticking one would make the whole save fail.
+ */
+const NOT_ASSIGNABLE: readonly BranchStaffPermission[] = ["appointments:create", "lab_appointments:create"];
+
+/** What a permission editor offers: every permission the API accepts. */
+export const ASSIGNABLE_STAFF_PERMISSION_META = BRANCH_STAFF_PERMISSION_META.filter(
+  (m) => !NOT_ASSIGNABLE.includes(m.permission)
+);
+
+export function isAssignableStaffPermission(p: string): p is BranchStaffPermission {
+  return ASSIGNABLE_STAFF_PERMISSION_META.some((m) => m.permission === p);
+}
+
 export const BRANCH_STAFF_PERMISSION_MODULES = [
   { module: "appointments" as const, label: "Appointments" },
   { module: "staff" as const, label: "Staff" },

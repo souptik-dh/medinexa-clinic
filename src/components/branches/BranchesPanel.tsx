@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ListSkeleton, TableSkeleton } from "@/components/ui/skeleton/Skeleton";
+import { ListSkeleton, TableRowsSkeleton } from "@/components/ui/skeleton/Skeleton";
 import Badge from "@/components/ui/badge/Badge";
 import Tooltip from "@/components/ui/tooltip/Tooltip";
 import {
@@ -33,6 +33,7 @@ import { autoCreateBranchForClinic } from "@/lib/autoCreateBranch";
 import { getErrorMessage } from "@/lib/errorMessage";
 import { usePagination } from "@/hooks/usePagination";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useAsyncAction, useLatestRequest } from "@/hooks/useAsyncAction";
 
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -54,7 +55,17 @@ export default function BranchesPanel() {
   const [loading, setLoading] = useState(true);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Which GETs failed, so the error banner can offer a targeted Retry.
+  const [failedLoads, setFailedLoads] = useState<{
+    clinics?: boolean;
+    details?: boolean;
+    branches?: boolean;
+  }>({});
+  const [detailsReloadKey, setDetailsReloadKey] = useState(0);
+  const { pending: isAutoCreating, run: runAutoCreate } = useAsyncAction();
+  // Set by the embedded BranchForm so its drawer can't be closed mid-save.
+  const [formSaving, setFormSaving] = useState(false);
+  const { begin: beginBranches, isLatest: isLatestBranches } = useLatestRequest();
   const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
@@ -76,11 +87,13 @@ export default function BranchesPanel() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFailedLoads((f) => ({ ...f, clinics: false }));
     try {
       const res = await clinicsApi.list({ limit: 50 });
       setClinics(res.items);
       setSelectedId((prev) => prev ?? res.items[0]?.id ?? null);
     } catch (err) {
+      setFailedLoads((f) => ({ ...f, clinics: true }));
       setError(getErrorMessage(err, t("clinicsPage.failedToLoad")));
     } finally {
       setLoading(false);
@@ -102,14 +115,16 @@ export default function BranchesPanel() {
     }
     let active = true;
     setSelectedLoading(true);
+    setFailedLoads((f) => ({ ...f, details: false }));
     clinicsApi
       .get(selectedId)
       .then((c) => {
         if (active) setSelected(c);
       })
       .catch((err) => {
-        if (active)
-          setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
+        if (!active) return;
+        setFailedLoads((f) => ({ ...f, details: true }));
+        setError(getErrorMessage(err, t("clinicsPage.failedToLoadDetails")));
       })
       .finally(() => {
         if (active) setSelectedLoading(false);
@@ -118,21 +133,39 @@ export default function BranchesPanel() {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, detailsReloadKey]);
 
-  const loadBranches = useCallback(async (clinicId: string) => {
-    setBranchesLoading(true);
+  // `silent` refreshes after a mutation without flashing the table skeleton.
+  const loadBranches = useCallback(async (clinicId: string, opts?: { silent?: boolean }) => {
+    const token = beginBranches();
+    if (!opts?.silent) {
+      setBranchesLoading(true);
+      // Don't let the previous clinic's rows pose as this clinic's branches.
+      setBranches([]);
+    }
+    setFailedLoads((f) => ({ ...f, branches: false }));
     try {
       const res = await branchesApi.list(clinicId);
+      if (!isLatestBranches(token)) return;
       setBranches(res.items);
     } catch (err) {
-      setBranches([]);
+      if (!isLatestBranches(token)) return;
+      if (!opts?.silent) setBranches([]);
+      setFailedLoads((f) => ({ ...f, branches: true }));
       setError(getErrorMessage(err, t("branches.failedToLoad")));
     } finally {
-      setBranchesLoading(false);
+      if (isLatestBranches(token)) setBranchesLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const retryFailedLoads = () => {
+    setError(null);
+    if (failedLoads.clinics) load();
+    if (failedLoads.details) setDetailsReloadKey((k) => k + 1);
+    if (failedLoads.branches && selectedId) loadBranches(selectedId);
+  };
+  const hasFailedLoad = !!(failedLoads.clinics || failedLoads.details || failedLoads.branches);
 
   useEffect(() => {
     if (selectedId) {
@@ -181,19 +214,18 @@ export default function BranchesPanel() {
       toast.error(t("appointments.noPermission"));
       return;
     }
-    setBusy(true);
     setError(null);
-    try {
-      await autoCreateBranchForClinic(selected, user?.phone);
-      toast.success(t("branches.branchCreatedAuto"));
-      await loadBranches(selected.id);
-    } catch (err) {
-      const message = getErrorMessage(err, t("branches.autoCreateFailed"));
-      setError(message);
-      toast.error(message);
-    } finally {
-      setBusy(false);
-    }
+    await runAutoCreate(async () => {
+      try {
+        await autoCreateBranchForClinic(selected, user?.phone);
+        toast.success(t("branches.branchCreatedAuto"));
+        await loadBranches(selected.id, { silent: true });
+      } catch (err) {
+        const message = getErrorMessage(err, t("branches.autoCreateFailed"));
+        setError(message);
+        toast.error(message);
+      }
+    });
   };
 
   const confirmDeleteBranch = async () => {
@@ -206,7 +238,8 @@ export default function BranchesPanel() {
     setError(null);
     try {
       await branchesApi.remove(branch.id, true);
-      if (selected) await loadBranches(selected.id);
+      // Targeted update - drop just this row instead of refetching the table.
+      setBranches((prev) => prev.filter((b) => b.id !== branch.id));
       toast.success(t("branches.branchDeletedSuccess"));
       setBranchToDelete(null);
     } catch (err) {
@@ -227,6 +260,15 @@ export default function BranchesPanel() {
       {error && (
         <div className="mb-4 rounded-lg border border-error-500/30 bg-error-50 px-4 py-3 text-sm text-error-600 dark:bg-error-500/10 dark:text-error-400">
           {error}
+          {hasFailedLoad && (
+            <button
+              type="button"
+              onClick={retryFailedLoads}
+              className="ml-3 font-medium underline"
+            >
+              {t("common.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -252,6 +294,7 @@ export default function BranchesPanel() {
               {clinics.map((c) => (
                 <li key={c.id}>
                   <button
+                    type="button"
                     onClick={() => setSelectedId(c.id)}
                     className={`w-full rounded-xl border p-4 text-left transition ${
                       selectedId === c.id
@@ -290,17 +333,20 @@ export default function BranchesPanel() {
             </h3>
             {canCreate && selected && (
               <div className="flex items-center gap-2">
-                {!branchesLoading && !selectedLoading && selected && branches.length < 1 && (
+                {/* Hidden when the list failed to load - "no branches" isn't known then. */}
+                {!branchesLoading && !selectedLoading && !failedLoads.branches && selected && branches.length < 1 && (
                   <button
+                    type="button"
                     onClick={autoCreateBranch}
-                    disabled={busy}
+                    disabled={isAutoCreating}
                     title={t("branches.autoCreateBranchTitle")}
-                    className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:opacity-50 dark:hover:bg-brand-500/10"
+                    className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-medium text-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
                   >
-                    {busy ? t("branches.creating") : t("branches.autoCreateBranch")}
+                    {isAutoCreating ? t("branches.creating") : t("branches.autoCreateBranch")}
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setCreateOpen(true)}
                   className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
                 >
@@ -313,13 +359,11 @@ export default function BranchesPanel() {
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               {t("branchesListPage.selectClinicPrompt")}
             </p>
-          ) : selectedLoading || branchesLoading ? (
-            <TableSkeleton rows={5} cols={4} />
-          ) : !selected ? (
+          ) : !selectedLoading && !selected ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               {t("clinicsPage.failedToLoadDetails")}
             </p>
-          ) : branches.length === 0 ? (
+          ) : !selectedLoading && !branchesLoading && branches.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
               {t("branches.noBranchesForClinic")}
             </p>
@@ -347,10 +391,13 @@ export default function BranchesPanel() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {pageItems.map((b) => (
+                  {selectedLoading || branchesLoading ? (
+                    <TableRowsSkeleton rows={5} cols={4} actions cellClassName="py-3" />
+                  ) : pageItems.map((b) => (
                     <TableRow key={b.id}>
                       <TableCell className="py-3">
                         <button
+                          type="button"
                           onClick={() => setSelectedBranch(b)}
                           className="text-left hover:text-brand-500"
                         >
@@ -409,6 +456,7 @@ export default function BranchesPanel() {
                           )}
                           {canUpdate && (
                             <button
+                              type="button"
                               onClick={() => setEditingBranch(b)}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-500/10"
                             >
@@ -417,8 +465,8 @@ export default function BranchesPanel() {
                           )}
                           {canDelete && (
                             <button
+                              type="button"
                               onClick={() => setBranchToDelete(b)}
-                              disabled={busy}
                               className="rounded-lg px-2 py-1.5 text-xs font-medium text-error-600 hover:bg-error-50 disabled:opacity-50 dark:hover:bg-error-500/10"
                             >
                               {t("common.delete")}
@@ -431,7 +479,7 @@ export default function BranchesPanel() {
                 </TableBody>
               </Table>
             </div>
-            {branches.length > 10 && (
+            {!selectedLoading && !branchesLoading && branches.length > 10 && (
               <div className="mt-4 flex justify-center">
                 <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
@@ -475,6 +523,7 @@ export default function BranchesPanel() {
       <FormDrawer
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
+        closeDisabled={formSaving}
         title={t("branches.addBranch")}
         description={selected?.name}
       >
@@ -484,9 +533,10 @@ export default function BranchesPanel() {
             clinicId={selected.id}
             onDone={() => {
               setCreateOpen(false);
-              loadBranches(selected.id);
+              loadBranches(selected.id, { silent: true });
             }}
             onCancel={() => setCreateOpen(false)}
+            onPendingChange={setFormSaving}
           />
         )}
       </FormDrawer>
@@ -494,6 +544,7 @@ export default function BranchesPanel() {
       <FormDrawer
         isOpen={editingBranch !== null}
         onClose={() => setEditingBranch(null)}
+        closeDisabled={formSaving}
         title={t("branches.editBranch")}
         description={editingBranch?.name}
       >
@@ -504,9 +555,10 @@ export default function BranchesPanel() {
             branchId={editingBranch.id}
             onDone={() => {
               setEditingBranch(null);
-              loadBranches(selected.id);
+              loadBranches(selected.id, { silent: true });
             }}
             onCancel={() => setEditingBranch(null)}
+            onPendingChange={setFormSaving}
           />
         )}
       </FormDrawer>

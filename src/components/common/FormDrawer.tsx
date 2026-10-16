@@ -14,6 +14,8 @@ interface FormDrawerProps {
   children: React.ReactNode;
   /** Optional sticky footer (e.g. form action buttons). */
   footer?: React.ReactNode;
+  /** Block Escape/backdrop/close button while a request is in flight. */
+  closeDisabled?: boolean;
 }
 
 export default function FormDrawer({
@@ -23,11 +25,15 @@ export default function FormDrawer({
   description,
   children,
   footer,
+  closeDisabled = false,
 }: FormDrawerProps) {
   const { t } = useTranslation();
+  const requestClose = () => {
+    if (!closeDisabled) onClose();
+  };
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !closeDisabled) onClose();
     };
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
@@ -37,7 +43,7 @@ export default function FormDrawer({
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "unset";
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeDisabled]);
 
   if (!isOpen) return null;
 
@@ -46,7 +52,7 @@ export default function FormDrawer({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-gray-900/50 backdrop-blur-[2px]"
-        onClick={onClose}
+        onClick={requestClose}
         aria-hidden="true"
       />
 
@@ -71,9 +77,11 @@ export default function FormDrawer({
             )}
           </div>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={requestClose}
+            disabled={closeDisabled}
             aria-label={t("appointments.close")}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg
               className="h-5 w-5"
